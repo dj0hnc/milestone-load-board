@@ -22,7 +22,7 @@ jobs:
       - name: Build portable exe
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --win portable --x64
+        run: npx electron-builder --win portable --x64 --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: MilestoneLoadBoard-Windows
@@ -44,7 +44,7 @@ jobs:
       - name: Build universal dmg (Apple Silicon + Intel, unsigned)
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --mac
+        run: npx electron-builder --mac --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: MilestoneLoadBoard-Mac
