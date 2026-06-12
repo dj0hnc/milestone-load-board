@@ -3523,52 +3523,63 @@ setView('board');
      persist:newmile-auth — same session as our OAuth sign-in). Unread checker with
      sound + repeating reminder, a SUBTLE hideable ES→EN translator injected into the
      webview, and the ✉ copilot composer (templates ES/EN + Samsara driver send). */
-  var wvMsg=null, msgLast=-1, msgFp='', msgRemTimer=null, msgUnread=0;
+  /* The <webview> CANNOT live here: Electron does not render webviews inside iframes
+     (and this board runs in one). The SHELL owns the webview and docks it visually over
+     this tab's body — we just send it our rectangle and receive unread status back. */
+  var msgLast=-1, msgFp='', msgRemTimer=null, msgUnread=0;
   function msgCfg(){ return { remind:parseInt(localStorage.getItem('mab_msg_remind')||'30',10), translate:(localStorage.getItem('mab_translate')||'1')==='1' }; }
-  function ensureWvMsg(){
-    if(wvMsg) return wvMsg;
-    wvMsg=document.createElement('webview');
-    wvMsg.id='wvMsg';
-    wvMsg.setAttribute('partition','persist:newmile-auth');
-    wvMsg.setAttribute('src','https://app.newmile.com/messaging');
-    wvMsg.style.cssText='position:fixed;left:-12000px;top:60px;width:1080px;height:680px;z-index:65;border:0;background:#fff';
-    document.body.appendChild(wvMsg);
-    wvMsg.addEventListener('dom-ready',function(){ msgInjectTranslator(); });
-    setInterval(msgPoll,8000);
-    return wvMsg;
-  }
   function msgDock(open){
-    if(!wvMsg) return;
-    if(open){
-      var b=$id('tabBody-msg'); if(!b) return;
-      var r=b.getBoundingClientRect();
-      wvMsg.style.left=r.left+'px'; wvMsg.style.top=r.top+'px';
-      wvMsg.style.width=r.width+'px'; wvMsg.style.height=r.height+'px';
-    } else { wvMsg.style.left='-12000px'; }
+    try{
+      if(open){
+        var b=$id('tabBody-msg'); if(!b) return;
+        var r=b.getBoundingClientRect();
+        parent.postMessage({type:'msgdock',rect:{left:r.left,top:r.top,width:r.width,height:r.height},translate:msgCfg().translate},'*');
+      } else parent.postMessage({type:'msgdock',off:true},'*');
+    }catch(e){}
   }
   window.addEventListener('resize',function(){ var s=$id('tab-msg'); if(s&&s.classList.contains('open')) msgDock(true); });
   window.__tabInit_msg=function(){
     var body=$id('tabBody-msg');
     if(!body.dataset.built){
       body.dataset.built='1';
-      body.innerHTML='';   // webview floats over this area
+      body.innerHTML='<div style="color:var(--muted);padding:30px;text-align:center">Loading NewMile messaging…<br><small>If you see the NewMile sign-in here the first time, log in once — it sticks.</small></div>';
       $id('tabTools-msg').innerHTML=
         '<label class="enh-pf-l" title="Auto-translate Spanish driver messages (subtle line under each)"><input type="checkbox" id="msgTrChk" '+(msgCfg().translate?'checked':'')+'> 🌐 Translate</label>'
         +'<button class="gmap" onclick="openComposer([])">✉ New message</button>'
         +'<button class="gmap" onclick="wvMsgReload()">↻</button>';
       $id('msgTrChk').addEventListener('change',function(){
         localStorage.setItem('mab_translate',this.checked?'1':'0');
-        try{ wvMsg&&wvMsg.executeJavaScript('window.__nmTransEnabled='+(this.checked?'true':'false')+';'); }catch(e){}
+        try{ parent.postMessage({type:'msgtrans',on:this.checked},'*'); }catch(e){}
       });
     }
-    ensureWvMsg();
-    setTimeout(function(){ msgDock(true); },60);
+    setTimeout(function(){ msgDock(true); },80);
     msgStopReminder();           // opening the tab acknowledges the alert
     var bdg=$id('msgBadge'); if(bdg){ bdg.classList.remove('show'); }
   };
-  window.wvMsgReload=function(){ try{ wvMsg&&wvMsg.reload(); }catch(e){} };
-  var _origCloseTab=window.closeTab;
-  window.closeTab=function(key){ _origCloseTab(key); if(key==='msg') msgDock(false); };
+  window.wvMsgReload=function(){ try{ parent.postMessage({type:'msgreload'},'*'); }catch(e){} };
+  /* closeTab is defined later by the tab scaffold — wrap it at init time (see init()) */
+  function msgWrapCloseTab(){
+    var orig=window.closeTab;
+    if(typeof orig!=='function'||orig.__msgWrapped) return;
+    window.closeTab=function(key){ orig(key); if(key==='msg') msgDock(false); };
+    window.closeTab.__msgWrapped=1;
+  }
+  /* unread status pushed from the shell's poller */
+  window.__msgStatus=function(res){
+    if(!res) return;
+    msgUnread=res.n||0;
+    var bdg=$id('msgBadge');
+    var open=$id('tab-msg')&&$id('tab-msg').classList.contains('open');
+    if(bdg){ bdg.textContent=msgUnread; bdg.classList.toggle('show',msgUnread>0&&!open); }
+    var isNew=(msgLast>=0)&&((msgUnread>msgLast)||(msgUnread>0&&res.fp!==msgFp&&msgFp!==''));
+    msgLast=msgUnread; msgFp=res.fp||'';
+    if(isNew&&!open){
+      msgBeep(2);
+      toast('💬 New driver message ('+msgUnread+' unread) — click 💬 Messages');
+      msgStartReminder();
+    }
+    if(msgUnread===0) msgStopReminder();
+  };
   function msgBeep(times){
     try{
       var ctx=window.__beepCtx||(window.__beepCtx=new (window.AudioContext||window.webkitAudioContext)());
@@ -3591,57 +3602,7 @@ setView('board');
       msgBeep(1); toast('💬 '+msgUnread+' driver message(s) still unread');
     }, secs*1000);
   }
-  async function msgPoll(){
-    if(!wvMsg) return;
-    try{
-      var res=await wvMsg.executeJavaScript(
-        '(function(){try{var b=document.querySelector("#messaging-menu-unread-count");'
-        +'var n=b?(parseInt((b.textContent||"").trim(),10)||0):0;'
-        +'var l=document.querySelector("[class*=conversation],[id*=conversation]");'
-        +'return {n:n,fp:String(l?l.innerText:document.title).slice(0,300)};}catch(e){return {n:0,fp:"err"};}})()',true);
-      if(!res) return;
-      msgUnread=res.n||0;
-      var bdg=$id('msgBadge');
-      var open=$id('tab-msg')&&$id('tab-msg').classList.contains('open');
-      if(bdg){ bdg.textContent=msgUnread; bdg.classList.toggle('show',msgUnread>0&&!open); }
-      var isNew=(msgLast>=0)&&((msgUnread>msgLast)||(msgUnread>0&&res.fp!==msgFp&&msgFp!==''));
-      msgLast=msgUnread; msgFp=res.fp||'';
-      if(isNew&&!open){
-        msgBeep(2);
-        toast('💬 New driver message ('+msgUnread+' unread) — click 💬 Messages');
-        msgStartReminder();
-      }
-      if(msgUnread===0) msgStopReminder();
-    }catch(e){}
-  }
-  /* subtle ES→EN translator injected INTO the messaging webview (MyMemory, free) */
-  function msgInjectTranslator(){
-    if(!wvMsg) return;
-    var en=msgCfg().translate?'true':'false';
-    var js=''
-    +'(function(){if(window.__nmTransInstalled)return;window.__nmTransInstalled=1;window.__nmTransEnabled='+en+';'
-    +'var cache={},queue=[],busy=false;'
-    +'function looksSpanish(s){return /[áéíóúñ¿¡]/i.test(s)||/\\b(el|la|los|las|para|por|pero|donde|cuando|porque|necesito|cargar|carga|cargas|viaje|llego|llegando|estoy|voy|ya|mañana|ahorita|trabajo|camion|troca|si señor|gracias|buenos dias|buenas)\\b/i.test(s);}'
-    +'function work(){if(busy||!queue.length)return;busy=true;var it=queue.shift();'
-    +'fetch("https://api.mymemory.translated.net/get?langpair=es|en&q="+encodeURIComponent(it.text.slice(0,450)))'
-    +'.then(function(r){return r.json();}).then(function(j){var tr=j&&j.responseData&&j.responseData.translatedText;'
-    +'if(tr&&tr.toLowerCase()!==it.text.toLowerCase()){cache[it.text]=tr;var d=document.createElement("div");'
-    +'d.className="nm-trans";d.textContent="\\u2192 "+tr;d.style.cssText="font-size:11px;color:#5a95f9;opacity:.85;margin-top:2px;font-style:italic";'
-    +'if(window.__nmTransEnabled)it.el.appendChild(d);else d.remove();}'
-    +'busy=false;setTimeout(work,650);}).catch(function(){busy=false;setTimeout(work,1200);});}'
-    +'function scan(){if(!window.__nmTransEnabled)return;'
-    +'document.querySelectorAll("div,p,span").forEach(function(el){'
-    +'if(el.dataset.nmtr||el.children.length>1||el.querySelector(".nm-trans"))return;'
-    +'var s=(el.textContent||"").trim();'
-    +'if(s.length<8||s.length>400||!looksSpanish(s))return;'
-    +'el.dataset.nmtr=1;'
-    +'if(cache[s]){var d=document.createElement("div");d.className="nm-trans";d.textContent="\\u2192 "+cache[s];'
-    +'d.style.cssText="font-size:11px;color:#5a95f9;opacity:.85;margin-top:2px;font-style:italic";el.appendChild(d);return;}'
-    +'queue.push({text:s,el:el});work();});}'
-    +'new MutationObserver(function(){clearTimeout(window.__nmTd);window.__nmTd=setTimeout(scan,800);}).observe(document.body,{childList:true,subtree:true});'
-    +'setTimeout(scan,1500);})();';
-    try{ wvMsg.executeJavaScript(js); }catch(e){}
-  }
+  /* (unread polling + the ES→EN translator now run in the SHELL, which owns the webview) */
 
   /* ==================== 🚛 TRUCK MANAGER (real MCP writes — no scraping) ====================
      Live table of today's assignments + every roster truck's call status.
@@ -4350,6 +4311,7 @@ setView('board');
       addPlannerBtn();
       addFilterToggle();
       addTopTabs();
+      msgWrapCloseTab();      // after the scaffold defines closeTab
       addMapBtn();
       document.addEventListener('paste',handlePlannerPaste,true);   // Excel → planner
       // settings start collapsed (remembered) — they only show when you press ⚙ Settings

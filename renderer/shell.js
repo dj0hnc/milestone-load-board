@@ -146,6 +146,17 @@ window.addEventListener('DOMContentLoaded', async ()=>{
       return;
     }
     if(e.data.type==='refresh'){ refreshDay(); return; }
+    if(e.data.type==='msgdock'){
+      if(typeof e.data.translate==='boolean') wvMsgTrans=e.data.translate;
+      dockMsg(e.data.off?null:e.data.rect);
+      return;
+    }
+    if(e.data.type==='msgreload'){ try{ wvMsg&&wvMsg.reload(); }catch(err){} return; }
+    if(e.data.type==='msgtrans'){
+      wvMsgTrans=!!e.data.on;
+      try{ wvMsg&&wvMsg.executeJavaScript('window.__nmTransEnabled='+(wvMsgTrans?'true':'false')+';'); }catch(err){}
+      return;
+    }
     if(e.data.type==='drivers'){
       try{ const res=await window.newmile.drivers(); board().__driversResult&&board().__driversResult(res||[]); }
       catch(err){ board().__driversResult&&board().__driversResult([]); }
@@ -186,6 +197,67 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   $('#auto').value=String(saved); $('#auto').onchange=(e)=>setAuto(parseInt(e.target.value,10)||0);
   if(saved) setAuto(saved);
 });
+
+/* ---------- 💬 messaging webview ----------
+   Lives HERE in the main frame — Electron does not render <webview> inside iframes,
+   so the board (an iframe) sends us its tab rectangle and we dock the webview over it. */
+let wvMsg=null, wvMsgTrans=true;
+function ensureWvMsg(){
+  if(wvMsg) return wvMsg;
+  wvMsg=document.createElement('webview');
+  wvMsg.id='wvMsg';
+  wvMsg.setAttribute('partition','persist:newmile-auth');
+  wvMsg.setAttribute('src','https://app.newmile.com/messaging');
+  wvMsg.style.cssText='position:fixed;left:-12000px;top:48px;width:1080px;height:680px;z-index:45;border:0;background:#fff';
+  document.body.appendChild(wvMsg);
+  wvMsg.addEventListener('dom-ready',()=>{ injectTranslator(); });
+  setInterval(pollMsg,8000);
+  appendLog('messaging webview mounted (persist:newmile-auth)');
+  return wvMsg;
+}
+function dockMsg(rect){
+  ensureWvMsg();
+  if(!rect){ wvMsg.style.left='-12000px'; return; }
+  const off=document.getElementById('board').getBoundingClientRect();
+  wvMsg.style.left=Math.round(off.left+rect.left)+'px';
+  wvMsg.style.top =Math.round(off.top +rect.top )+'px';
+  wvMsg.style.width=Math.round(rect.width)+'px';
+  wvMsg.style.height=Math.round(rect.height)+'px';
+}
+async function pollMsg(){
+  if(!wvMsg) return;
+  try{
+    const res=await wvMsg.executeJavaScript('(function(){try{var b=document.querySelector("#messaging-menu-unread-count");var n=b?(parseInt((b.textContent||"").trim(),10)||0):0;var l=document.querySelector("[class*=conversation],[id*=conversation]");return {n:n,fp:String(l?l.innerText:document.title).slice(0,300)};}catch(e){return {n:0,fp:"err"};}})()',true);
+    if(res){ try{ board().__msgStatus && board().__msgStatus(res); }catch(e){} }
+  }catch(e){}
+}
+function injectTranslator(){
+  if(!wvMsg) return;
+  const en=wvMsgTrans?'true':'false';
+  const js=''
+  +'(function(){if(window.__nmTransInstalled)return;window.__nmTransInstalled=1;window.__nmTransEnabled='+en+';'
+  +'var cache={},queue=[],busy=false;'
+  +'function looksSpanish(s){return /[áéíóúñ¿¡]/i.test(s)||/\\b(el|la|los|las|para|por|pero|donde|cuando|porque|necesito|cargar|carga|cargas|viaje|llego|llegando|estoy|voy|ya|mañana|ahorita|trabajo|camion|troca|gracias|buenos dias|buenas)\\b/i.test(s);}'
+  +'function work(){if(busy||!queue.length)return;busy=true;var it=queue.shift();'
+  +'fetch("https://api.mymemory.translated.net/get?langpair=es|en&q="+encodeURIComponent(it.text.slice(0,450)))'
+  +'.then(function(r){return r.json();}).then(function(j){var tr=j&&j.responseData&&j.responseData.translatedText;'
+  +'if(tr&&tr.toLowerCase()!==it.text.toLowerCase()){cache[it.text]=tr;var d=document.createElement("div");'
+  +'d.className="nm-trans";d.textContent="\\u2192 "+tr;d.style.cssText="font-size:11px;color:#5a95f9;opacity:.85;margin-top:2px;font-style:italic";'
+  +'if(window.__nmTransEnabled)it.el.appendChild(d);else d.remove();}'
+  +'busy=false;setTimeout(work,650);}).catch(function(){busy=false;setTimeout(work,1200);});}'
+  +'function scan(){if(!window.__nmTransEnabled)return;'
+  +'document.querySelectorAll("div,p,span").forEach(function(el){'
+  +'if(el.dataset.nmtr||el.children.length>1||el.querySelector(".nm-trans"))return;'
+  +'var s=(el.textContent||"").trim();'
+  +'if(s.length<8||s.length>400||!looksSpanish(s))return;'
+  +'el.dataset.nmtr=1;'
+  +'if(cache[s]){var d=document.createElement("div");d.className="nm-trans";d.textContent="\\u2192 "+cache[s];'
+  +'d.style.cssText="font-size:11px;color:#5a95f9;opacity:.85;margin-top:2px;font-style:italic";el.appendChild(d);return;}'
+  +'queue.push({text:s,el:el});work();});}'
+  +'new MutationObserver(function(){clearTimeout(window.__nmTd);window.__nmTd=setTimeout(scan,800);}).observe(document.body,{childList:true,subtree:true});'
+  +'setTimeout(scan,1500);})();';
+  try{ wvMsg.executeJavaScript(js); }catch(e){}
+}
 
 /* ---------- finalized-on-board queue → NewMile (auto-sync) ---------- */
 function getPendingSync(){
