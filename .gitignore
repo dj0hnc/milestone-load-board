@@ -1,0 +1,6 @@
+node_modules/
+dist/
+dist-pkg/
+.board-backups/
+# the real config carries Samsara tokens — NEVER commit it (CI builds it from the template + secrets)
+newmile.config.json

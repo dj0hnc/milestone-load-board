@@ -1,0 +1,391 @@
+'use strict';
+/* Shell renderer: drives the connection bar + diagnostics + push modal, and bridges
+   live NewMile data into the embedded board (board.html) via its hooks:
+     window.__applyLiveData({today, dayMap:{3,4,5}, trucks})  and  window.__getPlan().
+
+   Connection is MANUAL and in-app: Connect opens NewMile's sign-in inside the app
+   (modal BrowserWindow handled by the main process), then Refresh pulls live data. */
+
+const $ = s => document.querySelector(s);
+const board = () => document.getElementById('board').contentWindow;
+function toast(t){ const m=$('#msg'); m.textContent=t; m.classList.add('show'); clearTimeout(m._t); m._t=setTimeout(()=>m.classList.remove('show'),3000); }
+
+/* ---------- status ---------- */
+function setStatus(st){
+  const dot=$('#dot'); dot.className='dot ' + (st.connected?'on':'off');
+  const who = st.connected && (st.user||st.org) ? `<span class="who">${[st.user,st.org].filter(Boolean).join(' · ')}</span>` : '';
+  $('#stat').innerHTML = (st.connected ? 'Connected to NewMile'
+                         : (st.error ? ('Disconnected — ' + shortErr(st.error)) : 'Disconnected')) + who;
+  $('#btnConnect').style.display    = st.connected ? 'none' : (st.hasToken||st.hasClient ? 'none' : '');
+  $('#btnReconnect').style.display  = st.connected ? 'none' : ((st.hasToken||st.hasClient) ? '' : 'none');
+  $('#btnDisconnect').style.display = st.connected ? '' : 'none';
+  $('#btnRefresh').disabled = !st.connected;
+}
+function shortErr(e){ e=String(e); if(e==='NOT_CONNECTED') return 'session expired, reconnect'; return e.length>48?e.slice(0,48)+'…':e; }
+
+let lastConnected=false;
+window.newmile.onStatus((st)=>{ setStatus(st); if(lastConnected && !st.connected) stopAuto(); lastConnected=st.connected; });
+window.newmile.onLog((line)=>appendLog(line));
+
+/* ---------- diagnostics drawer ---------- */
+function appendLog(line){
+  const el=$('#log'); const div=document.createElement('div');
+  if(/error|fail/i.test(line)) div.className='err'; else if(/connected|refreshed|pushed|confirmed/i.test(line)) div.className='ok';
+  div.textContent=line; el.appendChild(div); el.scrollTop=el.scrollHeight;
+  while(el.childNodes.length>400) el.removeChild(el.firstChild);
+}
+$('#btnDiag').onclick=async()=>{ $('#diag').classList.toggle('open'); if($('#diag').classList.contains('open')){ const logs=await window.newmile.logs(); $('#log').innerHTML=''; logs.forEach(appendLog); } };
+$('#diagClose').onclick=()=>$('#diag').classList.remove('open');
+
+/* ---------- auto-refresh ---------- */
+let autoSecs=0, autoLeft=0, autoTimer=null;
+function stopAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=null; } $('#next').textContent=''; }
+function startAuto(){
+  stopAuto(); if(!autoSecs) return; autoLeft=autoSecs;
+  autoTimer=setInterval(async()=>{
+    const st=await window.newmile.status();
+    if(!st.connected){ $('#next').textContent='paused'; return; }
+    autoLeft--;
+    if(autoLeft<=0){ autoLeft=autoSecs; snapToday(); await refreshDay(); }
+    const m=Math.floor(autoLeft/60), s=autoLeft%60;
+    $('#next').textContent='next '+(m?m+'m':'')+(s<10?'0':'')+s+'s';
+  },1000);
+}
+function setAuto(secs){ autoSecs=secs|0; try{localStorage.setItem('nm_auto',String(autoSecs));}catch(e){} if(autoSecs) startAuto(); else stopAuto(); }
+
+/* ---------- wiring ---------- */
+function localISO(){ const d=new Date(),p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+/* The Day picker follows TODAY automatically (launch, window focus, every auto-refresh
+   tick) unless the user explicitly picked another date this session. */
+let dayManual=false;
+function snapToday(){
+  const t=localISO();
+  if(!dayManual && $('#day').value!==t){ $('#day').value=t; return true; }
+  return false;
+}
+
+window.addEventListener('DOMContentLoaded', async ()=>{
+  $('#day').value=localISO();
+  $('#day').addEventListener('change',()=>{ dayManual=true; });
+  try{ const cfg=await window.newmile.config(); groupsCfg=(cfg&&cfg.groups)||null; }catch(e){}
+  setStatus(await window.newmile.status());
+
+  // auto-resume + auto-load: open the app → see TODAY, no clicks needed
+  try{
+    const r=await window.newmile.resume();      // silent only — never pops the sign-in
+    if(r&&r.connected){ setStatus(r); toast('Session resumed — loading today…'); refreshDay(); }
+  }catch(e){}
+
+  window.addEventListener('focus', async ()=>{
+    if(snapToday()){
+      const st=await window.newmile.status();
+      if(st.connected){ toast('New day — refreshing '+$('#day').value); refreshDay(); }
+    }
+  });
+
+  $('#btnConnect').onclick=$('#btnReconnect').onclick=async()=>{
+    $('#dot').className='dot busy'; $('#stat').textContent='Opening NewMile sign-in…';
+    try{ setStatus(await window.newmile.connect()); toast('Connected. Hit Refresh to pull the day.'); }
+    catch(e){ setStatus(await window.newmile.status()); toast('Connect failed: '+(e.message||e)); }
+  };
+  $('#btnDisconnect').onclick=async()=>{ stopAuto(); setStatus(await window.newmile.disconnect()); toast('Disconnected.'); };
+  $('#btnRefresh').onclick=refreshDay;
+
+  // Board → shell bridge: push handoff + dashcam snapshot requests.
+  window.addEventListener('message', async (e)=>{
+    if(!e || !e.data) return;
+    if(e.data==='openPush'){
+      const st=await window.newmile.status();
+      if(!st.connected){ toast('Connect to NewMile first, then push.'); return; }
+      openPush();
+      return;
+    }
+    if(e.data.type==='camera' && e.data.num){
+      const num=e.data.num;
+      appendLog('camera: requesting dashcam snapshot for '+num+' (30-60s)');
+      try{
+        const res=await window.newmile.camera(num);
+        try{ board().__snapshotResult && board().__snapshotResult(num, res||{error:'no response'}); }catch(e2){}
+        appendLog('camera: '+num+' → '+(res&&res.url?'image ready':''+(res&&res.error||'failed')));
+      }catch(err){
+        try{ board().__snapshotResult && board().__snapshotResult(num, {error:(err&&err.message)||String(err)}); }catch(e2){}
+      }
+    }
+  });
+
+  $('#pushX').onclick=$('#pushCancel').onclick=closePush;
+  $('#pushAll').onclick=()=>runPush(null);
+
+  let saved=0; try{ saved=parseInt(localStorage.getItem('nm_auto')||'0',10)||0; }catch(e){}
+  $('#auto').value=String(saved); $('#auto').onchange=(e)=>setAuto(parseInt(e.target.value,10)||0);
+  if(saved) setAuto(saved);
+});
+
+/* ---------- finalized-on-board queue → NewMile (auto-sync) ---------- */
+function getPendingSync(){
+  try{ return (board().__getPendingSync && board().__getPendingSync())||[]; }catch(e){ return []; }
+}
+function clearPendingSync(ids){ try{ board().__clearPendingSync && board().__clearPendingSync(ids); }catch(e){} }
+
+async function autoSync(){
+  const pend=getPendingSync();
+  if(!pend.length) return 0;
+  $('#stat').textContent='Writing '+pend.length+' finalized order(s) to NewMile…';
+  let done=0; const doneIds=[];
+  for(const o of pend){
+    try{
+      const useDefault=isOrderDefault(o);
+      const asg=o.assignments.filter(a=>!/ATX Bluewing/i.test(a.truck));
+      const r=await window.newmile.pushOrder({orderId:o.order_id, assignments:asg, useOrderDefault:useDefault});
+      done++; doneIds.push(o.order_id);
+      appendLog('auto-sync '+o.order_id+' ('+(o.disp||'')+'): +'+(r.created||[]).length+' new · ~'+(r.updated||[]).length+' updated · ='+(r.skipped||[]).length+' untouched');
+    }catch(e){ toast('Auto-sync order '+o.order_id+' failed: '+(e.message||e)); appendLog('auto-sync '+o.order_id+' FAILED: '+(e.message||e)); }
+  }
+  clearPendingSync(doneIds);
+  if(done) toast('✓ Auto-synced '+done+' finalized order(s) to NewMile');
+  return done;
+}
+
+/* ---------- live full sync -> board ---------- */
+async function refreshDay(){
+  const date=$('#day').value; if(!date) return;
+  $('#dot').className='dot busy'; $('#stat').textContent='Syncing '+date+' with NewMile…';
+  try{
+    await autoSync();   // finalized board changes go OUT first, then we pull the truth back
+    const all=await window.newmile.refreshAll(date);   // Y/T/Tm orders + roster + rotation + live assignments
+    const worked=workedSet(all.tickets||[]);
+    const trucksMapped=dedupeTrucks(all.trucks||[]).map(t=>mapTruck(t,worked));
+    const numToId={}; trucksMapped.forEach(t=>{ numToId[t.num.trim().toLowerCase()]=t.id; });
+    const asg=all.assignments||{};
+    const onotes=all.orderNotes||{};
+    const payload={
+      today:date,
+      dayMap:{
+        3:(all.orders.y ||[]).map(o=>mapOrder(o, asg[o.id], numToId, onotes[o.id])),
+        4:(all.orders.t ||[]).map(o=>mapOrder(o, asg[o.id], numToId, onotes[o.id])),
+        5:(all.orders.tm||[]).map(o=>mapOrder(o, asg[o.id], numToId, onotes[o.id]))
+      },
+      trucks:trucksMapped,
+      priorDay:all.priorDay
+    };
+    // deadhead data: pickup coords on orders + Samsara parking position on trucks
+    const pc=all.pickupCoords||{}, dc=all.dropCoords||{};
+    [4,5].forEach(k=>payload.dayMap[k].forEach(o=>{
+      const id=parseInt((''+o.id).replace(/^o/,''),10);
+      const c=pc[id]; if(c){ o.pickupLat=c.lat; o.pickupLng=c.lng; }
+      const d=dc[id]; if(d){ o.dropLat=d.lat; o.dropLng=d.lng; }
+    }));
+    try{
+      const snap=await window.newmile.samsara();   // 5-min cached in main; reused by move-check
+      if(snap&&Object.keys(snap).length){
+        payload.trucks.forEach(t=>{
+          const g=snap[t.num.trim().toUpperCase().replace(/\s+/g,' ')];
+          if(g&&g.lat!=null){ t.lat=g.lat; t.lon=g.lon; t.mph=g.speed||0; t.gpsTime=g.time||null; }
+        });
+      }
+    }catch(e){ appendLog('samsara position attach skipped: '+(e.message||e)); }
+    // live "rolling": any of TODAY's assignments with an active load_status or loads done
+    const rollingNums=new Set();
+    (all.orders.t||[]).forEach(o=>{ (asg[o.id]||[]).forEach(r=>{
+      if(r.load_status || (r.load_count||0)>0) rollingNums.add((r.truck_number||'').trim().toLowerCase());
+    });});
+    payload.trucks.forEach(t=>{ if(rollingNums.has(t.num.trim().toLowerCase())) t.status='rolling'; });
+    board().__applyLiveData(payload);
+    try{ board().__priorDay=all.priorDay; board().render&&board().render(); }catch(e){}
+    try{ await samsaraMoveCheck(payload, date); }catch(e){ appendLog('samsara check skipped: '+(e.message||e)); }
+    const liveAsg=Object.values(asg).reduce((n,a)=>n+(a?a.length:0),0);
+    setStatus(await window.newmile.status());
+    if(autoSecs) autoLeft=autoSecs;
+    toast('Synced '+date+' · today '+payload.dayMap[4].length+' / tomorrow '+payload.dayMap[5].length+' orders · '+liveAsg+' live assignments · rotation from '+all.priorDay);
+  }catch(e){ setStatus(await window.newmile.status()); toast('Refresh failed: '+(e.message||e)); }
+}
+
+/* ---------- mappers (NewMile shape -> board shape) ---------- */
+function num(v){ const n=parseFloat(v); return isNaN(n)?0:n; }
+function hourFromStart(s){ try{ const h=parseInt(String(s).slice(11,13),10); return isNaN(h)?4:h; }catch(e){return 4;} }
+function ampm(h){ const x=h%12||12; return x+':00 '+(h<12?'AM':'PM'); }
+function unitOf(o){
+  const u=(o.quantity_measurement_unit||'').toLowerCase();
+  if(u==='ton'||u==='load'||u==='hour') return u;
+  const m=(o.material_name||'').toLowerCase(), ht=(o.haul_type||'').toLowerCase();
+  if(m.indexOf('hourly')>=0||m.indexOf('onsite hauling')>=0||(ht==='onsite'&&m.indexOf('asphalt')>=0)) return 'hour';
+  if(m==='milk'||m.indexOf('fill dirt')>=0||ht==='export') return 'load';
+  return 'ton';
+}
+function statusOf(s){ if(s==='paused') return 'paused'; if(s==='pending') return 'pending'; return 'active'; }
+/* Map NewMile order_assignment rows into the board's assigns shape.
+   Only trucks that resolve in the roster become chips (others still count via o.nm). */
+function mapAssigns(rows, numToId, unit){
+  const out=[];
+  (rows||[]).forEach(r=>{
+    const tid=numToId[(r.truck_number||'').trim().toLowerCase()];
+    if(!tid) return;
+    if(unit==='hour'){ out.push({truck:tid, ll:'hourly', done:Math.round(num(r.hours_worked)), seq:r.ordinal||1}); }
+    else { out.push({truck:tid, ll:(r.load_limit==null?'open':r.load_limit), done:r.load_count||0, seq:r.ordinal||1}); }
+  });
+  return out;
+}
+function mapOrder(o, asgRows, numToId, nmNotes){
+  const h=hourFromStart(o.start_date), nm=o.assignment_count||0, unit=unitOf(o);
+  const target=Math.round(num(o.quantity_requested)), deliv=num(o.weight_delivered);
+  const assigns=mapAssigns(asgRows, numToId||{}, unit);
+  const completed=(['completed','closed','cancelled'].indexOf(o.status)>=0) || (unit==='ton'&&target>0&&deliv>=target);
+  return {
+    id:'o'+o.id, disp:(o.reference_number||'').trim(), cust:o.customer_name||o.material_name||'', mat:o.material_name||'',
+    pickup:(o.vendor_location||'').trim(), drop:(o.delivery_location||'').trim(),
+    unit:unit, target:target,
+    status:statusOf(o.status), nmStatus:o.status, completed:completed, startHr:h, time:ampm(h),
+    nm:nm, deliv:deliv, loadsDone:o.load_count||0,
+    minTrucks:o.minimum_truck_count||0, planTrucks:o.planned_truck_count||0, priority:o.priority||'medium',
+    notes: completed ? '✓ Order COMPLETE in NewMile — do not assign'
+         : (assigns.length ? ('NewMile live: '+assigns.length+' truck'+(assigns.length!=1?'s':'')+' on this order') : (nm>0?('NewMile: '+nm+' trucks assigned'):'No trucks yet — to cover')),
+    nmNotes:(nmNotes||[]),
+    finalized:assigns.length>0, modified:false, assigns:assigns
+  };
+}
+const JUNK=/(DOWN|Camera|De-Leased|Train loads|Need)/i;
+function dedupeTrucks(rows){
+  const seen={}, out=[];
+  for(const t of rows){
+    const n=(t.truck_number||'').trim(), own=(t.owner_name||'');
+    if(!n||JUNK.test(n)||n.length>18) continue;
+    if(/ATX Bluewing/i.test(own)) continue;     // standing exclusion
+    const k=n+'|'+own; if(seen[k]) continue; seen[k]=1; out.push(t);
+  }
+  return out;
+}
+function fleetOf(t){ if(t.fleet_id===5) return 'cactus'; if(t.fleet_id===6) return 'ckj'; return 'sub'; }
+/* Report grouping (NewMile tags are NOT exposed via the MCP — see newmile.config.json "groups"):
+   fleet 6 → KT · fleet 5 → CE · fleet 4 → AGGCT · fleet null → owner rules/overrides → CKJ_SUB/AGGCT/SUB */
+let groupsCfg=null;
+function groupOfTruck(t){
+  if(t.fleet_id===6) return 'KT';
+  if(t.fleet_id===5) return 'CE';
+  if(t.fleet_id===4) return 'AGGCT';
+  const owner=(t.owner_name||'');
+  if(groupsCfg){
+    const ov=groupsCfg.owner_overrides||{};
+    if(ov[owner] && typeof ov[owner]==='string' && ov[owner][0]!=='_') return ov[owner];
+    for(const r of (groupsCfg.owner_rules||[])){
+      if(r.contains && owner.toUpperCase().includes(String(r.contains).toUpperCase())) return r.group;
+    }
+  }
+  return 'SUB';
+}
+function termOf(n){ const m=/^KT-\d+\s+([PRW])$/.exec(n.trim()); if(!m) return null; return {P:'Powderly',R:'Rhome',W:'Whitewright'}[m[1]]; }
+function mapTruck(t, worked){
+  const n=(t.truck_number||'').trim(), fl=fleetOf(t), term=termOf(n);
+  const o={ id:'t'+t.id, num:n, fleet:fl, group:groupOfTruck(t),
+    owner:(t.owner_name||(n.indexOf('KT-')===0?'Kennemer (KT)':'Owner-Op')),
+    driver:t.driver_name||'', status:'free', onCall:!!t.on_call,
+    workedYest:worked(n,fl), daysIdle:null, loads7d:null, prio:false };
+  if(term) o.terminal=term;
+  return o;
+}
+function normNum(s){ return (String(s).replace(/^0+/,'')||'0'); }
+function workedSet(tickets){
+  const CAC={},KT4={},SUB3={},EX={};
+  for(const r of tickets){
+    const c=(r.truck_number||'').trim().toUpperCase(); let m;
+    if((m=/^C(\d+)$/.exec(c))) CAC[normNum(m[1])]=1;
+    else if((m=/^CKJ(\d{4})$/.exec(c))) KT4[normNum(m[1])]=1;
+    else if((m=/^CKJ(\d{3})$/.exec(c))) SUB3[normNum(m[1])]=1;
+    else EX[c.replace(/\s+/g,'')]=1;
+  }
+  return function(numStr, fleet){
+    const n=(numStr||'').trim(), u=n.toUpperCase().replace(/\s+/g,'');
+    if(fleet==='cactus') return !!(CAC[normNum(n)]||EX[u]);
+    if(fleet==='ckj'){ const m=/^KT-(\d+)/.exec(n); if(m) return !!KT4[normNum(m[1])]; return !!(SUB3[normNum(n)]||KT4[normNum(n)]); }
+    return !!(EX[u]||CAC[normNum(n)]);
+  };
+}
+function shiftISO(iso,days){ const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
+
+/* ---------- Samsara move-check (Phase 2b) ----------
+   After the board's configured hour, every truck ASSIGNED today that is NOT rolling
+   in NewMile and shows ~0 mph in Samsara raises a Live Alert (click → its order). */
+async function samsaraMoveCheck(payload, date){
+  const clearB=()=>{ try{ board().__samsaraAlerts=[]; board().renderAlerts&&board().renderAlerts(); }catch(e){} };
+  if(date!==localISO()){ clearB(); return; }                       // only meaningful for today
+  let hr=9; try{ hr=(board().cfg&&board().cfg.moveCheckHr)||9; }catch(e){}
+  if(new Date().getHours()<hr){ clearB(); return; }                // too early — nothing to flag yet
+  const snap=await window.newmile.samsara();
+  if(!snap||!Object.keys(snap).length){ appendLog('samsara: no tokens configured or no data — move-check off'); return; }
+  const alerts=[], seen=new Set();
+  (payload.dayMap[4]||[]).forEach(o=>{
+    if(o.completed) return;
+    (o.assigns||[]).forEach(a=>{
+      const t=payload.trucks.find(x=>x.id===a.truck);
+      if(!t||seen.has(t.id)) return; seen.add(t.id);
+      if(t.status==='rolling') return;                             // already hauling per NewMile
+      const g=snap[t.num.trim().toUpperCase().replace(/\s+/g,' ')];
+      if(!g) return;                                               // not in Samsara (subs etc.)
+      if((g.speed||0)<1) alerts.push({num:t.num, oid:o.id, time:g.time||''});
+    });
+  });
+  try{ board().__samsaraAlerts=alerts; board().renderAlerts&&board().renderAlerts(); }catch(e){}
+  appendLog('samsara move-check: '+alerts.length+' assigned truck(s) not moving (after '+hr+':00)');
+  if(alerts.length) toast('🛰 Samsara: '+alerts.length+' assigned truck(s) not moving — see Live Alerts');
+}
+
+/* ---------- push (preview modal -> confirmed write) ---------- */
+let pendingPlan=null;
+function isOrderDefault(o){ return /watercrest|eyk/i.test((o.disp||'')+' '+(o.material||'')); }
+/* Push scope = planner draft ∪ orders finalized on the board (planner wins on conflict) */
+function collectPushOrders(){
+  let plan={orders:[]};
+  try{ plan=board().__getPlan()||{orders:[]}; }catch(e){}
+  const byId={};
+  getPendingSync().forEach(o=>{ o._src='finalized'; byId[o.order_id]=o; });
+  (plan.orders||[]).forEach(o=>{ o._src='planner'; byId[o.order_id]=o; });
+  return Object.values(byId);
+}
+function openPush(){
+  const merged=collectPushOrders();
+  if(!merged.length){ toast('Nothing to push — plan in the Planner or Finalize orders on the board first.'); return; }
+  const plan={orders:merged};
+  pendingPlan=plan;
+  const tot=plan.orders.reduce((a,o)=>a+o.assignments.length,0);
+  $('#pushSub').textContent=plan.orders.length+' order(s) · '+tot+' assignment(s)';
+  const body=$('#pushBody'); body.innerHTML='';
+  plan.orders.forEach(o=>{
+    const def=isOrderDefault(o);
+    const rows=o.assignments.map(a=>{
+      const bw=/ATX Bluewing/i.test(a.truck);
+      return `<div class="arow"><span>${esc(a.truck)} · ${a.loads} load${a.loads==1?'':'s'} ${a.sequence>1?'<span class="seq">seq '+a.sequence+'</span>':''}</span>`+
+             `<span>${bw?'<span class="badge b-skip">excluded</span>':(def?'<span class="badge b-def">order_default</span>':'<span class="badge b-rate">contracted</span>')}</span></div>`;
+    }).join('');
+    const div=document.createElement('div'); div.className='ord'; div.dataset.oid=o.order_id;
+    div.innerHTML=`<div class="head"><div><div class="t">Order ${o.order_id}${def?'<span class="badge b-def">EYK/Watercrest</span>':''}${o._src==='finalized'?'<span class="badge b-rate">✓ finalized on board</span>':''}</div><div class="m">${esc(o.disp||'')} ${o.material?'· '+esc(o.material):''}</div></div>`+
+                  `<button class="warn" data-push="${o.order_id}" style="padding:5px 10px">Push</button></div><div class="rows">${rows}</div>`;
+    body.appendChild(div);
+  });
+  body.querySelectorAll('button[data-push]').forEach(b=>b.onclick=()=>runPush(parseInt(b.dataset.push,10)));
+  $('#scrim').classList.add('open');
+}
+function closePush(){ $('#scrim').classList.remove('open'); pendingPlan=null; }
+
+async function runPush(onlyOrderId){
+  if(!pendingPlan) return;
+  const orders = onlyOrderId==null ? pendingPlan.orders : pendingPlan.orders.filter(o=>o.order_id===onlyOrderId);
+  let pushed=0;
+  for(const o of orders){
+    const card=$('#pushBody').querySelector(`.ord[data-oid="${o.order_id}"] .head button`);
+    if(card){ card.disabled=true; card.textContent='…'; }
+    try{
+      const useDefault=isOrderDefault(o);
+      // drop ATX Bluewing defensively at the edge too
+      const asg=o.assignments.filter(a=>!/ATX Bluewing/i.test(a.truck));
+      const r=await window.newmile.pushOrder({orderId:o.order_id, assignments:asg, useOrderDefault:useDefault});
+      pushed++;
+      clearPendingSync([o.order_id]);
+      const made=(r.created||[]).length, upd=(r.updated||[]).length, sk=(r.skipped||[]).length, un=(r.unresolved||[]).length;
+      let summary=`+${made} new`+(upd?` · ~${upd} updated`:'')+(sk?` · ${sk} untouched`:'')+(un?` · ?${un}`:'');
+      if(card){ card.textContent=(r.confirmed||made||upd?'✓ ':'')+summary; card.className=un?'res-bad':'res-ok'; }
+      if(un) toast(`Order ${o.order_id}: ${un} truck(s) not found in NewMile: ${(r.unresolved||[]).join(', ')}`);
+    }catch(e){ if(card){ card.disabled=false; card.textContent='retry'; } toast('Order '+o.order_id+' failed: '+(e.message||e)); }
+  }
+  if(pushed){ toast('Pushed '+pushed+' order(s). Refreshing…'); setTimeout(()=>{ closePush(); refreshDay(); }, 900); }
+}
+
+function esc(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }

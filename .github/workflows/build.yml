@@ -1,0 +1,69 @@
+name: Build Windows + Mac
+
+on:
+  workflow_dispatch:        # "Run workflow" button in the Actions tab
+  push:
+    tags: ['v*']            # pushing a tag like v2.0.1 also creates a Release
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Build config (inject Samsara tokens from repo secrets)
+        env:
+          SAMSARA_CACTUS: ${{ secrets.SAMSARA_CACTUS }}
+          SAMSARA_CKJ: ${{ secrets.SAMSARA_CKJ }}
+        run: node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('newmile.config.template.json','utf8'));c.samsara.tokens[0].token=process.env.SAMSARA_CACTUS||'';c.samsara.tokens[1].token=process.env.SAMSARA_CKJ||'';fs.writeFileSync('newmile.config.json',JSON.stringify(c,null,2));console.log('config ready');"
+      - name: Build portable exe
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --win portable --x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MilestoneLoadBoard-Windows
+          path: dist/*.exe
+
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Build config (inject Samsara tokens from repo secrets)
+        env:
+          SAMSARA_CACTUS: ${{ secrets.SAMSARA_CACTUS }}
+          SAMSARA_CKJ: ${{ secrets.SAMSARA_CKJ }}
+        run: node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('newmile.config.template.json','utf8'));c.samsara.tokens[0].token=process.env.SAMSARA_CACTUS||'';c.samsara.tokens[1].token=process.env.SAMSARA_CKJ||'';fs.writeFileSync('newmile.config.json',JSON.stringify(c,null,2));console.log('config ready');"
+      - name: Build universal dmg (Apple Silicon + Intel, unsigned)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MilestoneLoadBoard-Mac
+          path: dist/*.dmg
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [windows, mac]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: out
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            out/*.exe
+            out/*.dmg
+          body: 'Milestone Load Board — Windows portable .exe + Mac universal .dmg. Internal use only (Miles Ahead Brands).'

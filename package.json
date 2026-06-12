@@ -1,0 +1,34 @@
+{
+  "name": "milestone-load-board",
+  "productName": "Milestone Load Board",
+  "version": "2.0.0",
+  "description": "Milestone Supply - Texas dispatch load board with a built-in NewMile MCP client: in-app OAuth login, live pull, and confirmed push. Portable single-exe.",
+  "author": "Milestone Supply - Texas",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable --x64",
+    "dist-mac": "electron-builder --mac --universal",
+    "dir": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron": "^30.5.1",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.milestonesupply.loadboard",
+    "productName": "MilestoneLoadBoard",
+    "files": ["main.js", "mcp-client.js", "preload.js", "renderer/**/*", "newmile.config.json", "assets/**/*"],
+    "win": { "target": ["portable"], "signAndEditExecutable": false },
+    "portable": { "artifactName": "MilestoneLoadBoard-${version}-portable.exe" },
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["universal"] }],
+      "category": "public.app-category.business",
+      "identity": null
+    },
+    "dmg": { "artifactName": "MilestoneLoadBoard-${version}.dmg" },
+    "compression": "maximum"
+  }
+}

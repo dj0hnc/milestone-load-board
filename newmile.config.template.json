@@ -1,0 +1,58 @@
+﻿{
+    "_comment":  "NewMile connection. Endpoints VERIFIED live 2026-06-10. discovery=true auto-fetches from /.well-known; the values below are the confirmed fallback if discovery is ever unavailable.",
+    "mcpUrl":  "https://app.newmile.com/mcp",
+    "oauth":  {
+                  "discovery":  true,
+                  "authorizationEndpoint":  "https://app.newmile.com/oauth/authorize",
+                  "tokenEndpoint":  "https://app.newmile.com/oauth/token",
+                  "registrationEndpoint":  "https://app.newmile.com/oauth/register",
+                  "clientId":  "",
+                  "scopes":  "mcp:read mcp:write claudeai",
+                  "redirectPort":  8741
+              },
+    "org":  {
+                "orgId":  1838,
+                "name":  "Milestone Supply - Texas"
+            },
+    "groups":  {
+                   "_comment":  "PM/AM report grouping. NewMile truck TAGS are NOT exposed via the MCP, so subhaulers (fleet null) are grouped by owner-name rules + per-owner overrides. Edit freely. Groups: KT (Kennemer fleet 6), CE (Cactus fleet 5), AGGCT (AGGSHIP + Central Texas, combined), CKJ_SUB (CKJ-affiliated subs), SUB (other subhaulers).",
+                   "owner_rules":  [
+                                       {
+                                           "contains":  "- CKJ",
+                                           "group":  "CKJ_SUB"
+                                       },
+                                       {
+                                           "contains":  "AGG",
+                                           "group":  "AGGCT"
+                                       },
+                                       {
+                                           "contains":  "Central Texas",
+                                           "group":  "AGGCT"
+                                       },
+                                       {
+                                           "contains":  "- CT",
+                                           "group":  "AGGCT"
+                                       }
+                                   ],
+                   "owner_overrides":  {
+                                           "_example":  "Exact owner name â†’ group, e.g.  \"Salazar Logistics\": \"CKJ_SUB\""
+                                       }
+               },
+    "samsara":  {
+                    "_comment":  "Move-check (Phase 2b): after the configured hour (Settings slider in the board), any truck ASSIGNED today that is not rolling in NewMile and shows ~0 mph in Samsara raises a Live Alert. Paste API tokens from each Samsara org (Cloud dashboard â†’ Settings â†’ API Tokens, read-only scope is enough). Leave empty to disable.",
+                    "tokens":  [
+                                   {
+                                       "name":  "Cactus Express",
+                                       "token":  ""
+                                   },
+                                   {
+                                       "name":  "CKJ Transport",
+                                       "token":  ""
+                                   }
+                               ]
+                },
+    "rotationSource":  {
+                           "mode":  "auto"
+                       },
+    "tonsPerLoad":  25
+}
