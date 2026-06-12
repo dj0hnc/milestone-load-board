@@ -1961,18 +1961,19 @@ function renderOrders(){
 }
 
 function renderSummary(){
-  const used=assignedSet();const byFleet={cactus:0,ckj:0,sub:0};
-  used.forEach(id=>{const t=T(id);if(t&&t.status!=='noshow')byFleet[t.fleet]++;});
-  const total=byFleet.cactus+byFleet.ckj+byFleet.sub;
+  // ADAPTIVE: groups come from this market's real fleets. Every number is CLICKABLE —
+  // it opens 🚛 Truck Manager filtered to exactly those trucks and their orders.
+  const used=assignedSet();const byG={};let total=0;
+  used.forEach(id=>{const t=T(id);if(t&&t.status!=='noshow'){const g=rptGroupOf(t);byG[g]=(byG[g]||0)+1;total++;}});
+  const tops=Object.keys(byG).sort((a,b)=>byG[b]-byG[a]).slice(0,4);
   const noshow=trucks.filter(t=>t.status==='noshow').length;
+  const click=g=>`onclick="tmOpenWith('${String(g).replace(/'/g,"\\'")}')" style="cursor:pointer" title="See these trucks and their orders"`;
   $('#summary').innerHTML=`
-    <div class="sblock"><span class="sn" style="color:var(--teal)">${total}</span><span class="st">Trucks Working</span></div>
+    <div class="sblock" ${click('all')}><span class="sn" style="color:var(--teal)">${total}</span><span class="st">Trucks Working ▸</span></div>
     <div class="div"></div>
-    <div class="sblock"><span class="sn" style="color:var(--gold-soft)">${byFleet.cactus}</span><span class="st">Cactus</span></div>
-    <div class="sblock"><span class="sn" style="color:var(--gold-soft)">${byFleet.ckj}</span><span class="st">CKJ/KT</span></div>
-    <div class="sblock"><span class="sn" style="color:var(--gold-soft)">${byFleet.sub}</span><span class="st">Subs</span></div>
+    ${tops.map(g=>`<div class="sblock" ${click(g)}><span class="sn" style="color:var(--gold-soft)">${byG[g]}</span><span class="st">${g} ▸</span></div>`).join('')}
     <div class="div"></div>
-    <div class="sblock"><span class="sn" style="color:${noshow?'var(--red)':'var(--green)'}">${noshow}</span><span class="st">No-Shows</span></div>
+    <div class="sblock" ${click('noshow')}><span class="sn" style="color:${noshow?'var(--red)':'var(--green)'}">${noshow}</span><span class="st">No-Shows ▸</span></div>
     <div class="sumbtns">
       <button class="finall" onclick="finalizeAllReady()">✓ Finalize All Ready</button>
       <button class="tonybtn" onclick="openReport()">📋 PM Assigned</button>
@@ -2240,24 +2241,31 @@ window.__clearPendingSync=function(ids){ (ids||[]).forEach(id=>window.__pendingS
 /* TONY REPORT — grouped by fleet + sub tag-equivalent (NewMile tags aren't exposed via
    the MCP, so subs are classified by owner rules — see newmile.config.json "groups").
    AGGSHIP and Central Texas (CT) are COMBINED into one number per standing request. */
-const RPT_GROUPS=[['KT','KT — Kennemer (6)'],['CE','CE — Cactus (5)'],['AGGCT','AGGSHIP + CT'],['CKJ_SUB','CKJ Subs'],['SUB','Other Subs']];
+/* ADAPTIVE report groups — derived from whatever fleets THIS market's roster has */
 function rptGroupOf(t){
-  if(t.group) return RPT_GROUPS.some(g=>g[0]===t.group)?t.group:'SUB';
+  if(t.group) return t.group;
   return t.fleet==='ckj'?'KT':t.fleet==='cactus'?'CE':'SUB';   // fallback (no live data yet)
 }
-function rptZero(){const o={};RPT_GROUPS.forEach(g=>o[g[0]]=0);return o;}
+function rptGroups(){
+  const c={}; trucks.forEach(t=>{const g=rptGroupOf(t);c[g]=(c[g]||0)+1;});
+  const k=Object.keys(c).sort((a,b)=>c[b]-c[a]);
+  const i=k.indexOf('SUB'); if(i>=0){k.splice(i,1);k.push('SUB');}
+  return k;
+}
+function rptZero(){const o={};rptGroups().forEach(g=>o[g]=0);return o;}
 function openReport(){
   const used=assignedSet();const byG=rptZero();
-  used.forEach(id=>{const t=T(id);if(t&&t.status!=='noshow')byG[rptGroupOf(t)]++;});
+  used.forEach(id=>{const t=T(id);if(t&&t.status!=='noshow'){const g=rptGroupOf(t);byG[g]=(byG[g]||0)+1;}});
   const ns=trucks.filter(t=>t.status==='noshow').length;
-  const total=RPT_GROUPS.reduce((n,g)=>n+byG[g[0]],0);
+  const G=rptGroups();
+  const total=G.reduce((n,g)=>n+(byG[g]||0),0);
   const covered=orders.filter(isCovered).length;
   const fin=orders.filter(o=>orderState(o)==='finalized').length;
   const planTons=orders.reduce((n,o)=>n+(o.unit==='ton'?coveredQty(o):0),0);
   const ordTons=orders.reduce((n,o)=>n+(o.unit==='ton'?(o.target||0):0),0);
-  const lines=RPT_GROUPS.map(g=>`  ${pad(g[1]+':',22)} ${byG[g[0]]}`).join('\n');
+  const lines=G.map(g=>`  ${pad(g+':',22)} ${byG[g]||0}`).join('\n');
   const txt=`DISPATCH PLAN — ${days[dIdx]}
-Milestone TX · KT · Cactus · AGGSHIP+CT · Subs
+${G.join(' · ')}
 
 TRUCKS ASSIGNED: ${total}
 ${lines}
@@ -2272,11 +2280,13 @@ function copyReport(){const t=$('#repBody').textContent;if(navigator.clipboard)n
 function pad(s,n){s=String(s);return s+' '.repeat(Math.max(0,n-s.length));}
 function openAMReport(){
   const used=[...assignedSet()];
-  const asg=rptZero(),roll=rptZero(),chk=rptZero(),ns={};RPT_GROUPS.forEach(g=>ns[g[0]]=[]);
-  used.forEach(id=>{const t=T(id);if(!t)return;const g=rptGroupOf(t);asg[g]++;if(t.status==='rolling')roll[g]++;else if(t.status==='noshow')ns[g].push(t.num);else chk[g]++;});
-  const keys=RPT_GROUPS.map(g=>g[0]);
+  const G=rptGroups();
+  const asg={},roll={},chk={},ns={};G.forEach(g=>{asg[g]=0;roll[g]=0;chk[g]=0;ns[g]=[];});
+  used.forEach(id=>{const t=T(id);if(!t)return;const g=rptGroupOf(t);if(asg[g]==null){asg[g]=0;roll[g]=0;chk[g]=0;ns[g]=[];G.push(g);}
+    asg[g]++;if(t.status==='rolling')roll[g]++;else if(t.status==='noshow')ns[g].push(t.num);else chk[g]++;});
+  const keys=G;
   const tA=keys.reduce((n,k)=>n+asg[k],0), tR=keys.reduce((n,k)=>n+roll[k],0), tN=keys.reduce((n,k)=>n+ns[k].length,0), tC=keys.reduce((n,k)=>n+chk[k],0);
-  let rows=RPT_GROUPS.map(([k,lbl])=>`  ${pad(lbl,20)} ${pad(asg[k],9)} ${pad(roll[k],10)} ${pad(ns[k].length,8)} ${chk[k]}`).join('\n');
+  let rows=G.map(k=>`  ${pad(k,20)} ${pad(asg[k],9)} ${pad(roll[k],10)} ${pad(ns[k].length,8)} ${chk[k]}`).join('\n');
   // per order: assigned vs rolling, list not-rolling
   const obar=orders.filter(o=>o.assigns.length).map(o=>{
     const ts=[...new Set(o.assigns.map(a=>a.truck))].map(id=>T(id)).filter(Boolean);
@@ -2285,7 +2295,7 @@ function openAMReport(){
     return `  ${o.disp}: ${ts.length} asg · ${r} rolling${miss.length?` · missing: ${miss.join(', ')}`:' · ✓ all'}`;
   }).join('\n');
   const allNS=keys.reduce((a,k)=>a.concat(ns[k]),[]);
-  const txt=`AM CHECK — ASSIGNED vs ROLLING — ${days[dIdx]}\nMilestone TX · KT · Cactus · AGGSHIP+CT · Subs\n\n${pad('',22)}ASSIGN.  ROLLING    NO-SHOW  TO-CHECK\n${rows}\n  ${pad('TOTAL',20)} ${pad(tA,9)} ${pad(tR,10)} ${pad(tN,8)} ${tC}\n\nNO-SHOWS (${tN}): ${allNS.join(', ')||'none'}\nSTILL TO CHECK THIS MORNING: ${tC}\n\nBY ORDER (assigned → rolling):\n${obar||'  —'}\n\nNote: "Rolling" comes LIVE from NewMile (active load status / loads done today,\nset on every Refresh). You can still tap a truck in AM Check to adjust manually.\nPM = what was assigned (corporate report).`;
+  const txt=`AM CHECK — ASSIGNED vs ROLLING — ${days[dIdx]}\n${G.join(' · ')}\n\n${pad('',22)}ASSIGN.  ROLLING    NO-SHOW  TO-CHECK\n${rows}\n  ${pad('TOTAL',20)} ${pad(tA,9)} ${pad(tR,10)} ${pad(tN,8)} ${tC}\n\nNO-SHOWS (${tN}): ${allNS.join(', ')||'none'}\nSTILL TO CHECK THIS MORNING: ${tC}\n\nBY ORDER (assigned → rolling):\n${obar||'  —'}\n\nNote: "Rolling" comes LIVE from NewMile (active load status / loads done today,\nset on every Refresh). You can still tap a truck in AM Check to adjust manually.\nPM = what was assigned (corporate report).`;
   $('#repTitle').textContent='AM — Assigned vs Rolling (morning)';
   $('#repBody').textContent=txt;$('#repScrim').classList.add('show');
 }
@@ -3006,7 +3016,8 @@ setView('board');
     return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
   }
   /* ---- auto-plan FILTERS + variety (persisted) ---- */
-  var planOpts=(function(){ try{ return Object.assign({groups:{CE:1,KT:1,AGGCT:1,CKJ_SUB:1,SUB:1},maxDH:0,gpsOnly:0,onCallOnly:0,ldsTarget:0},JSON.parse(localStorage.getItem('mab_planopts')||'{}')); }catch(e){ return {groups:{CE:1,KT:1,AGGCT:1,CKJ_SUB:1,SUB:1},maxDH:0,gpsOnly:0,onCallOnly:0,ldsTarget:0}; } })();
+  /* groups map is DYNAMIC per market: a key missing = included; 0 = excluded */
+  var planOpts=(function(){ try{ return Object.assign({groups:{},maxDH:0,gpsOnly:0,onCallOnly:0,ldsTarget:0},JSON.parse(localStorage.getItem('mab_planopts')||'{}')); }catch(e){ return {groups:{},maxDH:0,gpsOnly:0,onCallOnly:0,ldsTarget:0}; } })();
   function planOptsSave(){ try{ localStorage.setItem('mab_planopts',JSON.stringify(planOpts)); }catch(e){} }
   var lastSuggested={};   // oid -> {num:1} chosen last run, so re-runs rotate through alternatives
 
@@ -3017,7 +3028,7 @@ setView('board');
     orders.forEach(function(o){ (o.assigns||[]).forEach(function(a){ var t=T(a.truck); if(t) used[(t.num||'').trim().toLowerCase()]=o.id; }); });
     return trucks.filter(function(t){
       if(BLUEWING.test(t.owner||'')||used[(t.num||'').trim().toLowerCase()]||t.status==='noshow') return false;
-      if(!planOpts.groups[fltGroupOf(t)]) return false;
+      if(planOpts.groups[fltGroupOf(t)]===0) return false;     // 0 = excluded; unknown = included
       if(planOpts.gpsOnly && t.lat==null) return false;
       if(planOpts.onCallOnly && !t.onCall) return false;
       return true;
@@ -3179,7 +3190,7 @@ setView('board');
 
   /* auto-plan filters UI (persisted) */
   window.enhPF=function(what,val){
-    if(what==='grp'){ planOpts.groups[val]=planOpts.groups[val]?0:1; }
+    if(what==='grp'){ planOpts.groups[val]=(planOpts.groups[val]===0?1:0); }
     else if(what==='dh'){ planOpts.maxDH=parseInt(val,10)||0; }
     else if(what==='gps'){ planOpts.gpsOnly=planOpts.gpsOnly?0:1; }
     else if(what==='oncall'){ planOpts.onCallOnly=planOpts.onCallOnly?0:1; }
@@ -3188,11 +3199,11 @@ setView('board');
   };
   function renderPlanFilters(){
     var el=$id('enhPlanF'); if(!el) return;
-    var G=[['CE','CE'],['KT','KT'],['AGGCT','AGG+CT'],['CKJ_SUB','CKJ Sub'],['SUB','Sub']];
-    var act=[]; G.forEach(function(g){ if(!planOpts.groups[g[0]]) act.push('−'+g[1]); });
+    var G=allGroups();   // this market's real groups
+    var act=[]; G.forEach(function(g){ if(planOpts.groups[g]===0) act.push('−'+g); });
     if(planOpts.maxDH) act.push('≤'+planOpts.maxDH+'mi'); if(planOpts.gpsOnly) act.push('GPS'); if(planOpts.onCallOnly) act.push('on-call'); if(planOpts.ldsTarget) act.push(planOpts.ldsTarget+' lds');
     el.innerHTML='<details class="enh-pf"'+(act.length?' open':'')+'><summary>⚙ Plan filters'+(act.length?' <i>'+act.join(' · ')+'</i>':'')+'</summary>'
-      +'<div class="enh-pf-row">'+G.map(function(g){return '<button class="fchip '+(planOpts.groups[g[0]]?'on':'')+'" onclick="enhPF(\'grp\',\''+g[0]+'\')">'+g[1]+'</button>';}).join('')+'</div>'
+      +'<div class="enh-pf-row">'+G.map(function(g){return '<button class="fchip '+(planOpts.groups[g]===0?'':'on')+'" onclick="enhPF(\'grp\',\''+g.replace(/'/g,"\\'")+'\')">'+g+'</button>';}).join('')+'</div>'
       +'<div class="enh-pf-row">'
         +'<label class="enh-pf-l"><input type="checkbox" '+(planOpts.gpsOnly?'checked':'')+' onchange="enhPF(\'gps\')"> 🛰 GPS only</label>'
         +'<label class="enh-pf-l"><input type="checkbox" '+(planOpts.onCallOnly?'checked':'')+' onchange="enhPF(\'oncall\')"> 📞 On-call only</label>'
@@ -3254,6 +3265,7 @@ setView('board');
   function refresh(){
     try{
       if(!$id('enhPanel')) build();
+      renderPlanFilters();          // groups are adaptive — keep chips in sync with the roster
       renderOrderOptions();
       var k=kpis();
       var ffC=k.ff>=95?'#22c55e':k.ff>=80?'#fbbf24':k.ff>=60?'#fb923c':'#ea4e2c';
@@ -3293,10 +3305,18 @@ setView('board');
   }
 
   /* ---------- sectioned truck filters (FLEET / STATUS / ROTATION) ---------- */
-  /* group of a truck for filtering (same buckets as the PM/AM reports) */
+  /* group of a truck — ADAPTIVE: whatever groups this market's roster actually has */
   function fltGroupOf(t){
     if(t.group) return t.group;
     return t.fleet==='cactus'?'CE':t.fleet==='ckj'?'KT':'SUB';
+  }
+  /* discover this market's groups from the live roster, biggest first, SUB last */
+  function allGroups(){
+    var counts={};
+    trucks.forEach(function(t){ var g=fltGroupOf(t); counts[g]=(counts[g]||0)+1; });
+    var keys=Object.keys(counts).sort(function(a,b){ return counts[b]-counts[a]; });
+    var i=keys.indexOf('SUB'); if(i>=0){ keys.splice(i,1); keys.push('SUB'); }
+    return keys;
   }
   /* one source of truth for truck filtering — fleet chips are GROUP-based now
      (CE / KT / AGG+CT / CKJ Subs / Other Subs) + Rolling status + Samsara GPS */
@@ -3322,9 +3342,11 @@ setView('board');
   };
   function enhRenderFilters(){
     try{
-      var fl=[['all','All'],['CE','Cactus (CE)'],['KT','KT'],['AGGCT','AGG + CT'],['CKJ_SUB','CKJ Subs'],['SUB','Other Subs']];
       var f=$id('fleetFilters');
-      if(f) f.innerHTML='<div class="ef-sec"><span class="ef-lbl">🚛 Fleet</span>'+fl.map(function(x){return '<button class="fchip '+(filters.fleet===x[0]?'on':'')+'" onclick="setFleet(\''+x[0]+'\')">'+x[1]+'</button>';}).join('')+'</div>';
+      if(f){
+        var gchips=allGroups().map(function(g){return '<button class="fchip '+(filters.fleet===g?'on':'')+'" onclick="setFleet(\''+g.replace(/'/g,"\\'")+'\')">'+g+'</button>';}).join('');
+        f.innerHTML='<div class="ef-sec"><span class="ef-lbl">🚛 Fleet</span><button class="fchip '+(filters.fleet==='all'?'on':'')+'" onclick="setFleet(\'all\')">All</button>'+gchips+'</div>';
+      }
       var rolling=trucks.filter(function(t){return t.status==='rolling';}).length;
       var hasGps=trucks.some(function(t){return t.lat!=null;});
       var st=$id('stateFilters');
@@ -3609,7 +3631,16 @@ setView('board');
      Bulk ON/OFF-call (update_resource truck.on_call — verified writeable) and
      batch REASSIGN (create+confirm on target order, then delete old assignment).
      Every destructive action is two-step: first click arms, second confirms. */
-  var tmSel={}, tmQ='', tmArmed=null;
+  var tmSel={}, tmQ='', tmArmed=null, tmPreset=null;
+  /* open Truck Manager pre-filtered — the summary numbers land here */
+  window.tmOpenWith=function(p){
+    tmPreset=(p==='all')?{label:'Trucks working',assigned:1}
+            :(p==='noshow')?{label:'No-shows',noshow:1}
+            :{label:p+' working',group:p,assigned:1};
+    tmSel={}; tmQ=''; openTab('trucks');
+    var q=$id('tmQ'); if(q)q.value='';
+  };
+  window.tmClearPreset=function(){ tmPreset=null; tmRender(); };
   function tmRows(){
     var rows=[], inPlan={};
     orders.forEach(function(o){
@@ -3619,8 +3650,26 @@ setView('board');
         rows.push({t:t,o:o,a:a});
       });
     });
-    // unassigned-but-on-call trucks at the end (so off-call bulk can reach them)
-    trucks.forEach(function(t){ if(!inPlan[t.id]&&t.onCall) rows.push({t:t,o:null,a:null}); });
+    if(tmPreset&&tmPreset.noshow){
+      rows=[];
+      trucks.forEach(function(t){
+        if(t.status!=='noshow') return;
+        var hit=null,ha=null;
+        orders.forEach(function(o){ (o.assigns||[]).forEach(function(a){ if(a.truck===t.id){hit=o;ha=a;} }); });
+        rows.push({t:t,o:hit,a:ha});
+      });
+    } else {
+      if(!(tmPreset&&tmPreset.assigned)){
+        // default view also lists unassigned-but-on-call trucks (bulk off-call reach)
+        trucks.forEach(function(t){ if(!inPlan[t.id]&&t.onCall) rows.push({t:t,o:null,a:null}); });
+      }
+      if(tmPreset&&tmPreset.group){
+        rows=rows.filter(function(r){ return fltGroupOf(r.t)===tmPreset.group; });
+      }
+      if(tmPreset&&tmPreset.assigned){
+        rows=rows.filter(function(r){ return r.o!=null; });
+      }
+    }
     if(tmQ){
       rows=rows.filter(function(r){
         var hay=(r.t.num+' '+(r.t.driver||'')+' '+(r.t.owner||'')+' '+(r.o?r.o.disp:'')).toLowerCase();
@@ -3718,7 +3767,8 @@ setView('board');
     var body=$id('tabBody-trucks'); if(!body) return;
     var rows=tmRows();
     var byTruck=window.__dirUsersByTruckId||{};
-    body.innerHTML='<div id="tmTarget"></div>'
+    var presetChip=tmPreset?('<div style="margin-bottom:8px"><span class="tm-pill tm-asg" style="font-size:11px;padding:4px 10px">▸ '+tmPreset.label+' ('+rows.length+') <a onclick="tmClearPreset()" style="cursor:pointer;color:var(--red);margin-left:6px">✕</a></span></div>'):'';
+    body.innerHTML='<div id="tmTarget"></div>'+presetChip
       +'<table class="dir-t"><tr><th></th><th>Truck</th><th>Driver</th><th>📞</th><th>Order</th><th>Loads</th><th>Status</th><th>Call</th></tr>'
       +rows.slice(0,300).map(function(rw){
         var t=rw.t,o=rw.o,a=rw.a;

@@ -52,6 +52,85 @@ function appendLog(line){
 $('#btnDiag').onclick=async()=>{ $('#diag').classList.toggle('open'); if($('#diag').classList.contains('open')){ const logs=await window.newmile.logs(); $('#log').innerHTML=''; logs.forEach(appendLog); } };
 $('#diagClose').onclick=()=>$('#diag').classList.remove('open');
 
+/* ---------- ⚙ ADMIN settings (per-market Samsara keys, updater PAT) ----------
+   Gated by an admin code (default 0605 — change it inside). Keys saved here live in
+   the user's profile and OVERRIDE the bundled config, so every market runs its own
+   Samsara org(s) without rebuilding the app. */
+async function sha256(s){
+  const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(String(s)));
+  return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+let adminUnlocked=false;
+function dtab(which){
+  $('#dtabLog').classList.toggle('on',which==='log');
+  $('#dtabAdmin').classList.toggle('on',which==='admin');
+  $('#log').style.display=which==='log'?'':'none';
+  $('#adminPane').style.display=which==='admin'?'':'none';
+  if(which==='admin') renderAdmin();
+}
+$('#dtabLog').onclick=()=>dtab('log');
+$('#dtabAdmin').onclick=()=>dtab('admin');
+
+async function renderAdmin(){
+  const pane=$('#adminPane');
+  if(!adminUnlocked){
+    pane.innerHTML='<h4>🔒 Admin access</h4>'
+      +'<div class="hint">Enter the admin code to manage this market\'s API keys and updater token.</div>'
+      +'<input id="admCode" type="password" placeholder="Admin code" autocomplete="off">'
+      +'<button class="warn" id="admUnlock" style="width:100%">Unlock</button>'
+      +'<div id="admErr" style="color:var(--red);font-size:11px;margin-top:6px"></div>';
+    const tryUnlock=async()=>{
+      const s=await window.newmile.getSettings();
+      const want=s.adminHash||await sha256('0605');
+      if(await sha256($('#admCode').value)===want){ adminUnlocked=true; renderAdmin(); }
+      else $('#admErr').textContent='Wrong code.';
+    };
+    $('#admUnlock').onclick=tryUnlock;
+    $('#admCode').addEventListener('keydown',e=>{ if(e.key==='Enter')tryUnlock(); });
+    setTimeout(()=>$('#admCode').focus(),50);
+    return;
+  }
+  const s=await window.newmile.getSettings();
+  const rows=(s.samsaraTokens&&s.samsaraTokens.length?s.samsaraTokens:[{name:'',token:''}]);
+  pane.innerHTML='<h4>🏷 Market</h4>'
+    +'<input id="admMarket" placeholder="e.g. Texas, Florida, Tampa HQ…" value="'+(s.market||'').replace(/"/g,'&quot;')+'">'
+    +'<h4>🛰 Samsara API keys (this market\'s fleets)</h4>'
+    +'<div class="hint">One row per Samsara org. Get keys at cloud.samsara.com → Settings → API Tokens (read-only + Media Retrieval). Keys saved here override the bundled ones — maps, dashcams, parking and driver messaging all run on YOUR fleet.'
+    +(s.bundledTokens&&s.bundledTokens.length?('<br>Bundled defaults: '+s.bundledTokens.map(t=>t.name+(t.has?' ✓':' —')).join(' · ')):'')+'</div>'
+    +'<div id="admToks">'+rows.map((t,i)=>admTokRow(t,i)).join('')+'</div>'
+    +'<button class="ghost" id="admAddTok" style="width:100%;margin-bottom:4px">+ Add fleet key</button>'
+    +'<h4>⬇ Auto-updater token (GitHub)</h4>'
+    +'<div class="hint">Fine-grained PAT, Contents: Read-only, repo milestone-load-board. Lets the app announce new versions.</div>'
+    +'<input id="admGh" type="password" placeholder="github_pat_…" value="'+(s.githubToken||'').replace(/"/g,'&quot;')+'">'
+    +'<h4>🔑 Change admin code</h4>'
+    +'<input id="admNewCode" type="password" placeholder="New code (leave empty to keep current)">'
+    +'<button class="warn" id="admSave" style="width:100%;margin-top:8px">💾 Save settings</button>'
+    +'<div id="admMsg" style="font-size:11px;margin-top:6px"></div>';
+  $('#admAddTok').onclick=()=>{ $('#admToks').insertAdjacentHTML('beforeend',admTokRow({name:'',token:''},Date.now())); wireTokRows(); };
+  wireTokRows();
+  $('#admSave').onclick=async()=>{
+    const toks=Array.from(document.querySelectorAll('#admToks .tokrow')).map(r=>({
+      name:r.querySelector('.tname').value.trim(), token:r.querySelector('.ttok').value.trim()
+    })).filter(t=>t.name||t.token);
+    const out={ market:$('#admMarket').value.trim(), samsaraTokens:toks, githubToken:$('#admGh').value.trim(), adminHash:s.adminHash||'' };
+    const nc=$('#admNewCode').value.trim();
+    if(nc) out.adminHash=await sha256(nc);
+    const res=await window.newmile.saveSettings(out);
+    $('#admMsg').style.color=res&&res.ok?'var(--green)':'var(--red)';
+    $('#admMsg').textContent=res&&res.ok?'✓ Saved — new keys are live (refresh to repull Samsara data).':('Save failed: '+((res&&res.error)||'unknown'));
+    if(res&&res.ok) toast('⚙ Settings saved — '+toks.filter(t=>t.token).length+' Samsara key(s) active');
+  };
+}
+function admTokRow(t,i){
+  return '<div class="tokrow">'
+    +'<input class="tname" placeholder="Fleet name" value="'+String(t.name||'').replace(/"/g,'&quot;')+'">'
+    +'<input class="ttok" type="password" placeholder="samsara_api_…" value="'+String(t.token||'').replace(/"/g,'&quot;')+'">'
+    +'<button class="ghost admDel">✕</button></div>';
+}
+function wireTokRows(){
+  document.querySelectorAll('#admToks .admDel').forEach(b=>{ b.onclick=()=>{ b.closest('.tokrow').remove(); }; });
+}
+
 /* ---------- auto-refresh ---------- */
 let autoSecs=0, autoLeft=0, autoTimer=null;
 function stopAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=null; } $('#next').textContent=''; }
@@ -393,19 +472,29 @@ function dedupeTrucks(rows){
   return out;
 }
 function fleetOf(t){ if(t.fleet_id===5) return 'cactus'; if(t.fleet_id===6) return 'ckj'; return 'sub'; }
-/* Report grouping (NewMile tags are NOT exposed via the MCP — see newmile.config.json "groups"):
-   fleet 6 → KT · fleet 5 → CE · fleet 4 → AGGCT · fleet null → owner rules/overrides → CKJ_SUB/AGGCT/SUB */
+/* ADAPTIVE grouping — works for EVERY market, not just Texas:
+   trucks WITH a NewMile fleet are grouped by that fleet's real name (well-known names
+   get short aliases); fleet-null trucks fall to owner rules (e.g. "- CKJ" subs) and
+   finally to SUB. Each market's filters/reports/summary build themselves from these. */
 let groupsCfg=null;
+const FLEET_ALIASES={'Cactus Express':'CE','CKJ Transport':'KT','Aggship':'AGG+CT','Kennemer':'KT'};
+const RULE_LABELS={'CKJ_SUB':'CKJ SUB','AGGCT':'AGG+CT'};
 function groupOfTruck(t){
+  const als=Object.assign({},FLEET_ALIASES,(groupsCfg&&groupsCfg.fleet_aliases)||{});
+  if(t.fleet_name){
+    if(als[t.fleet_name]) return als[t.fleet_name];
+    const n=String(t.fleet_name).trim();
+    return (n.length>9?(n.slice(0,8).trim().toUpperCase()+'…'):n.toUpperCase());
+  }
   if(t.fleet_id===6) return 'KT';
   if(t.fleet_id===5) return 'CE';
-  if(t.fleet_id===4) return 'AGGCT';
+  if(t.fleet_id===4) return 'AGG+CT';
   const owner=(t.owner_name||'');
   if(groupsCfg){
     const ov=groupsCfg.owner_overrides||{};
-    if(ov[owner] && typeof ov[owner]==='string' && ov[owner][0]!=='_') return ov[owner];
+    if(ov[owner] && typeof ov[owner]==='string' && ov[owner][0]!=='_') return RULE_LABELS[ov[owner]]||ov[owner];
     for(const r of (groupsCfg.owner_rules||[])){
-      if(r.contains && owner.toUpperCase().includes(String(r.contains).toUpperCase())) return r.group;
+      if(r.contains && owner.toUpperCase().includes(String(r.contains).toUpperCase())) return RULE_LABELS[r.group]||r.group;
     }
   }
   return 'SUB';

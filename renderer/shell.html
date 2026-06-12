@@ -41,6 +41,15 @@
   #diag h3{margin:0;padding:12px 14px;font-size:13px;border-bottom:1px solid var(--line);color:var(--mut);display:flex;justify-content:space-between;align-items:center}
   #log{flex:1;overflow:auto;padding:10px 14px;font-family:'Cascadia Code',Consolas,monospace;font-size:11.5px;color:#a9b6cc;white-space:pre-wrap;line-height:1.5}
   #log .err{color:var(--red)} #log .ok{color:var(--green)}
+  .dtab.on{border-color:var(--gold);color:var(--gold)}
+  #adminPane h4{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--gold);margin:14px 0 6px}
+  #adminPane h4:first-child{margin-top:0}
+  #adminPane input{width:100%;background:#202b38;border:1px solid var(--line);color:#fff;border-radius:8px;padding:7px 10px;font-family:inherit;font-size:12.5px;margin-bottom:6px}
+  #adminPane input:focus{border-color:var(--gold);outline:none}
+  #adminPane .tokrow{display:flex;gap:6px;margin-bottom:6px}
+  #adminPane .tokrow input.tname{width:130px;flex:none}
+  #adminPane .tokrow button{flex:none;padding:4px 9px}
+  #adminPane .hint{font-size:10.5px;color:var(--dim);margin-bottom:8px;line-height:1.5}
 
   /* push modal */
   #scrim{position:fixed;inset:0;background:rgba(6,10,18,.72);z-index:50;display:none;align-items:center;justify-content:center}
@@ -95,10 +104,17 @@
 
   <iframe id="board" src="board.html"></iframe>
 
-  <!-- diagnostics drawer -->
+  <!-- diagnostics / admin drawer -->
   <div id="diag">
-    <h3>Connection log <button class="ghost" id="diagClose" style="padding:2px 8px">✕</button></h3>
+    <h3>
+      <span>
+        <button class="ghost dtab on" id="dtabLog" style="padding:3px 10px">Log</button>
+        <button class="ghost dtab" id="dtabAdmin" style="padding:3px 10px">⚙ Admin</button>
+      </span>
+      <button class="ghost" id="diagClose" style="padding:2px 8px">✕</button>
+    </h3>
     <div id="log"></div>
+    <div id="adminPane" style="display:none;flex:1;overflow:auto;padding:14px"></div>
   </div>
 
   <!-- push preview modal -->

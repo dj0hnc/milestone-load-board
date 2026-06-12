@@ -84,8 +84,50 @@ function authorizeInApp(authUrl, redirectUri) {
 }
 
 let appCfg = null;
+
+/*
+ * Per-user APP SETTINGS (userData/app-settings.json) — lets every market paste its OWN
+ * Samsara API keys + updater PAT without rebuilding the exe. Anything set here OVERRIDES
+ * the bundled newmile.config.json. Guarded in the UI by an admin code (sha-256; default
+ * code is 0605 — same convention the team already knows).
+ */
+function settingsPath() { return path.join(app.getPath('userData'), 'app-settings.json'); }
+function loadSettings() {
+  try { return JSON.parse(fs.readFileSync(settingsPath(), 'utf8')) || {}; } catch (e) { return {}; }
+}
+function applySettings(cfg, s) {
+  if (!s) return cfg;
+  if (Array.isArray(s.samsaraTokens) && s.samsaraTokens.some(t => t && t.token)) {
+    cfg.samsara = cfg.samsara || {};
+    cfg.samsara.tokens = s.samsaraTokens.filter(t => t && t.token);
+  }
+  if (s.githubToken) { cfg.github = cfg.github || {}; cfg.github.token = s.githubToken; }
+  if (s.market) cfg.marketName = s.market;
+  return cfg;
+}
+ipcMain.handle('nm:getSettings', () => {
+  const s = loadSettings();
+  return {
+    market: s.market || '',
+    samsaraTokens: (s.samsaraTokens || []).map(t => ({ name: t.name || '', token: t.token || '' })),
+    bundledTokens: (((loadConfig().samsara || {}).tokens) || []).map(t => ({ name: t.name, has: !!t.token })),
+    githubToken: s.githubToken || '',
+    adminHash: s.adminHash || ''        // empty = default code 0605 (renderer hashes & compares)
+  };
+});
+ipcMain.handle('nm:saveSettings', (_e, s) => {
+  try {
+    fs.writeFileSync(settingsPath(), JSON.stringify(s || {}, null, 2));
+    appCfg = applySettings(loadConfig(), s);
+    _samCache = { at: 0, data: null };           // force fresh pulls with the new keys
+    _drvCache = { at: 0, data: null };
+    pushLog('settings saved — ' + (((s || {}).samsaraTokens || []).filter(t => t && t.token).length) + ' Samsara key(s) active' + (s.market ? (' · market ' + s.market) : ''));
+    return { ok: true };
+  } catch (e) { return { error: e.message || String(e) }; }
+});
+
 app.whenReady().then(() => {
-  const cfg = loadConfig();
+  const cfg = applySettings(loadConfig(), loadSettings());
   appCfg = cfg;
   client = new NewMileClient({
     config: cfg,
