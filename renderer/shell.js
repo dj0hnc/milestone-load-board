@@ -27,6 +27,21 @@ let lastConnected=false;
 window.newmile.onStatus((st)=>{ setStatus(st); if(lastConnected && !st.connected) stopAuto(); lastConnected=st.connected; });
 window.newmile.onLog((line)=>appendLog(line));
 
+/* ---------- auto-updater banner ---------- */
+window.newmile.onUpdate((u)=>{
+  const b=$('#btnUpdate'); if(!b||!u) return;
+  b.textContent='⬇ Update v'+u.version;
+  b.title='You have v'+u.current+'. Click to download '+(u.assetName||'the new version')+' to your Downloads folder.';
+  b.style.display='';
+  b.onclick=async ()=>{
+    b.disabled=true; b.textContent='⬇ Downloading…';
+    const r=await window.newmile.downloadUpdate();
+    if(r&&r.ok){ b.textContent='✓ In Downloads'; toast('Update downloaded — close the app and run the new file.'); }
+    else { b.disabled=false; b.textContent='⬇ Update v'+u.version; toast('Download failed: '+((r&&r.error)||'unknown')); }
+  };
+  toast('🆕 Version '+u.version+' is available — click ⬇ Update when ready.');
+});
+
 /* ---------- diagnostics drawer ---------- */
 function appendLog(line){
   const el=$('#log'); const div=document.createElement('div');
@@ -98,6 +113,57 @@ window.addEventListener('DOMContentLoaded', async ()=>{
       const st=await window.newmile.status();
       if(!st.connected){ toast('Connect to NewMile first, then push.'); return; }
       openPush();
+      return;
+    }
+    if(e.data.type==='route' && e.data.reqId){
+      try{
+        const res=await window.newmile.route({from:e.data.from,to:e.data.to,fromCoords:e.data.fromCoords,toCoords:e.data.toCoords});
+        board().__routeResult && board().__routeResult(e.data.reqId,res);
+      }catch(err){ board().__routeResult && board().__routeResult(e.data.reqId,{error:String(err&&err.message||err)}); }
+      return;
+    }
+    if(e.data.type==='oncall' && Array.isArray(e.data.list)){
+      try{
+        const res=await window.newmile.setOnCall(e.data.list);
+        board().__tmResult && board().__tmResult('oncall',res);
+        appendLog('truck-manager: on/off-call → '+res.filter(x=>x.ok).length+'/'+res.length+' ok');
+      }catch(err){ board().__tmResult && board().__tmResult('oncall',{error:String(err&&err.message||err)}); }
+      return;
+    }
+    if(e.data.type==='reassign'){
+      try{
+        const d=e.data;
+        const useDefault=isOrderDefault({disp:d.disp||'',material:d.material||''});
+        const push=await window.newmile.pushOrder({orderId:d.orderId, assignments:d.assignments, useOrderDefault:useDefault});
+        let del=[];
+        if((push.created||[]).length && (d.deleteIds||[]).length){
+          del=await window.newmile.deleteAssignments(d.deleteIds);
+        }
+        board().__tmResult && board().__tmResult('reassign',{push:push,deleted:del});
+        appendLog('truck-manager: reassign → +'+(push.created||[]).length+' created · '+del.filter(x=>x.ok).length+' old removed');
+        refreshDay();
+      }catch(err){ board().__tmResult && board().__tmResult('reassign',{error:String(err&&err.message||err)}); }
+      return;
+    }
+    if(e.data.type==='refresh'){ refreshDay(); return; }
+    if(e.data.type==='drivers'){
+      try{ const res=await window.newmile.drivers(); board().__driversResult&&board().__driversResult(res||[]); }
+      catch(err){ board().__driversResult&&board().__driversResult([]); }
+      return;
+    }
+    if(e.data.type==='sendmsg' && e.data.reqId){
+      try{ const res=await window.newmile.sendDriverMsg({driverId:e.data.driverId,tok:e.data.tok,text:e.data.text});
+        board().__sendMsgResult&&board().__sendMsgResult(e.data.reqId,res); }
+      catch(err){ board().__sendMsgResult&&board().__sendMsgResult(e.data.reqId,{error:String(err&&err.message||err)}); }
+      return;
+    }
+    if(e.data.type==='directory'){
+      try{
+        const st=await window.newmile.status();
+        if(!st.connected){ board().__directoryResult&&board().__directoryResult({error:'Connect to NewMile first'}); return; }
+        const res=await window.newmile.directory();
+        board().__directoryResult && board().__directoryResult(res||{error:'no data'});
+      }catch(err){ board().__directoryResult && board().__directoryResult({error:String(err&&err.message||err)}); }
       return;
     }
     if(e.data.type==='camera' && e.data.num){
@@ -220,8 +286,8 @@ function mapAssigns(rows, numToId, unit){
   (rows||[]).forEach(r=>{
     const tid=numToId[(r.truck_number||'').trim().toLowerCase()];
     if(!tid) return;
-    if(unit==='hour'){ out.push({truck:tid, ll:'hourly', done:Math.round(num(r.hours_worked)), seq:r.ordinal||1}); }
-    else { out.push({truck:tid, ll:(r.load_limit==null?'open':r.load_limit), done:r.load_count||0, seq:r.ordinal||1}); }
+    if(unit==='hour'){ out.push({truck:tid, ll:'hourly', done:Math.round(num(r.hours_worked)), seq:r.ordinal||1, aid:r.id}); }
+    else { out.push({truck:tid, ll:(r.load_limit==null?'open':r.load_limit), done:r.load_count||0, seq:r.ordinal||1, aid:r.id}); }
   });
   return out;
 }

@@ -27,7 +27,8 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      webviewTag: true            // 💬 embedded NewMile messaging (persist:newmile-auth)
     }
   });
   win.removeMenu();
@@ -95,6 +96,8 @@ app.whenReady().then(() => {
     onLog: pushLog
   });
   createWindow();
+  setTimeout(checkForUpdate, 30 * 1000);                 // first check shortly after launch
+  setInterval(checkForUpdate, 4 * 60 * 60 * 1000);       // then every 4 hours
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
@@ -138,6 +141,9 @@ ipcMain.handle('nm:pullDay', async (_e, dateISO) => {
 });
 
 ipcMain.handle('nm:orderAssignments', (_e, orderId) => client.orderAssignments(orderId));
+ipcMain.handle('nm:directory', () => client.pullDirectory());
+ipcMain.handle('nm:setOnCall', (_e, list) => client.setOnCall(list));
+ipcMain.handle('nm:deleteAssignments', (_e, ids) => client.deleteAssignments(ids));
 ipcMain.handle('nm:pushOrder', (_e, { orderId, assignments, useOrderDefault }) =>
   client.pushOrderBatch(orderId, assignments, useOrderDefault));
 
@@ -232,6 +238,143 @@ ipcMain.handle('nm:camera', async (_e, name) => {
       if (media.length && media.every(m => m.status === 'failed')) return { error: 'Camera reported failure — truck probably shut off' };
     }
     return { error: 'Timed out (~90s). The camera uploads on demand — try again while the truck is running.' };
+  } catch (e) { return { error: e.message || String(e) }; }
+});
+
+/*
+ * Auto-updater — checks the private GitHub repo's latest release (on launch + every 4h).
+ * Needs a fine-grained read-only PAT in config.github.token (repo is private because the
+ * release artifacts embed the Samsara tokens). No token → updater stays silently off.
+ */
+function semverNewer(a, b) {  // a > b ?
+  const pa = String(a).replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  const pb = String(b).replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) { if ((pa[i] || 0) > (pb[i] || 0)) return true; if ((pa[i] || 0) < (pb[i] || 0)) return false; }
+  return false;
+}
+let _updateInfo = null;
+async function checkForUpdate() {
+  try {
+    const gh = (appCfg && appCfg.github) || {};
+    if (!gh.token || !gh.owner || !gh.repo) { return; }
+    const r = await fetch(`https://api.github.com/repos/${gh.owner}/${gh.repo}/releases/latest`, {
+      headers: { Authorization: 'Bearer ' + gh.token, Accept: 'application/vnd.github+json', 'User-Agent': 'MilestoneLoadBoard' }
+    });
+    if (!r.ok) { pushLog('updater: HTTP ' + r.status); return; }
+    const j = await r.json();
+    const latest = (j.tag_name || '').replace(/^v/, '');
+    const cur = app.getVersion();
+    if (!latest || !semverNewer(latest, cur)) { pushLog('updater: up to date (v' + cur + ')'); return; }
+    const isMac = process.platform === 'darwin';
+    const asset = (j.assets || []).find(a => isMac ? /\.dmg$/i.test(a.name) : /\.exe$/i.test(a.name));
+    _updateInfo = { version: latest, current: cur, assetId: asset && asset.id, assetName: asset && asset.name, notes: j.body || '' };
+    pushLog('updater: v' + latest + ' available (current v' + cur + ')');
+    if (win && !win.isDestroyed()) win.webContents.send('nm:update', _updateInfo);
+  } catch (e) { pushLog('updater check failed: ' + e.message); }
+}
+ipcMain.handle('nm:downloadUpdate', async () => {
+  try {
+    if (!_updateInfo || !_updateInfo.assetId) return { error: 'No update staged' };
+    const gh = appCfg.github;
+    const r = await fetch(`https://api.github.com/repos/${gh.owner}/${gh.repo}/releases/assets/${_updateInfo.assetId}`, {
+      headers: { Authorization: 'Bearer ' + gh.token, Accept: 'application/octet-stream', 'User-Agent': 'MilestoneLoadBoard' },
+      redirect: 'follow'
+    });
+    if (!r.ok) return { error: 'download HTTP ' + r.status };
+    const buf = Buffer.from(await r.arrayBuffer());
+    const dest = path.join(app.getPath('downloads'), _updateInfo.assetName);
+    fs.writeFileSync(dest, buf);
+    pushLog('updater: downloaded ' + _updateInfo.assetName + ' (' + Math.round(buf.length / 1048576) + ' MB)');
+    require('electron').shell.showItemInFolder(dest);
+    return { ok: true, path: dest };
+  } catch (e) { return { error: e.message || String(e) }; }
+});
+
+/*
+ * ✉ Samsara driver messaging — list drivers (cached) + send. Drivers matched to
+ * NewMile by phone number in the renderer. Uses the same org tokens as GPS.
+ */
+let _drvCache = { at: 0, data: null };
+ipcMain.handle('nm:drivers', async () => {
+  try {
+    if (_drvCache.data && (Date.now() - _drvCache.at) < 30 * 60 * 1000) return _drvCache.data;
+    const toks = ((appCfg.samsara && appCfg.samsara.tokens) || []).filter(t => t && t.token);
+    const out = [];
+    for (let ti = 0; ti < toks.length; ti++) {
+      try {
+        let after = '', pages = 0;
+        do {
+          const u = 'https://api.samsara.com/fleet/drivers?limit=512' + (after ? '&after=' + encodeURIComponent(after) : '');
+          const r = await fetch(u, { headers: { Authorization: 'Bearer ' + toks[ti].token } });
+          if (!r.ok) { pushLog('samsara drivers ' + toks[ti].name + ': HTTP ' + r.status); break; }
+          const j = await r.json();
+          (j.data || []).forEach(d => out.push({ id: d.id, name: d.name || '', phone: (d.phone || '').replace(/\D/g, '').slice(-10), tok: ti }));
+          after = (j.pagination && j.pagination.hasNextPage) ? j.pagination.endCursor : '';
+          pages++;
+        } while (after && pages < 10);
+      } catch (e) { pushLog('samsara drivers failed: ' + e.message); }
+    }
+    pushLog('samsara drivers: ' + out.length + ' loaded');
+    _drvCache = { at: Date.now(), data: out };
+    return out;
+  } catch (e) { return []; }
+});
+ipcMain.handle('nm:sendDriverMsg', async (_e, { driverId, tok, text }) => {
+  try {
+    const toks = ((appCfg.samsara && appCfg.samsara.tokens) || []).filter(t => t && t.token);
+    const token = toks[tok] && toks[tok].token;
+    if (!token) return { error: 'no token' };
+    const r = await fetch('https://api.samsara.com/v1/messages', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ driverIds: [Number(driverId)], text: String(text || '').slice(0, 1000) })
+    });
+    if (!r.ok) return { error: 'HTTP ' + r.status + ': ' + (await r.text()).slice(0, 120) };
+    pushLog('driver message sent (driver ' + driverId + ')');
+    return { ok: true };
+  } catch (e) { return { error: e.message || String(e) }; }
+});
+
+/*
+ * Quoter route engine (main process = no CORS): geocode via Census then Nominatim,
+ * road miles + minutes via the public OSRM router. In-memory cache per session.
+ */
+const _geoMem = {};
+async function geocodeOne(q) {
+  const key = q.trim().toUpperCase();
+  if (_geoMem[key]) return _geoMem[key];
+  try {
+    const u = 'https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&format=json&address=' + encodeURIComponent(q);
+    const r = await fetch(u, { headers: { 'User-Agent': 'MilestoneLoadBoard' } });
+    const j = await r.json();
+    const hit = j && j.result && j.result.addressMatches && j.result.addressMatches[0];
+    if (hit) return (_geoMem[key] = { lat: hit.coordinates.y, lng: hit.coordinates.x, src: 'census' });
+  } catch (e) {}
+  try {
+    const u = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' + encodeURIComponent(q);
+    const r = await fetch(u, { headers: { 'User-Agent': 'MilestoneLoadBoard/2.1 (dispatch tool)' } });
+    const j = await r.json();
+    if (j && j[0]) return (_geoMem[key] = { lat: parseFloat(j[0].lat), lng: parseFloat(j[0].lon), src: 'osm' });
+  } catch (e) {}
+  return null;
+}
+ipcMain.handle('nm:route', async (_e, { from, to, fromCoords, toCoords }) => {
+  try {
+    const A = fromCoords || await geocodeOne(from);
+    const B = toCoords || await geocodeOne(to);
+    if (!A || !B) return { error: 'could not locate ' + (!A ? 'pickup' : 'dropoff') };
+    try {
+      const u = `https://router.project-osrm.org/route/v1/driving/${A.lng},${A.lat};${B.lng},${B.lat}?overview=false`;
+      const r = await fetch(u, { headers: { 'User-Agent': 'MilestoneLoadBoard' } });
+      const j = await r.json();
+      const rt = j && j.routes && j.routes[0];
+      if (rt) return { mi: rt.distance / 1609.34, min: rt.duration / 60, src: 'OSRM road' };
+    } catch (e) {}
+    const rad = Math.PI / 180, R = 3958.8;
+    const dLa = (B.lat - A.lat) * rad, dLo = (B.lng - A.lng) * rad;
+    const s = Math.sin(dLa / 2) ** 2 + Math.cos(A.lat * rad) * Math.cos(B.lat * rad) * Math.sin(dLo / 2) ** 2;
+    const mi = R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s)) * 1.27;
+    return { mi, min: mi / 45 * 60, src: 'estimate ×1.27 @45mph' };
   } catch (e) { return { error: e.message || String(e) }; }
 });
 

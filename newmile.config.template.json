@@ -51,6 +51,12 @@
                                    }
                                ]
                 },
+    "github":  {
+                   "_comment":  "Auto-updater. Create a fine-grained PAT (github.com â†’ Settings â†’ Developer settings â†’ Fine-grained tokens) scoped to ONLY this repo with Contents: Read-only, then paste it here (and as repo secret GH_RELEASES_PAT for CI builds). Empty token = updater off.",
+                   "owner":  "dj0hnc",
+                   "repo":  "milestone-load-board",
+                   "token":  ""
+               },
     "rotationSource":  {
                            "mode":  "auto"
                        },

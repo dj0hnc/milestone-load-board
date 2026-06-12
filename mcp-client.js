@@ -604,6 +604,53 @@ class NewMileClient {
     return { date: dateISO, priorDay: prior, orders: { y: oy, t: ot, tm: otm }, assignments, trucks, tickets, pickupCoords, dropCoords, orderNotes };
   }
 
+  // ---------- 🚛 truck manager writes (verified: truck.on_call writeable, assignment delete exists) ----------
+  async setOnCall(list) {   // [{truckId, onCall, num}] → per-truck results
+    const out = [];
+    for (const it of (list || [])) {
+      try {
+        await this.callTool('update_resource', { resource_type: 'truck', id: it.truckId, attrs: { on_call: !!it.onCall } });
+        out.push({ num: it.num, ok: true });
+        this.log('truck ' + it.num + ' → ' + (it.onCall ? 'ON' : 'OFF') + '-call');
+      } catch (e) { out.push({ num: it.num, ok: false, error: e.message }); }
+    }
+    return out;
+  }
+  async deleteAssignments(ids) {
+    const out = [];
+    for (const id of (ids || [])) {
+      try {
+        await this.callTool('delete_resource', { resource_type: 'order_assignment', id: id });
+        out.push({ id: id, ok: true });
+      } catch (e) { out.push({ id: id, ok: false, error: e.message }); }
+    }
+    this.log('deleted ' + out.filter(x => x.ok).length + '/' + out.length + ' assignments');
+    return out;
+  }
+
+  // ---------- 📇 directory (users / locations / haulers) ----------
+  async pullDirectory() {
+    const out = { users: [], locations: [], haulers: [] };
+    // users (drivers + staff) — paged, carries phone_number / truck linkage
+    let page = 1, totalPages = 1;
+    do {
+      const r = await this.callTool('list_resources', { resource_type: 'user', filters: { page, page_size: 100 } });
+      out.users = out.users.concat((r && (r.users || r.results)) || []);
+      totalPages = (r && (r.total_pages || r.pages)) || 1; page++;
+    } while (page <= totalPages && page <= 15);
+    try {
+      const orgId = (this.cfg.org && this.cfg.org.orgId) || 1838;
+      const l = await this.callTool('list_resources', { resource_type: 'org_location', filters: { org_id: orgId } });
+      out.locations = (l && (l.locations || l.results)) || [];
+    } catch (e) { this.log('directory locations skipped: ' + e.message); }
+    try {
+      const h = await this.callTool('list_resources', { resource_type: 'org', filters: { connection_type: 'hauler', page_size: 100 } });
+      out.haulers = (h && (h.orgs || h.results)) || [];
+    } catch (e) { this.log('directory haulers skipped: ' + e.message); }
+    this.log('directory: ' + out.users.length + ' users · ' + out.locations.length + ' locations · ' + out.haulers.length + ' haulers');
+    return out;
+  }
+
   // ---------- truck number -> id resolution ----------
   _normNum(s) { return String(s || '').trim().toUpperCase().replace(/\s+/g, ' '); }
   async resolveTruckId(num) {

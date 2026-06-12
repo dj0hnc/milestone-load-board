@@ -10,9 +10,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --navy:#1C2333;--navy-2:#161B28;--navy-3:#10141E;--panel:#222B3D;--panel-2:#1A2230;
-  --gold:#C8991F;--gold-soft:#E3B73E;--teal:#4FC3C8;--green:#3FB97A;--orange:#E08A2B;
-  --red:#E0524B;--purple:#9B8CEA;--muted:#7C879B;--line:#2E3A50;--text:#E8ECF3;--text-dim:#A9B3C4;
+  /* Palette retoned to NewMile's REAL production colors (sampled from app.newmile.com CSS):
+     slate base #1a222c · panels #23303f/#2e3a47 · primary blue #5a95f9 · green #22c55e ·
+     orange #fb923c · red #ea4e2c. Milestone GOLD stays as our signature accent. */
+  --navy:#23303f;--navy-2:#1a222c;--navy-3:#141b24;--panel:#2e3a47;--panel-2:#23303f;
+  --gold:#C8991F;--gold-soft:#E3B73E;--teal:#5a95f9;--green:#22c55e;--orange:#fb923c;
+  --red:#ea4e2c;--purple:#a78bfa;--muted:#8b96a5;--line:#313d4a;--text:#eff4fb;--text-dim:#aeb7c0;
   --shadow:0 8px 28px rgba(0,0,0,.45);
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -129,7 +132,7 @@ input{font-family:inherit}
 .wy{font-size:10px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;padding:2px 7px;border-radius:10px;white-space:nowrap}
 .wy.ran{color:#FFD27C;background:rgba(224,138,43,.16);border:1px solid rgba(224,138,43,.45)}
 .wy.no{color:#9affc4;background:rgba(63,185,122,.14);border:1px solid rgba(63,185,122,.4)}
-.fchip.wyon.on{background:#E08A2B;border-color:#E08A2B;color:#1a1205}
+.fchip.wyon.on{background:#fb923c;border-color:#fb923c;color:#1a1205}
 .fchip.rest.on{background:var(--green);border-color:var(--green);color:#06231a}
 .fchip.wyon{border-color:rgba(224,138,43,.5);color:#FFD27C}
 .fchip.rest{border-color:rgba(63,185,122,.5);color:#9affc4}
@@ -240,7 +243,7 @@ input{font-family:inherit}
 .mbtns .cancel{background:var(--panel);color:var(--text-dim);border:1px solid var(--line)}
 .report{white-space:pre-wrap;font-family:'Barlow Condensed';font-size:14px;line-height:1.5;background:var(--navy-3);border:1px solid var(--line);border-radius:9px;padding:13px;margin:0 16px 12px;color:var(--text)}
 
-.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--green);color:var(--navy-3);font-family:'Barlow Condensed';font-weight:700;font-size:14px;letter-spacing:.4px;padding:11px 20px;border-radius:24px;box-shadow:var(--shadow);opacity:0;transition:.3s;z-index:60;pointer-events:none;max-width:90vw;text-align:center}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);z-index:100;background:var(--green);color:var(--navy-3);font-family:'Barlow Condensed';font-weight:700;font-size:14px;letter-spacing:.4px;padding:11px 20px;border-radius:24px;box-shadow:var(--shadow);opacity:0;transition:.3s;z-index:60;pointer-events:none;max-width:90vw;text-align:center}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
 .mobile-tabs{display:none}
@@ -257,102 +260,102 @@ input{font-family:inherit}
   .truck{cursor:pointer}.tap-hint{display:block}
   .pushbtn span.lbl{display:none}
 }  /* ===== PLANNER TRAY (Excel-like bottom sheet) ===== */
-  #planner{display:none;z-index:60;background:#141b2b;border-bottom:2px solid #C8991F;
+  #planner{display:none;z-index:60;background:#23303f;border-bottom:2px solid #C8991F;
     box-shadow:0 12px 30px rgba(0,0,0,.4);
     flex-direction:column;max-height:46vh;flex:none}
   #planner.show{display:flex}
   #planner.min .pl-body{display:none}
-  .pl-head{height:46px;flex:0 0 46px;display:flex;align-items:center;gap:14px;padding:0 16px;background:#1C2333;border-bottom:1px solid #2a3550}
+  .pl-head{height:46px;flex:0 0 46px;display:flex;align-items:center;gap:14px;padding:0 16px;background:#23303f;border-bottom:1px solid #313d4a}
   .pl-head .pl-title{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:18px;letter-spacing:.5px;color:#fff;white-space:nowrap}
   .pl-head .pl-title b{color:#C8991F}
   .pl-tot{display:flex;gap:16px;margin-left:6px;flex-wrap:wrap}
-  .pl-tot .pt{font-family:'Barlow Condensed',sans-serif;font-size:13px;color:#9aa4b8;white-space:nowrap}
+  .pl-tot .pt{font-family:'Barlow Condensed',sans-serif;font-size:13px;color:#aeb7c0;white-space:nowrap}
   .pl-tot .pt b{color:#fff;font-size:16px;font-weight:800;margin-right:3px}
-  .pl-tot .pt.tons b{color:#E0B94A}
+  .pl-tot .pt.tons b{color:#fbbf24}
   .pl-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
-  .pl-btn{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:.3px;border:1px solid #2a3550;
-    background:#141b2b;color:#e8ecf3;border-radius:9px;padding:7px 13px;cursor:pointer;transition:all .15s;white-space:nowrap}
+  .pl-btn{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:.3px;border:1px solid #313d4a;
+    background:#23303f;color:#e8ecf3;border-radius:9px;padding:7px 13px;cursor:pointer;transition:all .15s;white-space:nowrap}
   .pl-btn:hover{border-color:#C8991F}
-  .pl-btn.go{background:#3FB97A;border-color:#3FB97A;color:#06231a}
+  .pl-btn.go{background:#22c55e;border-color:#22c55e;color:#06231a}
   .pl-btn.go:hover{filter:brightness(1.08)}
   .pl-btn.ic{padding:7px 11px;font-size:16px}
   .pl-body{flex:1;overflow:hidden;padding:0;display:flex;min-height:130px}
   table.pl-grid{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:12px}
-  table.pl-grid th,table.pl-grid td{border-right:1px solid #2a3550;border-bottom:1px solid #1f283d;padding:5px 8px;white-space:nowrap;vertical-align:middle}
-  table.pl-grid thead th{position:sticky;top:0;z-index:5;background:#1C2333;color:#C8991F;font-family:'Barlow Condensed',sans-serif;
+  table.pl-grid th,table.pl-grid td{border-right:1px solid #313d4a;border-bottom:1px solid #1f283d;padding:5px 8px;white-space:nowrap;vertical-align:middle}
+  table.pl-grid thead th{position:sticky;top:0;z-index:5;background:#23303f;color:#C8991F;font-family:'Barlow Condensed',sans-serif;
     font-weight:700;font-size:11px;letter-spacing:.5px;text-transform:uppercase;text-align:center}
-  table.pl-grid thead th.grp{color:#4FC3C8}
-  .pl-grid .fz{position:sticky;left:0;background:#141b2b;z-index:4}
-  .pl-grid thead .fz{z-index:6;background:#1C2333}
+  table.pl-grid thead th.grp{color:#5a95f9}
+  .pl-grid .fz{position:sticky;left:0;background:#23303f;z-index:4}
+  .pl-grid thead .fz{z-index:6;background:#23303f}
   .pl-grid .fz.c1{left:0;min-width:96px}
   .pl-grid .fz.c2{left:96px;min-width:150px}
   .pl-grid td.fz.c1{font-weight:700;color:#fff}
-  .pl-grid td.fz.c2{color:#9aa4b8;font-weight:600}
-  .pl-grid td.dropc{color:#9aa4b8;max-width:190px;overflow:hidden;text-overflow:ellipsis}
+  .pl-grid td.fz.c2{color:#aeb7c0;font-weight:600}
+  .pl-grid td.dropc{color:#aeb7c0;max-width:190px;overflow:hidden;text-overflow:ellipsis}
   .pl-grid td.numc{text-align:right;color:#cdd5e3;font-weight:700}
   .pl-grid td.remc{text-align:right;font-weight:800}
   .pl-grid td.tally{text-align:center;font-weight:800;font-size:13px;color:#7d8794;background:#11192b}
   .pl-grid td.tally.has{color:#fff}
   .pl-grid td.tally.ww.has{color:#7CC6FF}.pl-grid td.tally.rho.has{color:#B69CFF}.pl-grid td.tally.pow.has{color:#FFD27C}
-  .pl-grid td.tally.cac.has{color:#E0B94A}.pl-grid td.tally.agg.has{color:#9affc4}.pl-grid td.tally.sub.has{color:#FF9C9C}
-  .pl-grid td.totc{text-align:center;font-weight:800;color:#3FB97A;background:#0f2a20}
-  .pl-grid td.pairc{padding:3px 4px;background:#0f1626}
+  .pl-grid td.tally.cac.has{color:#fbbf24}.pl-grid td.tally.agg.has{color:#9affc4}.pl-grid td.tally.sub.has{color:#FF9C9C}
+  .pl-grid td.totc{text-align:center;font-weight:800;color:#22c55e;background:#0f2a20}
+  .pl-grid td.pairc{padding:3px 4px;background:#202b38}
   .pl-grid .pair{display:inline-flex;gap:2px;margin-right:3px}
-  .pl-grid input.trk,.pl-grid input.lds{background:#1b2336;border:1px solid #2a3550;color:#fff;border-radius:6px;
+  .pl-grid input.trk,.pl-grid input.lds{background:#1b2336;border:1px solid #313d4a;color:#fff;border-radius:6px;
     font-size:12px;padding:4px 5px;font-family:inherit;height:28px}
   .pl-grid input.trk{width:64px;font-weight:700}
-  .pl-grid input.lds{width:34px;text-align:center;color:#E0B94A}
-  .pl-grid input.trk:focus,.pl-grid input.lds:focus{outline:none;border-color:#4FC3C8;background:#22304a}
+  .pl-grid input.lds{width:34px;text-align:center;color:#fbbf24}
+  .pl-grid input.trk:focus,.pl-grid input.lds:focus{outline:none;border-color:#5a95f9;background:#22304a}
   .pl-grid input.trk::placeholder{color:#4b566e}
-  .pl-grid .addpair{background:transparent;border:1px dashed #2a3550;color:#4FC3C8;border-radius:6px;
+  .pl-grid .addpair{background:transparent;border:1px dashed #313d4a;color:#5a95f9;border-radius:6px;
     height:28px;width:30px;cursor:pointer;font-size:16px;font-weight:700;line-height:1}
-  .pl-grid .addpair:hover{border-color:#4FC3C8;background:rgba(79,195,200,.08)}
-  .pl-grid tfoot td{position:sticky;bottom:0;background:#1C2333;font-weight:800;color:#fff;border-top:2px solid #C8991F}
+  .pl-grid .addpair:hover{border-color:#5a95f9;background:rgba(79,195,200,.08)}
+  .pl-grid tfoot td{position:sticky;bottom:0;background:#23303f;font-weight:800;color:#fff;border-top:2px solid #C8991F}
   .pl-grid tfoot td.fz{z-index:6}
   .planbtn{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;background:#C8991F;color:#1a1205;
     border:none;border-radius:8px;padding:6px 13px;cursor:pointer}
   .planbtn:hover{filter:brightness(1.07)}
   .pl-search{display:flex;align-items:center;gap:7px;margin-left:8px;position:relative}
-  .pl-search input{background:#0f1626;border:1px solid #2a3550;color:#fff;border-radius:8px;font-size:12.5px;padding:6px 10px;font-family:inherit;width:190px;height:30px}
-  .pl-search input:focus{outline:none;border-color:#4FC3C8}
+  .pl-search input{background:#202b38;border:1px solid #313d4a;color:#fff;border-radius:8px;font-size:12.5px;padding:6px 10px;font-family:inherit;width:190px;height:30px}
+  .pl-search input:focus{outline:none;border-color:#5a95f9}
   .pl-search input::placeholder{color:#5d6577}
-  .pl-results{position:absolute;top:36px;left:0;z-index:30;background:#1C2333;border:1px solid #2a3550;border-radius:10px;padding:6px;max-height:230px;overflow:auto;min-width:280px;box-shadow:0 12px 30px rgba(0,0,0,.5);display:none}
+  .pl-results{position:absolute;top:36px;left:0;z-index:30;background:#23303f;border:1px solid #313d4a;border-radius:10px;padding:6px;max-height:230px;overflow:auto;min-width:280px;box-shadow:0 12px 30px rgba(0,0,0,.5);display:none}
   .pl-results.show{display:block}
   .pl-res{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;cursor:pointer;font-size:12.5px}
   .pl-res:hover{background:#22304a}
   .pl-res .rn{font-weight:800;color:#fff;min-width:60px}
-  .pl-res .rd{color:#9aa4b8;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .pl-res .rg{font-size:10px;font-weight:800;text-transform:uppercase;padding:2px 6px;border-radius:8px;background:#0f1626}
+  .pl-res .rd{color:#aeb7c0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pl-res .rg{font-size:10px;font-weight:800;text-transform:uppercase;padding:2px 6px;border-radius:8px;background:#202b38}
   .pl-res .rw{font-size:9px;font-weight:800;color:#FFD27C}
   .pl-res .rw.rest{color:#9affc4}
-  .pl-pick-note{font-size:10.5px;color:#6b7488;padding:4px 8px}
+  .pl-pick-note{font-size:10.5px;color:#8b96a5;padding:4px 8px}
   @media(max-width:880px){.pl-tot{display:none}.pl-grid .fz.c2,.pl-grid thead .fz.c2{display:none}}
 
   /* ===== PLANNER v2: top-docked + detail panel ===== */
   #plTableWrap{flex:1;overflow:auto;min-width:0}
-  #plDetail{flex:0 0 330px;border-left:2px solid #2a3550;overflow:auto;background:#10182a;padding:10px;display:flex;flex-direction:column;gap:8px}
-  #plDetail.plover{outline:2px dashed #4FC3C8;outline-offset:-3px;background:#13203a}
+  #plDetail{flex:0 0 330px;border-left:2px solid #313d4a;overflow:auto;background:#1a222c;padding:10px;display:flex;flex-direction:column;gap:8px}
+  #plDetail.plover{outline:2px dashed #5a95f9;outline-offset:-3px;background:#13203a}
   #planner tr.plover td{background:rgba(79,195,200,.14)!important}
   #plTableWrap tr.focused td{background:rgba(79,195,200,.10)}
   #plTableWrap tbody tr[data-oid]{cursor:pointer}
-  .pl-det-head{display:flex;flex-direction:column;gap:2px;font-family:'Barlow Condensed',sans-serif;color:#9aa4b8;font-size:12.5px}
+  .pl-det-head{display:flex;flex-direction:column;gap:2px;font-family:'Barlow Condensed',sans-serif;color:#aeb7c0;font-size:12.5px}
   .pl-det-head b{color:#fff;font-size:15px}
   .pl-det-head .dnums{color:#cdd5e3}
-  .pl-det-nm{font-size:11px;color:#E0B94A;background:rgba(224,185,74,.08);border:1px solid rgba(224,185,74,.25);border-radius:7px;padding:5px 8px}
+  .pl-det-nm{font-size:11px;color:#fbbf24;background:rgba(224,185,74,.08);border:1px solid rgba(224,185,74,.25);border-radius:7px;padding:5px 8px}
   .pl-det-rows{display:flex;flex-direction:column;gap:5px}
   .pl-det-row{display:flex;align-items:center;gap:6px}
-  .pl-det-row input.dtrk{width:88px;background:#1b2336;border:1px solid #2a3550;color:#fff;border-radius:6px;font-size:12px;padding:4px 6px;height:28px;font-weight:700}
-  .pl-det-row input.dlds{width:38px;text-align:center;background:#1b2336;border:1px solid #2a3550;color:#E0B94A;border-radius:6px;font-size:12px;padding:4px 2px;height:28px}
-  .pl-det-row input:focus{outline:none;border-color:#4FC3C8}
-  .pl-det-row .dinfo{flex:1;min-width:0;font-size:11.5px;color:#9aa4b8;display:flex;gap:6px;align-items:center;overflow:hidden}
+  .pl-det-row input.dtrk{width:88px;background:#1b2336;border:1px solid #313d4a;color:#fff;border-radius:6px;font-size:12px;padding:4px 6px;height:28px;font-weight:700}
+  .pl-det-row input.dlds{width:38px;text-align:center;background:#1b2336;border:1px solid #313d4a;color:#fbbf24;border-radius:6px;font-size:12px;padding:4px 2px;height:28px}
+  .pl-det-row input:focus{outline:none;border-color:#5a95f9}
+  .pl-det-row .dinfo{flex:1;min-width:0;font-size:11.5px;color:#aeb7c0;display:flex;gap:6px;align-items:center;overflow:hidden}
   .pl-det-row .dinfo b{color:#e8ecf3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .pl-det-row .dg{font-size:9px;font-weight:800;padding:1px 5px;border-radius:6px;background:#0f1626;color:#4FC3C8}
-  .pl-det-row .ddel{color:#FF9C9C;border:1px solid #2a3550;border-radius:6px;height:28px;min-width:26px;cursor:pointer;background:transparent}
+  .pl-det-row .dg{font-size:9px;font-weight:800;padding:1px 5px;border-radius:6px;background:#202b38;color:#5a95f9}
+  .pl-det-row .ddel{color:#FF9C9C;border:1px solid #313d4a;border-radius:6px;height:28px;min-width:26px;cursor:pointer;background:transparent}
   .pl-det-row .ddel:hover{border-color:#FF9C9C}
-  .pl-det-add{border:1px dashed #2a3550;color:#4FC3C8;border-radius:7px;padding:6px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:700;background:transparent}
-  .pl-det-add:hover{border-color:#4FC3C8;background:rgba(79,195,200,.08)}
-  .pl-det-drop{border:2px dashed #2a3550;border-radius:9px;color:#6b7488;text-align:center;padding:14px 6px;font-size:12px;margin-top:auto}
-  .pl-det-empty{color:#6b7488;font-size:12.5px;padding:12px;text-align:center;line-height:1.5}
+  .pl-det-add{border:1px dashed #313d4a;color:#5a95f9;border-radius:7px;padding:6px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:700;background:transparent}
+  .pl-det-add:hover{border-color:#5a95f9;background:rgba(79,195,200,.08)}
+  .pl-det-drop{border:2px dashed #313d4a;border-radius:9px;color:#8b96a5;text-align:center;padding:14px 6px;font-size:12px;margin-top:auto}
+  .pl-det-empty{color:#8b96a5;font-size:12.5px;padding:12px;text-align:center;line-height:1.5}
   .pl-det-empty.small{padding:6px;font-size:11.5px}
   .rail .osearch{margin:8px 0 2px}
   @media(max-width:880px){#plDetail{flex:0 0 230px}}
@@ -360,34 +363,34 @@ input{font-family:inherit}
   /* ===== PLANNER v3: detail strip on top + resizable ===== */
   #planner{height:48vh;max-height:88vh}
   .pl-body{flex-direction:column}
-  #plDetail{flex:0 0 auto;max-height:58%;overflow:auto;border-left:none;border-bottom:2px solid #2a3550;background:#10182a;padding:9px 12px;display:flex;flex-direction:column;gap:8px}
-  #plDetail.plover{outline:2px dashed #4FC3C8;outline-offset:-3px;background:#13203a}
+  #plDetail{flex:0 0 auto;max-height:58%;overflow:auto;border-left:none;border-bottom:2px solid #313d4a;background:#1a222c;padding:9px 12px;display:flex;flex-direction:column;gap:8px}
+  #plDetail.plover{outline:2px dashed #5a95f9;outline-offset:-3px;background:#13203a}
   #plTableWrap{flex:1;overflow:auto;min-height:70px}
   .pd-bar{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
   .pd-id{display:flex;flex-direction:column;min-width:180px}
   .pd-id b{color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:800;line-height:1.1}
-  .pd-id span{color:#9aa4b8;font-size:12px}
+  .pd-id span{color:#aeb7c0;font-size:12px}
   .pd-stats{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
-  .pd-s{display:flex;flex-direction:column;align-items:center;background:#0f1626;border:1px solid #2a3550;border-radius:8px;padding:4px 11px;min-width:54px}
+  .pd-s{display:flex;flex-direction:column;align-items:center;background:#202b38;border:1px solid #313d4a;border-radius:8px;padding:4px 11px;min-width:54px}
   .pd-s i{font-style:normal;font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;color:#7d8794}
   .pd-s b{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:800;color:#fff;line-height:1}
-  .pd-s.pd-trks b{color:#4FC3C8}.pd-s.pd-lds b{color:#fff}.pd-s.pd-tons b{color:#E0B94A}
-  .pd-nm{font-size:11px;color:#E0B94A;background:rgba(224,185,74,.08);border:1px solid rgba(224,185,74,.25);border-radius:7px;padding:5px 9px}
-  .pd-rm{font-size:11px;color:#FF9C9C;border:1px solid #2a3550;border-radius:7px;background:transparent;padding:5px 9px;cursor:pointer}
+  .pd-s.pd-trks b{color:#5a95f9}.pd-s.pd-lds b{color:#fff}.pd-s.pd-tons b{color:#fbbf24}
+  .pd-nm{font-size:11px;color:#fbbf24;background:rgba(224,185,74,.08);border:1px solid rgba(224,185,74,.25);border-radius:7px;padding:5px 9px}
+  .pd-rm{font-size:11px;color:#FF9C9C;border:1px solid #313d4a;border-radius:7px;background:transparent;padding:5px 9px;cursor:pointer}
   .pd-rm:hover{border-color:#FF9C9C}
   .pd-chips{display:flex;flex-wrap:wrap;gap:6px;align-content:flex-start}
-  .pd-chip{display:inline-flex;align-items:center;gap:3px;background:#1b2336;border:1px solid #2a3550;border-radius:9px;padding:3px 4px 3px 5px}
+  .pd-chip{display:inline-flex;align-items:center;gap:3px;background:#1b2336;border:1px solid #313d4a;border-radius:9px;padding:3px 4px 3px 5px}
   .pd-chip input.dtrk{width:74px;background:transparent;border:none;color:#fff;font-weight:700;font-size:12.5px;padding:3px 2px;font-family:inherit}
   .pd-chip input.dtrk:focus{outline:none}
-  .pd-chip .dg{font-size:9px;font-weight:800;padding:1px 5px;border-radius:6px;background:#0f1626;color:#4FC3C8}
-  .pd-chip .dg.g-cac{color:#E0B94A}.pd-chip .dg.g-ww{color:#7CC6FF}.pd-chip .dg.g-rho{color:#B69CFF}.pd-chip .dg.g-pow{color:#FFD27C}.pd-chip .dg.g-agg{color:#9affc4}.pd-chip .dg.g-sub{color:#FF9C9C}
-  .pd-chip input.dlds{width:30px;text-align:center;background:#0f1626;border:1px solid #2a3550;border-radius:6px;color:#E0B94A;font-size:12px;padding:3px 2px;height:24px}
-  .pd-chip input:focus{outline:none;border-color:#4FC3C8}
+  .pd-chip .dg{font-size:9px;font-weight:800;padding:1px 5px;border-radius:6px;background:#202b38;color:#5a95f9}
+  .pd-chip .dg.g-cac{color:#fbbf24}.pd-chip .dg.g-ww{color:#7CC6FF}.pd-chip .dg.g-rho{color:#B69CFF}.pd-chip .dg.g-pow{color:#FFD27C}.pd-chip .dg.g-agg{color:#9affc4}.pd-chip .dg.g-sub{color:#FF9C9C}
+  .pd-chip input.dlds{width:30px;text-align:center;background:#202b38;border:1px solid #313d4a;border-radius:6px;color:#fbbf24;font-size:12px;padding:3px 2px;height:24px}
+  .pd-chip input:focus{outline:none;border-color:#5a95f9}
   .pd-chip .ddel{color:#FF9C9C;background:transparent;border:none;cursor:pointer;font-size:12px;padding:0 3px}
-  .pd-add{border:1px dashed #4FC3C8;color:#4FC3C8;border-radius:9px;background:rgba(79,195,200,.06);padding:5px 12px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;height:32px}
+  .pd-add{border:1px dashed #5a95f9;color:#5a95f9;border-radius:9px;background:rgba(79,195,200,.06);padding:5px 12px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;height:32px}
   .pd-add:hover{background:rgba(79,195,200,.14)}
-  .pl-det-empty{color:#6b7488;font-size:13px;padding:14px;text-align:center;line-height:1.5}
-  #plResize{height:8px;flex:0 0 8px;cursor:ns-resize;background:#1C2333;border-top:1px solid #2a3550;display:flex;align-items:center;justify-content:center}
+  .pl-det-empty{color:#8b96a5;font-size:13px;padding:14px;text-align:center;line-height:1.5}
+  #plResize{height:8px;flex:0 0 8px;cursor:ns-resize;background:#23303f;border-top:1px solid #313d4a;display:flex;align-items:center;justify-content:center}
   #plResize::after{content:'';width:46px;height:3px;border-radius:3px;background:#3a465f}
   #plResize:hover::after{background:#C8991F}
   @media(max-width:880px){#planner{height:60vh}.pd-id{min-width:120px}}
@@ -417,7 +420,7 @@ input{font-family:inherit}
     <div class="pl-title">📋 Planner <b id="plCount">0 orders</b></div>
     <div class="pl-tot" id="plTotals"></div>
     <div class="pl-search">
-      <span style="color:#4FC3C8">🔍</span>
+      <span style="color:#5a95f9">🔍</span>
       <input id="plSearch" placeholder="Find truck # or driver…" oninput="planSearch(this.value)" onfocus="planSearch(this.value)" autocomplete="off">
       <div class="pl-results" id="plResults"></div>
     </div>
@@ -480,6 +483,7 @@ input{font-family:inherit}
       <div class="setrow"><label>🛰 Samsara move-check after <b id="mv">9:00 AM</b></label><input type="range" id="mvSlider" min="5" max="15" step="1" value="9" oninput="setMoveHr(this.value)"></div>
       <div class="setrow"><label>🚨 No-progress alert after <b id="pv">8:00 AM</b></label><input type="range" min="6" max="12" step="1" value="8" oninput="setProgHr(this.value)"></div>
       <div class="setrow"><label>↳ flag orders below <b id="pp">10%</b> done</label><input type="range" min="0" max="50" step="5" value="10" oninput="setProgPct(this.value)"></div>
+      <div class="setrow"><label>💬 Message reminder every <b id="mr">30 s</b></label><input type="range" min="0" max="120" step="15" value="30" oninput="setMsgRemind(this.value)"></div>
     </div>
   </div>
 </div>
@@ -2355,6 +2359,8 @@ function setProgHr(v){cfg.progressHr=+v;try{localStorage.setItem('cfg_proghr',St
   $('#pv').textContent=(v>12?v-12:v)+':00 '+(v>=12?'PM':'AM');renderAlerts();}
 function setProgPct(v){cfg.progressMinPct=+v;try{localStorage.setItem('cfg_progpct',String(v));}catch(e){}
   $('#pp').textContent=v+'%';renderAlerts();}
+function setMsgRemind(v){try{localStorage.setItem('mab_msg_remind',String(v));}catch(e){}
+  $('#mr').textContent=(+v?v+' s':'off');}
 function setTons(v){cfg.tonsPerLoad=+v;$('#tv').textContent=v+' t';render();}
 /* Real push: hand off to the app shell (preview modal → confirmed MCP write).
    The old demo stub that only showed a fake "Synced" toast is gone. */
@@ -2454,7 +2460,7 @@ function renderPlanner(){
       <th class="fz c1">Disp #</th><th class="fz c2">Material</th><th>Dropoff</th><th>Ord</th><th>Rem</th>
       ${PL_GROUPS.map(g=>`<th class="grp">${g[1]}</th>`).join('')}
       <th>Trks</th><th>Lds</th><th>Tons</th>
-      <th colspan="${maxPairs+1}" style="text-align:left;color:#6b7488">type TRK # + LDS per truck — group counts auto-fill ▶</th>
+      <th colspan="${maxPairs+1}" style="text-align:left;color:#8b96a5">type TRK # + LDS per truck — group counts auto-fill ▶</th>
     </tr></thead>`;
   let rows='';
   oids.forEach(oid=>{
@@ -2473,7 +2479,7 @@ function renderPlanner(){
       <td class="fz c1">${o.disp}</td><td class="fz c2">${o.mat}</td>
       <td class="dropc" title="${o.drop||''}">${o.drop||''}</td>
       <td class="numc">${o.target}</td>
-      <td class="remc" style="color:${rem>0?'#E08A2B':'#3FB97A'}">${Math.round(rem)}</td>
+      <td class="remc" style="color:${rem>0?'#fb923c':'#22c55e'}">${Math.round(rem)}</td>
       ${PL_GROUPS.map(g=>`<td class="tally ${g[0]}" data-g="${g[0]}">0</td>`).join('')}
       <td class="totc" data-tot="trks">0</td><td class="totc" data-tot="lds">0</td><td class="totc" data-tot="tons">0</td>
       ${pcells}</tr>`;
@@ -2635,7 +2641,7 @@ function renderPlanDetail(){
       +'<div class="pd-id"><b>'+o.disp+'</b><span>'+o.mat+'  ·  → '+(o.drop||'')+'</span><button class="gmap" onclick="openRouteMap(event,\''+plFocus+'\')" title="Open the run in Google Maps">🗺</button></div>'
       +'<div class="pd-stats">'
         +'<span class="pd-s"><i>Ord</i><b>'+o.target+'</b></span>'
-        +'<span class="pd-s"><i>Rem</i><b style="color:'+(rem>0?'#E08A2B':'#3FB97A')+'">'+Math.round(rem)+'</b></span>'
+        +'<span class="pd-s"><i>Rem</i><b style="color:'+(rem>0?'#fb923c':'#22c55e')+'">'+Math.round(rem)+'</b></span>'
         +'<span class="pd-s pd-trks"><i>Trucks</i><b id="pdTrks">'+tt.trks+'</b></span>'
         +'<span class="pd-s pd-lds"><i>Loads</i><b id="pdLds">'+tt.lds+'</b></span>'
         +'<span class="pd-s pd-tons"><i>Tons est</i><b id="pdTons">'+(tt.tons?tt.tons.toLocaleString():0)+'</b></span>'
@@ -2786,101 +2792,193 @@ setView('board');
 <link rel="stylesheet" href="vendor/leaflet.css">
 <script src="vendor/leaflet.js"></script>
 <style id="enh-style">
-  #enhPanel{position:fixed;right:14px;bottom:14px;width:330px;max-width:92vw;background:#0f1626;border:1px solid #2a3550;border-radius:14px;
+  #enhPanel{position:fixed;right:14px;bottom:14px;width:330px;max-width:92vw;background:#202b38;border:1px solid #313d4a;border-radius:14px;
     box-shadow:0 18px 60px rgba(0,0,0,.5);font-family:'Segoe UI',system-ui,sans-serif;color:#e8ecf3;z-index:45;overflow:hidden;transition:.2s}
   #enhPanel.min{width:auto}
-  #enhPanel .eh{display:flex;align-items:center;gap:8px;padding:10px 12px;background:linear-gradient(90deg,#15203a,#10182a);cursor:pointer;user-select:none;border-bottom:1px solid #2a3550}
+  #enhPanel .eh{display:flex;align-items:center;gap:8px;padding:10px 12px;background:linear-gradient(90deg,#2e3a47,#1a222c);cursor:pointer;user-select:none;border-bottom:1px solid #313d4a}
   #enhPanel.min .eh{border-bottom:0}
   #enhPanel .eh b{font-size:13px;letter-spacing:.3px}
   #enhPanel .eh b i{color:#C8991F;font-style:normal}
   #enhPanel .eh .sp{flex:1}
-  #enhPanel .eh .chev{color:#9aa4b8;font-size:12px}
+  #enhPanel .eh .chev{color:#aeb7c0;font-size:12px}
   #enhBody{padding:11px 12px;display:flex;flex-direction:column;gap:11px;max-height:62vh;overflow:auto}
   #enhPanel.min #enhBody{display:none}
   .enh-actions{display:flex;gap:8px}
-  .enh-btn{flex:1;font-family:inherit;font-weight:700;font-size:12.5px;border:1px solid #2a3550;background:#141b2b;color:#e8ecf3;border-radius:9px;padding:9px 10px;cursor:pointer;transition:.15s;text-align:center}
+  .enh-btn{flex:1;font-family:inherit;font-weight:700;font-size:12.5px;border:1px solid #313d4a;background:#23303f;color:#e8ecf3;border-radius:9px;padding:9px 10px;cursor:pointer;transition:.15s;text-align:center}
   .enh-btn:hover{border-color:#C8991F}
   .enh-btn.go{background:#C8991F;border-color:#C8991F;color:#1a1205}
   .enh-kpis{display:grid;grid-template-columns:1fr 1fr;gap:7px}
-  .enh-k{background:#0b1019;border:1px solid #1d2740;border-radius:9px;padding:8px 9px}
+  .enh-k{background:#141b24;border:1px solid #2e3a47;border-radius:9px;padding:8px 9px}
   .enh-k .kv{font-size:18px;font-weight:800;line-height:1}
-  .enh-k .kl{font-size:10.5px;color:#9aa4b8;margin-top:3px;letter-spacing:.2px}
-  .enh-bar{height:7px;border-radius:4px;background:#1d2740;overflow:hidden;margin-top:6px}
-  .enh-bar > i{display:block;height:100%;background:#3FB97A;transition:.3s}
-  .enh-sec-t{font-size:11px;color:#9aa4b8;text-transform:uppercase;letter-spacing:.6px;margin:2px 0 -2px}
+  .enh-k .kl{font-size:10.5px;color:#aeb7c0;margin-top:3px;letter-spacing:.2px}
+  .enh-bar{height:7px;border-radius:4px;background:#2e3a47;overflow:hidden;margin-top:6px}
+  .enh-bar > i{display:block;height:100%;background:#22c55e;transition:.3s}
+  .enh-sec-t{font-size:11px;color:#aeb7c0;text-transform:uppercase;letter-spacing:.6px;margin:2px 0 -2px}
   .enh-iss{display:flex;flex-direction:column;gap:5px}
-  .enh-i{display:flex;gap:7px;align-items:flex-start;font-size:12px;background:#0b1019;border:1px solid #1d2740;border-left-width:3px;border-radius:7px;padding:6px 8px}
-  .enh-i.err{border-left-color:#FF6B6B} .enh-i.warn{border-left-color:#E0B94A} .enh-i.info{border-left-color:#3FB97A}
+  .enh-i{display:flex;gap:7px;align-items:flex-start;font-size:12px;background:#141b24;border:1px solid #2e3a47;border-left-width:3px;border-radius:7px;padding:6px 8px}
+  .enh-i.err{border-left-color:#ea4e2c} .enh-i.warn{border-left-color:#fbbf24} .enh-i.info{border-left-color:#22c55e}
   .enh-i .ic{font-size:12px} .enh-i .tx{flex:1;line-height:1.3}
   .enh-i .tx b{color:#fff}
-  .enh-clean{font-size:12px;color:#3FB97A;background:#0b1019;border:1px dashed #234;border-radius:7px;padding:8px;text-align:center}
-  .enh-foot{font-size:10.5px;color:#6b7488;text-align:center}
+  .enh-clean{font-size:12px;color:#22c55e;background:#141b24;border:1px dashed #234;border-radius:7px;padding:8px;text-align:center}
+  .enh-pf{background:#141b24;border:1px solid #2e3a47;border-radius:9px;padding:6px 9px}
+  .enh-pf summary{font-size:11.5px;font-weight:700;color:#aeb7c0;cursor:pointer;user-select:none}
+  .enh-pf summary i{color:var(--gold-soft);font-style:normal;font-size:10.5px}
+  .enh-pf-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center}
+  .enh-pf-l{display:flex;align-items:center;gap:5px;font-size:11.5px;color:#aeb7c0}
+  .enh-pf-l select{background:#202b38;border:1px solid #313d4a;color:#fff;border-radius:6px;padding:2px 5px;font-family:inherit;font-size:11px}
+  .enh-opt{display:flex;align-items:center;gap:8px;background:#141b24;border:1px solid #2e3a47;border-radius:8px;padding:6px 8px;margin-top:5px}
+  .enh-opt .eo-t{flex:1;font-size:11.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .enh-opt .eo-m{font-size:10.5px;color:#8b96a5;white-space:nowrap}
+  .enh-opt .eo-use{flex:none;padding:4px 10px;font-size:11px}
+  .enh-foot{font-size:10.5px;color:#8b96a5;text-align:center}
 
   /* completed orders */
   .order.o-completed{opacity:.55;filter:saturate(.55)}
   .order.o-completed .dropzone{pointer-events:none}
-  .obadge.ob-done{background:rgba(63,185,122,.2);color:#3FB97A;font-weight:800;letter-spacing:.4px}
+  .obadge.ob-done{background:rgba(63,185,122,.2);color:#22c55e;font-weight:800;letter-spacing:.4px}
   tr.pl-completed td{opacity:.5}
-  tr.pl-completed td.fz.c1::after{content:" ✓ DONE";color:#3FB97A;font-size:10px;font-weight:800}
+  tr.pl-completed td.fz.c1::after{content:" ✓ DONE";color:#22c55e;font-size:10px;font-weight:800}
 
   /* sectioned truck filters */
-  .ef-sec{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:5px 0;padding:6px 8px;background:#0b1019;border:1px solid #1d2740;border-radius:10px}
-  .ef-lbl{font-size:9.5px;color:#6b7488;text-transform:uppercase;letter-spacing:.7px;min-width:58px;font-weight:700}
+  .ef-sec{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:5px 0;padding:6px 8px;background:#141b24;border:1px solid #2e3a47;border-radius:10px}
+  .ef-lbl{font-size:9.5px;color:#8b96a5;text-transform:uppercase;letter-spacing:.7px;min-width:58px;font-weight:700}
 
   /* collapsible filters (more room for the truck rail) */
   .fcol-btn{display:flex;align-items:center;gap:7px;width:100%;text-align:left;font-family:inherit;font-weight:700;font-size:12px;
-    border:1px solid #1d2740;background:#0b1019;color:#9aa4b8;border-radius:9px;padding:6px 10px;cursor:pointer;margin:2px 0 4px}
+    border:1px solid #2e3a47;background:#141b24;color:#aeb7c0;border-radius:9px;padding:6px 10px;cursor:pointer;margin:2px 0 4px}
   .fcol-btn:hover{border-color:#C8991F;color:#e8ecf3}
   .fcol-btn .cnt{margin-left:auto;font-size:10px;background:rgba(200,153,31,.18);color:#C8991F;border-radius:12px;padding:2px 8px;font-weight:800}
-  .fcol-btn .cnt.zero{background:#141b2b;color:#6b7488}
+  .fcol-btn .cnt.zero{background:#23303f;color:#8b96a5}
   .filters.enh-collapsed #fleetFilters,.filters.enh-collapsed #stateFilters,
   .filters.enh-collapsed #rotHint,.filters.enh-collapsed #terminalFilters{display:none}
 
   /* interactive Live Alerts */
   #col-right > .colhead{display:flex;align-items:center;gap:8px}
   .al-tools{margin-left:auto;display:flex;gap:5px;align-items:center}
-  .al-mini{font-family:inherit;font-weight:700;font-size:10.5px;border:1px solid #1d2740;background:#0b1019;color:#9aa4b8;border-radius:7px;padding:3px 8px;cursor:pointer}
+  .al-mini{font-family:inherit;font-weight:700;font-size:10.5px;border:1px solid #2e3a47;background:#141b24;color:#aeb7c0;border-radius:7px;padding:3px 8px;cursor:pointer}
   .al-mini:hover{border-color:#C8991F;color:#e8ecf3}
   #alertList.al-collapsed{display:none}
   .alert{position:relative}
-  .al-x{position:absolute;top:6px;right:6px;width:18px;height:18px;line-height:1;font-size:10px;border:1px solid #2a3550;background:#141b2b;color:#9aa4b8;border-radius:50%;cursor:pointer;padding:0;display:none}
+  .al-x{position:absolute;top:6px;right:6px;width:18px;height:18px;line-height:1;font-size:10px;border:1px solid #313d4a;background:#23303f;color:#aeb7c0;border-radius:50%;cursor:pointer;padding:0;display:none}
   .alert:hover .al-x{display:block}
-  .al-x:hover{border-color:#FF6B6B;color:#FF6B6B}
+  .al-x:hover{border-color:#ea4e2c;color:#ea4e2c}
 
   /* collapsible Settings (hidden until you open them) */
   .settings.set-collapsed .setrow{display:none}
   .set-head:hover h2{color:#C8991F}
 
   /* Google Maps links */
-  .gmap{font-size:11px;border:1px solid #2a3550;background:#141b2b;border-radius:6px;padding:1px 6px;cursor:pointer;margin-left:6px;line-height:1.4;vertical-align:middle;color:#e8ecf3}
-  .gmap:hover{border-color:#4FC3C8;background:#16243a}
-  .gmap.notei{border-color:#C8991F66;color:#E0B94A}
+  .gmap{font-size:11px;border:1px solid #313d4a;background:#23303f;border-radius:6px;padding:1px 6px;cursor:pointer;margin-left:6px;line-height:1.4;vertical-align:middle;color:#e8ecf3}
+  .gmap:hover{border-color:#5a95f9;background:#16243a}
+  .gmap.notei{border-color:#C8991F66;color:#fbbf24}
   .gm-pt{cursor:pointer;border-bottom:1px dotted #3a4763}
-  .gm-pt:hover{color:#4FC3C8;border-bottom-color:#4FC3C8}
-  .rmi{font-size:11px;color:#4FC3C8;margin-left:8px;white-space:nowrap}
+  .gm-pt:hover{color:#5a95f9;border-bottom-color:#5a95f9}
+  .rmi{font-size:11px;color:#5a95f9;margin-left:8px;white-space:nowrap}
 
   /* on-demand live map (Samsara) */
   #mapScrim{position:fixed;inset:0;background:rgba(6,10,18,.74);z-index:70;display:none;align-items:center;justify-content:center}
   #mapScrim.open{display:flex}
-  #mapPanel{width:min(1100px,94vw);height:min(720px,88vh);background:#0f1626;border:1px solid #2a3550;border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.55)}
-  #mapPanel header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #2a3550;background:#10182a}
+  #mapPanel{width:min(1100px,94vw);height:min(720px,88vh);background:#202b38;border:1px solid #313d4a;border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.55)}
+  #mapPanel header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #313d4a;background:#1a222c}
   #mapPanel header b{font-size:14px;white-space:nowrap}
-  #mapSearch{flex:1;max-width:340px;background:#0f1626;border:1px solid #2a3550;color:#fff;border-radius:8px;padding:7px 10px;font-family:inherit}
-  #mapInfo{font-size:12px;color:#9aa4b8;margin-left:auto;white-space:nowrap}
-  #mapClose{font-family:inherit;font-weight:700;border:1px solid #2a3550;background:#141b2b;color:#e8ecf3;border-radius:8px;padding:5px 11px;cursor:pointer}
-  #mapClose:hover{border-color:#FF6B6B;color:#FF6B6B}
-  #liveMap{flex:1;background:#0b1019}
+  #mapSearch{flex:1;max-width:340px;background:#202b38;border:1px solid #313d4a;color:#fff;border-radius:8px;padding:7px 10px;font-family:inherit}
+  #mapInfo{font-size:12px;color:#aeb7c0;margin-left:auto;white-space:nowrap}
+  #mapClose{font-family:inherit;font-weight:700;border:1px solid #313d4a;background:#23303f;color:#e8ecf3;border-radius:8px;padding:5px 11px;cursor:pointer}
+  #mapClose:hover{border-color:#ea4e2c;color:#ea4e2c}
+  #liveMap{flex:1;background:#141b24}
   .mapbtn{margin-right:6px}
+
+  /* ===== Z-INDEX LADDER (single source of truth — keep all layers registered here) =====
+     3-6   board internals (cards, planner chrome)
+     20    column heads          30  topbar / planner-legacy
+     40    mobile-tabs           45  Smart Dispatch panel
+     50    assign/push .scrim    60  #planner tray
+     64    TAB MODALS (💬🚛📇💰 .tabscrim)
+     70    #mapScrim             80  #camScrim
+     85    message composer      100 .toast (always on top)
+     99999 drag ghost only */
+
+  /* top icon-tabs + generic tab modal (💬 Messages · 🚛 Trucks · 📇 Directory · 💰 Quoter) */
+  .toptab{font-size:13px;font-weight:700;padding:7px 11px;border-radius:8px;border:1px solid var(--line);
+    background:#23303f;color:var(--text);cursor:pointer;margin-right:6px;position:relative;line-height:1.2}
+  .toptab:hover{border-color:var(--teal);background:#2e3a47}
+  .toptab .tbadge{position:absolute;top:-6px;right:-6px;min-width:17px;height:17px;border-radius:9px;
+    background:var(--red);color:#fff;font-size:10px;font-weight:800;display:none;align-items:center;justify-content:center;padding:0 4px}
+  .toptab .tbadge.show{display:flex}
+  .tabscrim{position:fixed;inset:0;background:rgba(8,12,18,.74);z-index:64;display:none;align-items:center;justify-content:center}
+  .tabscrim.open{display:flex}
+  .tabpanel{width:min(1150px,95vw);height:min(780px,90vh);background:#202b38;border:1px solid var(--line);
+    border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.55)}
+  .tabpanel>header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);background:#1a222c;flex:none}
+  .tabpanel>header b{font-size:14px;white-space:nowrap}
+  .tabpanel>header .thead-tools{margin-left:auto;display:flex;gap:7px;align-items:center;min-width:0;flex-wrap:wrap;justify-content:flex-end}
+  .tabpanel .tclose{font-family:inherit;font-weight:700;border:1px solid var(--line);background:#23303f;color:var(--text);border-radius:8px;padding:5px 11px;cursor:pointer}
+  .tabpanel .tclose:hover{border-color:var(--red);color:var(--red)}
+  .tabbody{flex:1;overflow:auto;padding:14px;min-height:0}
+
+  /* ✉ composer (z 85 per ladder) */
+  #compScrim{position:fixed;inset:0;background:rgba(8,12,18,.78);z-index:85;display:none;align-items:center;justify-content:center}
+  #compScrim.open{display:flex}
+  #compBox{width:min(760px,94vw);max-height:88vh;background:#202b38;border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.6)}
+  #compBox header{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);background:#1a222c}
+  #compBox header b{font-size:14px;margin-right:auto}
+  .comp-sel{background:#141b24;border:1px solid var(--line);color:#fff;border-radius:7px;padding:5px 8px;font-family:inherit;font-size:12px}
+  #compText{margin:10px 14px 6px;background:#141b24;border:1px solid var(--line);color:#fff;border-radius:9px;padding:9px 11px;font-family:inherit;font-size:13px;min-height:64px;resize:vertical}
+  #compText:focus{border-color:var(--teal);outline:none}
+  #compRows{flex:1;overflow:auto;padding:4px 14px;min-height:60px}
+  .comp-row{display:flex;gap:10px;align-items:center;border-bottom:1px dashed #2e3a47;padding:6px 0}
+  .comp-who{flex:none;width:190px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .comp-msg{flex:1;font-size:12px;color:var(--text-dim);min-width:0}
+  .comp-st{flex:none;width:70px;text-align:right;font-size:12px;color:var(--green)}
+  #compBox footer{display:flex;gap:10px;align-items:center;padding:10px 14px;border-top:1px solid var(--line)}
+  .comp-note{font-size:11px;color:#8b96a5;margin-right:auto;max-width:60%}
+
+  /* 🚛 truck manager */
+  .tm-pill{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:12px;background:#2e3a47;color:#aeb7c0}
+  .tm-pill.tm-roll{background:rgba(34,197,94,.18);color:#22c55e}
+  .tm-pill.tm-asg{background:rgba(90,149,249,.16);color:#5a95f9}
+  .tm-pill.tm-on{background:rgba(34,197,94,.14);color:#22c55e}
+  .tm-pill.tm-off{background:rgba(251,146,60,.16);color:#fb923c}
+  .tm-target{background:rgba(200,153,31,.1);border:1px solid var(--gold);border-radius:9px;padding:8px 10px;margin-bottom:10px;font-size:13px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .tm-target select,.tm-target input{background:#141b24;border:1px solid var(--line);color:#fff;border-radius:7px;padding:5px 8px;font-family:inherit}
+
+  /* 📇 directory */
+  .dir-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+  .dir-t{width:100%;border-collapse:collapse;font-size:12.5px}
+  .dir-t th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:#8b96a5;padding:6px 8px;border-bottom:1px solid var(--line);position:sticky;top:-14px;background:#202b38}
+  .dir-t td{padding:6px 8px;border-bottom:1px solid #2e3a47;vertical-align:middle}
+  .dir-t tr:hover td{background:rgba(90,149,249,.06)}
+  .dir-ell{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dir-call{color:var(--teal);text-decoration:none;white-space:nowrap}
+  .dir-call:hover{text-decoration:underline}
+
+  /* 💰 quoter */
+  .q-grid{display:grid;grid-template-columns:minmax(280px,380px) 1fr;gap:16px}
+  @media (max-width:760px){.q-grid{grid-template-columns:1fr}}
+  .q-col{min-width:0}
+  .q-sec{font-size:11px;font-weight:800;color:var(--gold-soft);text-transform:uppercase;letter-spacing:.6px;margin:12px 0 6px}
+  .q-sec:first-child{margin-top:0}
+  .q-l{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--text-dim);margin:4px 0}
+  .q-l input,.q-l select{width:150px;background:#141b24;border:1px solid var(--line);color:#fff;border-radius:7px;padding:6px 8px;font-family:inherit;font-size:13px}
+  .q-l input:focus{border-color:var(--teal);outline:none}
+  .q-row{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:5px 8px;border-bottom:1px dashed #2e3a47}
+  .q-row span{color:var(--text-dim);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .q-row b{white-space:nowrap}
+  .q-row.q-hl{background:rgba(90,149,249,.08);border-radius:7px;border-bottom:0}
+  .q-row.q-hl b{color:var(--teal);font-size:14px}
+  .q-out{background:#141b24;border:1px solid var(--line);border-radius:10px;padding:8px}
+  .qbig{font-family:inherit;font-weight:800;font-size:14px;background:var(--gold);border:1px solid var(--gold);color:#1a1205;border-radius:9px;padding:9px 16px;cursor:pointer}
+  .qbig:hover{filter:brightness(1.1)}
 
   /* dashcam snapshot overlay */
   #camScrim{position:fixed;inset:0;background:rgba(6,10,18,.78);z-index:80;display:none;align-items:center;justify-content:center}
   #camScrim.open{display:flex}
-  #camBox{width:min(860px,92vw);max-height:88vh;background:#0f1626;border:1px solid #2a3550;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.6)}
-  #camBox header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #2a3550;background:#10182a}
+  #camBox{width:min(860px,92vw);max-height:88vh;background:#202b38;border:1px solid #313d4a;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.6)}
+  #camBox header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #313d4a;background:#1a222c}
   #camBox header b{font-size:13.5px}
   #camBox header .al-mini{margin-left:auto}
   #camBox img{width:100%;height:auto;display:block;background:#000}
-  #camBox .cammsg{padding:36px 24px;text-align:center;font-size:14px;color:#9aa4b8;line-height:1.6}
+  #camBox .cammsg{padding:36px 24px;text-align:center;font-size:14px;color:#aeb7c0;line-height:1.6}
 </style>
 <script>
 /* Smart Dispatch — auto-plan by rotation, live rule validation, KPI/forecast.
@@ -2907,7 +3005,44 @@ setView('board');
     var s=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(la1*rad)*Math.cos(la2*rad)*Math.sin(dLo/2)*Math.sin(dLo/2);
     return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
   }
-  function autoPlan(){
+  /* ---- auto-plan FILTERS + variety (persisted) ---- */
+  var planOpts=(function(){ try{ return Object.assign({groups:{CE:1,KT:1,AGGCT:1,CKJ_SUB:1,SUB:1},maxDH:0,gpsOnly:0,onCallOnly:0,ldsTarget:0},JSON.parse(localStorage.getItem('mab_planopts')||'{}')); }catch(e){ return {groups:{CE:1,KT:1,AGGCT:1,CKJ_SUB:1,SUB:1},maxDH:0,gpsOnly:0,onCallOnly:0,ldsTarget:0}; } })();
+  function planOptsSave(){ try{ localStorage.setItem('mab_planopts',JSON.stringify(planOpts)); }catch(e){} }
+  var lastSuggested={};   // oid -> {num:1} chosen last run, so re-runs rotate through alternatives
+
+  function distTo(o,t){ if(o.pickupLat==null||t.lat==null) return null; return enhHavMi(o.pickupLat,o.pickupLng,t.lat,t.lon); }
+  /* pool of assignable trucks honoring exclusions + planOpts filters */
+  function planPool(){
+    var used=usedNums();
+    orders.forEach(function(o){ (o.assigns||[]).forEach(function(a){ var t=T(a.truck); if(t) used[(t.num||'').trim().toLowerCase()]=o.id; }); });
+    return trucks.filter(function(t){
+      if(BLUEWING.test(t.owner||'')||used[(t.num||'').trim().toLowerCase()]||t.status==='noshow') return false;
+      if(!planOpts.groups[fltGroupOf(t)]) return false;
+      if(planOpts.gpsOnly && t.lat==null) return false;
+      if(planOpts.onCallOnly && !t.onCall) return false;
+      return true;
+    });
+  }
+  /* pick one truck: rotation tier PRIMARY; among equivalents (same tier, deadhead within
+     +15 mi of tier-best, under maxDH) choose RANDOMLY, avoiding avoidSet → variety, fair. */
+  function pickFor(o, fromPool, avoidSet){
+    var bestRot=Infinity, bestDh=Infinity, cand=[];
+    for(var p=0;p<fromPool.length;p++){
+      var c=fromPool[p], d=distTo(o,c), dh=(d==null?45:Math.min(d,150));
+      if(planOpts.maxDH>0 && d!=null && d>planOpts.maxDH) continue;
+      var rs=rotScore(c);
+      if(rs<bestRot || (rs===bestRot && dh<bestDh)){ bestRot=rs; bestDh=dh; }
+      cand.push({i:p,t:c,rs:rs,dh:dh,d:d});
+    }
+    var elig=cand.filter(function(x){ return x.rs===bestRot && x.dh<=bestDh+15; });
+    if(!elig.length) elig=cand.filter(function(x){ return x.rs===bestRot; });
+    if(!elig.length) return null;
+    var fresh=avoidSet?elig.filter(function(x){ return !avoidSet[x.t.num]; }):elig;
+    var bag=fresh.length?fresh:elig;
+    return bag[Math.floor(Math.random()*bag.length)];
+  }
+
+  function autoPlan(reroll){
     try{
       var oids=Array.from(selectedOrders).filter(function(o){return O(o);});
       if(!oids.length){
@@ -2917,49 +3052,41 @@ setView('board');
       if(!oids.length){ toast('No uncovered orders to auto-plan',true); return; }
       if(typeof plannerOpen==='undefined' || !plannerOpen) openPlanner();
       planInitDraft();
-
-      var used=usedNums();
-      // also exclude trucks already LIVE-assigned in NewMile for this day (o.assigns)
-      orders.forEach(function(o){ (o.assigns||[]).forEach(function(a){ var t=T(a.truck); if(t) used[(t.num||'').trim().toLowerCase()]=o.id; }); });
-      var pool=trucks.filter(function(t){ return !BLUEWING.test(t.owner||'') && !used[(t.num||'').trim().toLowerCase()] && t.status!=='noshow'; });
-
-      /* Deadhead-aware pick: rotation stays PRIMARY (rested first), and within the same
-         rotation tier the truck parked closest to the order's pickup (Samsara GPS) wins.
-         Trucks/orders without coords get a neutral 45-mi placeholder so they never lose
-         unfairly. (v1 — straight-line miles; routing/traffic can come later.) */
-      function havMi(la1,lo1,la2,lo2){
-        var R=3958.8,rad=Math.PI/180;
-        var dLa=(la2-la1)*rad,dLo=(lo2-lo1)*rad;
-        var s=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(la1*rad)*Math.cos(la2*rad)*Math.sin(dLo/2)*Math.sin(dLo/2);
-        return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
+      if(reroll){   // 🎲: wipe what the LAST auto-plan drafted (keep NewMile-existing rows) and deal a fresh hand
+        oids.forEach(function(oid){
+          var o=O(oid); if(!o) return;
+          var keep=(o.assigns||[]).map(function(a){var t=T(a.truck);return t?t.num.toLowerCase():'';});
+          planDraft[oid]=(planDraft[oid]||[]).filter(function(p){return keep.indexOf((p.num||'').trim().toLowerCase())>=0;});
+        });
       }
-      function distTo(o,t){ if(o.pickupLat==null||t.lat==null) return null; return havMi(o.pickupLat,o.pickupLng,t.lat,t.lon); }
 
-      var assigned=0, ordersTouched=0, dhSum=0, dhN=0;
+      var pool=planPool();
+
+      var assigned=0, ordersTouched=0, dhSum=0, dhN=0, newSuggest={};
       oids.forEach(function(oid){
         var o=O(oid); if(!o || o.unit==='hour' || o.completed) return;
         var need=loadsToCover(o); if(need<=0) return;          // already covered (incl. existing NewMile trucks)
         planDraft[oid]=planDraft[oid]||[];
         var cur=planDraft[oid].filter(function(p){return (p.num||'').trim();}).length;
-        var perTruck=Math.max(1, Math.min(6, Math.round(need/Math.max(1,(o.minTrucks||Math.ceil(need/4))))));
+        var perTruck=planOpts.ldsTarget>0?planOpts.ldsTarget
+                    :Math.max(1, Math.min(6, Math.round(need/Math.max(1,(o.minTrucks||Math.ceil(need/4))))));
         var target=Math.max(o.minTrucks||0, Math.ceil(need/perTruck)); target=Math.min(target,20);
         var toAdd=Math.max(0, target-cur); var rem=need; var did=0;
+        newSuggest[oid]={};
         for(var k=0;k<toAdd && pool.length;k++){
-          var bi=0, bs=Infinity;
-          for(var p=0;p<pool.length;p++){
-            var c=pool[p], d=distTo(o,c);
-            var s=rotScore(c)*1000 + (d==null?45:Math.min(d,150));
-            if(s<bs){ bs=s; bi=p; }
-          }
-          var t=pool.splice(bi,1)[0];
-          var dd=distTo(o,t); if(dd!=null){ dhSum+=dd; dhN++; }
+          var pick=pickFor(o,pool,reroll?(lastSuggested[oid]||null):null);
+          if(!pick) break;
+          var t=pool.splice(pick.i,1)[0];
+          if(pick.d!=null){ dhSum+=pick.d; dhN++; }
           var lds=Math.max(1, Math.min(perTruck, rem||perTruck));
           planDraft[oid].push({num:t.num, lds:lds});
+          newSuggest[oid][t.num]=1;
           rem-=lds; assigned++; did++;
           if(rem<=0 && did>=(o.minTrucks||1)) break;
         }
         if(did) ordersTouched++;
       });
+      lastSuggested=newSuggest;
       window.__lastDeadhead = dhN ? Math.round(dhSum/dhN) : null;
       renderPlanner(); refresh();
       toast(assigned? ('⚡ Auto-plan: '+assigned+' rested truck(s) across '+ordersTouched+' order(s)'+(window.__lastDeadhead!=null?(' · ~'+window.__lastDeadhead+' mi avg deadhead'):'')+' — review & adjust') : 'Nothing to add — orders look covered',!assigned);
@@ -3031,8 +3158,11 @@ setView('board');
       '<div id="enhBody">'+
         '<div class="enh-actions">'+
           '<button class="enh-btn go" id="enhAuto" title="Fill uncovered orders with rested trucks (Alt+A)">⚡ Auto-plan</button>'+
+          '<button class="enh-btn" id="enhReroll" title="Deal a DIFFERENT valid plan — same fairness, new trucks">🎲 Re-roll</button>'+
           '<button class="enh-btn" id="enhVal" title="Re-check rules">✓ Validate</button>'+
         '</div>'+
+        '<div id="enhPlanF"></div>'+
+        '<div id="enhOpts"></div>'+
         '<div class="enh-kpis" id="enhKpis"></div>'+
         '<div class="enh-sec-t">Rule checks</div>'+
         '<div class="enh-iss" id="enhIssues"></div>'+
@@ -3041,21 +3171,98 @@ setView('board');
     document.body.appendChild(p);
     $id('enhHead').addEventListener('click',function(){ p.classList.toggle('min'); $id('enhChev').textContent=p.classList.contains('min')?'▴':'▾'; });
     $id('enhAuto').addEventListener('click',function(e){e.stopPropagation();autoPlan();});
+    $id('enhReroll').addEventListener('click',function(e){e.stopPropagation();autoPlan(true);});
     $id('enhVal').addEventListener('click',function(e){e.stopPropagation();refresh();});
+    renderPlanFilters();
     document.addEventListener('keydown',function(e){ if(e.altKey && (e.key==='a'||e.key==='A')){ e.preventDefault(); autoPlan(); } });
+  }
+
+  /* auto-plan filters UI (persisted) */
+  window.enhPF=function(what,val){
+    if(what==='grp'){ planOpts.groups[val]=planOpts.groups[val]?0:1; }
+    else if(what==='dh'){ planOpts.maxDH=parseInt(val,10)||0; }
+    else if(what==='gps'){ planOpts.gpsOnly=planOpts.gpsOnly?0:1; }
+    else if(what==='oncall'){ planOpts.onCallOnly=planOpts.onCallOnly?0:1; }
+    else if(what==='lds'){ planOpts.ldsTarget=parseInt(val,10)||0; }
+    planOptsSave(); renderPlanFilters();
+  };
+  function renderPlanFilters(){
+    var el=$id('enhPlanF'); if(!el) return;
+    var G=[['CE','CE'],['KT','KT'],['AGGCT','AGG+CT'],['CKJ_SUB','CKJ Sub'],['SUB','Sub']];
+    var act=[]; G.forEach(function(g){ if(!planOpts.groups[g[0]]) act.push('−'+g[1]); });
+    if(planOpts.maxDH) act.push('≤'+planOpts.maxDH+'mi'); if(planOpts.gpsOnly) act.push('GPS'); if(planOpts.onCallOnly) act.push('on-call'); if(planOpts.ldsTarget) act.push(planOpts.ldsTarget+' lds');
+    el.innerHTML='<details class="enh-pf"'+(act.length?' open':'')+'><summary>⚙ Plan filters'+(act.length?' <i>'+act.join(' · ')+'</i>':'')+'</summary>'
+      +'<div class="enh-pf-row">'+G.map(function(g){return '<button class="fchip '+(planOpts.groups[g[0]]?'on':'')+'" onclick="enhPF(\'grp\',\''+g[0]+'\')">'+g[1]+'</button>';}).join('')+'</div>'
+      +'<div class="enh-pf-row">'
+        +'<label class="enh-pf-l"><input type="checkbox" '+(planOpts.gpsOnly?'checked':'')+' onchange="enhPF(\'gps\')"> 🛰 GPS only</label>'
+        +'<label class="enh-pf-l"><input type="checkbox" '+(planOpts.onCallOnly?'checked':'')+' onchange="enhPF(\'oncall\')"> 📞 On-call only</label>'
+      +'</div>'
+      +'<div class="enh-pf-row">'
+        +'<label class="enh-pf-l">Max deadhead <select onchange="enhPF(\'dh\',this.value)">'+[0,15,25,40,60,100].map(function(v){return '<option value="'+v+'"'+(planOpts.maxDH===v?' selected':'')+'>'+(v?('≤'+v+' mi'):'off')+'</option>';}).join('')+'</select></label>'
+        +'<label class="enh-pf-l">Loads/truck <select onchange="enhPF(\'lds\',this.value)">'+[0,1,2,3,4,5,6].map(function(v){return '<option value="'+v+'"'+(planOpts.ldsTarget===v?' selected':'')+'>'+(v||'auto')+'</option>';}).join('')+'</select></label>'
+      +'</div></details>';
+  }
+  /* per-order TOP-3 alternative suggestions for the focused order */
+  window.__enhOptSets={};
+  window.enhUseOpt=function(oid,idx){
+    var set=(window.__enhOptSets[oid]||[])[idx]; if(!set) return;
+    selectedOrders.add(oid);
+    if(typeof plannerOpen==='undefined'||!plannerOpen) openPlanner();
+    planInitDraft();
+    var o=O(oid);
+    var keep=(o&&o.assigns||[]).map(function(a){var t=T(a.truck);return t?t.num.toLowerCase():'';});
+    planDraft[oid]=(planDraft[oid]||[]).filter(function(p){return keep.indexOf((p.num||'').trim().toLowerCase())>=0;});
+    set.trucks.forEach(function(s){ planDraft[oid].push({num:s.num,lds:s.lds}); });
+    plFocus=oid; renderPlanner(); refresh();
+    toast('Option '+(idx+1)+' → '+(o?o.disp:oid));
+  };
+  function renderOrderOptions(){
+    var el=$id('enhOpts'); if(!el) return;
+    var o=(typeof plFocus!=='undefined'&&plFocus)?O(plFocus):null;
+    if(!o||o.completed||o.unit==='hour'||loadsToCover(o)<=0){ el.innerHTML=''; return; }
+    var need=loadsToCover(o);
+    var perTruck=planOpts.ldsTarget>0?planOpts.ldsTarget:Math.max(1,Math.min(6,Math.round(need/Math.max(1,(o.minTrucks||Math.ceil(need/4))))));
+    var target=Math.min(20,Math.max(o.minTrucks||0,Math.ceil(need/perTruck)));
+    var seen={}, sets=[];
+    for(var opt=0;opt<3;opt++){
+      var pool=planPool().filter(function(t){ return !seen[t.num]; });
+      var set={trucks:[],dh:0,dhN:0}, rem=need;
+      for(var k=0;k<target&&pool.length;k++){
+        var pick=pickFor(o,pool,null); if(!pick) break;
+        var t=pool.splice(pick.i,1)[0];
+        var lds=Math.max(1,Math.min(perTruck,rem||perTruck));
+        set.trucks.push({num:t.num,lds:lds,rest:t.workedYest===false});
+        if(pick.d!=null){ set.dh+=pick.d; set.dhN++; }
+        rem-=lds;
+        if(rem<=0&&set.trucks.length>=(o.minTrucks||1)) break;
+      }
+      if(!set.trucks.length) break;
+      set.trucks.forEach(function(s){ seen[s.num]=1; });
+      sets.push(set);
+    }
+    window.__enhOptSets[o.id]=sets;
+    if(!sets.length){ el.innerHTML=''; return; }
+    el.innerHTML='<div class="enh-sec-t">Options — '+(o.disp||'').slice(0,30)+'</div>'
+      +sets.map(function(s,i){
+        var avg=s.dhN?Math.round(s.dh/s.dhN):null;
+        return '<div class="enh-opt"><div class="eo-t">'+s.trucks.map(function(t){return t.num+'×'+t.lds;}).join(' · ')
+          +'</div><div class="eo-m">'+s.trucks.length+' trk'+(avg!=null?(' · ~'+avg+' mi dh'):'')
+          +'</div><button class="enh-btn eo-use" onclick="enhUseOpt(\''+o.id+'\','+i+')">Use</button></div>';
+      }).join('');
   }
 
   function refresh(){
     try{
       if(!$id('enhPanel')) build();
+      renderOrderOptions();
       var k=kpis();
-      var ffC=k.ff>=95?'#3FB97A':k.ff>=80?'#E0B94A':k.ff>=60?'#E08A2B':'#FF6B6B';
+      var ffC=k.ff>=95?'#22c55e':k.ff>=80?'#fbbf24':k.ff>=60?'#fb923c':'#ea4e2c';
       $id('enhKpis').innerHTML=''+
         '<div class="enh-k" style="grid-column:1/3"><div class="kv" style="color:'+ffC+'">'+k.ff+'%</div><div class="kl">Projected fulfillment ('+k.scoped+' orders in scope)</div><div class="enh-bar"><i style="width:'+Math.min(100,k.ff)+'%;background:'+ffC+'"></i></div></div>'+
         '<div class="enh-k"><div class="kv">'+k.planTrucks+'</div><div class="kl">Trucks planned</div></div>'+
         '<div class="enh-k"><div class="kv">'+k.planTons.toLocaleString()+'</div><div class="kl">Tons planned ('+k.planLds+' lds)</div></div>'+
-        '<div class="enh-k"><div class="kv" style="color:'+(k.shortN?'#E08A2B':'#3FB97A')+'">'+k.shortN+'</div><div class="kl">Orders still short</div></div>'+
-        '<div class="enh-k"><div class="kv" style="color:#3FB97A">'+k.idleRested+'</div><div class="kl">Rested trucks idle</div></div>';
+        '<div class="enh-k"><div class="kv" style="color:'+(k.shortN?'#fb923c':'#22c55e')+'">'+k.shortN+'</div><div class="kl">Orders still short</div></div>'+
+        '<div class="enh-k"><div class="kv" style="color:#22c55e">'+k.idleRested+'</div><div class="kl">Rested trucks idle</div></div>';
       var iss=validate(), box=$id('enhIssues');
       if(!iss.length){ box.innerHTML='<div class="enh-clean">✓ No rule issues in the current plan</div>'; }
       else{
@@ -3236,11 +3443,15 @@ setView('board');
       if(q && !(t.num.toLowerCase().indexOf(q)>=0||(t.driver||'').toLowerCase().indexOf(q)>=0)) return;
       shown++;
       var moving=(t.mph||0)>=1;
-      var m=L.circleMarker([t.lat,t.lon],{radius:6,color:moving?'#3FB97A':'#E0B94A',weight:2,fillColor:moving?'#3FB97A':'#E0B94A',fillOpacity:.8});
-      m.bindPopup('<b>'+t.num+'</b> · '+(t.group||'')+'<br>'+(t.driver||'(no driver)')
+      var m=L.circleMarker([t.lat,t.lon],{radius:6,color:moving?'#22c55e':'#fbbf24',weight:2,fillColor:moving?'#22c55e':'#fbbf24',fillOpacity:.8});
+      var du=(window.__dirUsersByTruckId||{})[String(t.id).replace(/^t/,'')];
+      var phone=du&&du.phone_number?String(du.phone_number):'';
+      var phoneHtml=phone?('<br><a style="color:#5a95f9" href="rcapp://r/call?number=%2B1'+phone.replace(/\D/g,'').slice(-10)+'">📞 '+phone+'</a>'):'';
+      m.bindPopup('<b>'+t.num+'</b> · '+(t.group||'')+'<br>'+(t.driver||'(no driver)')+phoneHtml
         +'<br>'+(moving?('▶ moving · '+Math.round(t.mph)+' mph'):'⏸ parked')
         +(t.gpsTime?('<br><small>GPS '+String(t.gpsTime).replace('T',' ').slice(0,16)+'</small>'):'')
-        +'<br><button class="gmap" style="margin:5px 0 0" onclick="reqSnapshot(event,\''+t.num.replace(/'/g,"\\'")+'\')">📷 Dashcam snapshot</button>');
+        +'<br><button class="gmap" style="margin:5px 0 0" onclick="reqSnapshot(event,\''+t.num.replace(/'/g,"\\'")+'\')">📷 Dashcam snapshot</button>'
+        +' <button class="gmap" style="margin:5px 0 0" onclick="openComposer([\''+t.id+'\'])">✉ Message</button>');
       m.addTo(_lmTrucks);
       if(!first) first=t;
     });
@@ -3307,6 +3518,723 @@ setView('board');
     }catch(e){ console.error('plannerPaste',e); }
   }
 
+  /* ==================== 💬 MESSAGES ====================
+     Real NewMile messaging embedded in a persistent <webview> (partition
+     persist:newmile-auth — same session as our OAuth sign-in). Unread checker with
+     sound + repeating reminder, a SUBTLE hideable ES→EN translator injected into the
+     webview, and the ✉ copilot composer (templates ES/EN + Samsara driver send). */
+  var wvMsg=null, msgLast=-1, msgFp='', msgRemTimer=null, msgUnread=0;
+  function msgCfg(){ return { remind:parseInt(localStorage.getItem('mab_msg_remind')||'30',10), translate:(localStorage.getItem('mab_translate')||'1')==='1' }; }
+  function ensureWvMsg(){
+    if(wvMsg) return wvMsg;
+    wvMsg=document.createElement('webview');
+    wvMsg.id='wvMsg';
+    wvMsg.setAttribute('partition','persist:newmile-auth');
+    wvMsg.setAttribute('src','https://app.newmile.com/messaging');
+    wvMsg.style.cssText='position:fixed;left:-12000px;top:60px;width:1080px;height:680px;z-index:65;border:0;background:#fff';
+    document.body.appendChild(wvMsg);
+    wvMsg.addEventListener('dom-ready',function(){ msgInjectTranslator(); });
+    setInterval(msgPoll,8000);
+    return wvMsg;
+  }
+  function msgDock(open){
+    if(!wvMsg) return;
+    if(open){
+      var b=$id('tabBody-msg'); if(!b) return;
+      var r=b.getBoundingClientRect();
+      wvMsg.style.left=r.left+'px'; wvMsg.style.top=r.top+'px';
+      wvMsg.style.width=r.width+'px'; wvMsg.style.height=r.height+'px';
+    } else { wvMsg.style.left='-12000px'; }
+  }
+  window.addEventListener('resize',function(){ var s=$id('tab-msg'); if(s&&s.classList.contains('open')) msgDock(true); });
+  window.__tabInit_msg=function(){
+    var body=$id('tabBody-msg');
+    if(!body.dataset.built){
+      body.dataset.built='1';
+      body.innerHTML='';   // webview floats over this area
+      $id('tabTools-msg').innerHTML=
+        '<label class="enh-pf-l" title="Auto-translate Spanish driver messages (subtle line under each)"><input type="checkbox" id="msgTrChk" '+(msgCfg().translate?'checked':'')+'> 🌐 Translate</label>'
+        +'<button class="gmap" onclick="openComposer([])">✉ New message</button>'
+        +'<button class="gmap" onclick="wvMsgReload()">↻</button>';
+      $id('msgTrChk').addEventListener('change',function(){
+        localStorage.setItem('mab_translate',this.checked?'1':'0');
+        try{ wvMsg&&wvMsg.executeJavaScript('window.__nmTransEnabled='+(this.checked?'true':'false')+';'); }catch(e){}
+      });
+    }
+    ensureWvMsg();
+    setTimeout(function(){ msgDock(true); },60);
+    msgStopReminder();           // opening the tab acknowledges the alert
+    var bdg=$id('msgBadge'); if(bdg){ bdg.classList.remove('show'); }
+  };
+  window.wvMsgReload=function(){ try{ wvMsg&&wvMsg.reload(); }catch(e){} };
+  var _origCloseTab=window.closeTab;
+  window.closeTab=function(key){ _origCloseTab(key); if(key==='msg') msgDock(false); };
+  function msgBeep(times){
+    try{
+      var ctx=window.__beepCtx||(window.__beepCtx=new (window.AudioContext||window.webkitAudioContext)());
+      var t=ctx.currentTime;
+      for(var i=0;i<(times||2);i++){
+        var o=ctx.createOscillator(), g=ctx.createGain();
+        o.frequency.value=880; o.type='sine';
+        g.gain.setValueAtTime(0.18,t+i*0.28); g.gain.exponentialRampToValueAtTime(0.001,t+i*0.28+0.22);
+        o.connect(g); g.connect(ctx.destination); o.start(t+i*0.28); o.stop(t+i*0.28+0.24);
+      }
+    }catch(e){}
+  }
+  function msgStopReminder(){ if(msgRemTimer){ clearInterval(msgRemTimer); msgRemTimer=null; } }
+  function msgStartReminder(){
+    msgStopReminder();
+    var secs=msgCfg().remind; if(!secs) return;
+    msgRemTimer=setInterval(function(){
+      var s=$id('tab-msg');
+      if(msgUnread<=0||(s&&s.classList.contains('open'))){ msgStopReminder(); return; }
+      msgBeep(1); toast('💬 '+msgUnread+' driver message(s) still unread');
+    }, secs*1000);
+  }
+  async function msgPoll(){
+    if(!wvMsg) return;
+    try{
+      var res=await wvMsg.executeJavaScript(
+        '(function(){try{var b=document.querySelector("#messaging-menu-unread-count");'
+        +'var n=b?(parseInt((b.textContent||"").trim(),10)||0):0;'
+        +'var l=document.querySelector("[class*=conversation],[id*=conversation]");'
+        +'return {n:n,fp:String(l?l.innerText:document.title).slice(0,300)};}catch(e){return {n:0,fp:"err"};}})()',true);
+      if(!res) return;
+      msgUnread=res.n||0;
+      var bdg=$id('msgBadge');
+      var open=$id('tab-msg')&&$id('tab-msg').classList.contains('open');
+      if(bdg){ bdg.textContent=msgUnread; bdg.classList.toggle('show',msgUnread>0&&!open); }
+      var isNew=(msgLast>=0)&&((msgUnread>msgLast)||(msgUnread>0&&res.fp!==msgFp&&msgFp!==''));
+      msgLast=msgUnread; msgFp=res.fp||'';
+      if(isNew&&!open){
+        msgBeep(2);
+        toast('💬 New driver message ('+msgUnread+' unread) — click 💬 Messages');
+        msgStartReminder();
+      }
+      if(msgUnread===0) msgStopReminder();
+    }catch(e){}
+  }
+  /* subtle ES→EN translator injected INTO the messaging webview (MyMemory, free) */
+  function msgInjectTranslator(){
+    if(!wvMsg) return;
+    var en=msgCfg().translate?'true':'false';
+    var js=''
+    +'(function(){if(window.__nmTransInstalled)return;window.__nmTransInstalled=1;window.__nmTransEnabled='+en+';'
+    +'var cache={},queue=[],busy=false;'
+    +'function looksSpanish(s){return /[áéíóúñ¿¡]/i.test(s)||/\\b(el|la|los|las|para|por|pero|donde|cuando|porque|necesito|cargar|carga|cargas|viaje|llego|llegando|estoy|voy|ya|mañana|ahorita|trabajo|camion|troca|si señor|gracias|buenos dias|buenas)\\b/i.test(s);}'
+    +'function work(){if(busy||!queue.length)return;busy=true;var it=queue.shift();'
+    +'fetch("https://api.mymemory.translated.net/get?langpair=es|en&q="+encodeURIComponent(it.text.slice(0,450)))'
+    +'.then(function(r){return r.json();}).then(function(j){var tr=j&&j.responseData&&j.responseData.translatedText;'
+    +'if(tr&&tr.toLowerCase()!==it.text.toLowerCase()){cache[it.text]=tr;var d=document.createElement("div");'
+    +'d.className="nm-trans";d.textContent="\\u2192 "+tr;d.style.cssText="font-size:11px;color:#5a95f9;opacity:.85;margin-top:2px;font-style:italic";'
+    +'if(window.__nmTransEnabled)it.el.appendChild(d);else d.remove();}'
+    +'busy=false;setTimeout(work,650);}).catch(function(){busy=false;setTimeout(work,1200);});}'
+    +'function scan(){if(!window.__nmTransEnabled)return;'
+    +'document.querySelectorAll("div,p,span").forEach(function(el){'
+    +'if(el.dataset.nmtr||el.children.length>1||el.querySelector(".nm-trans"))return;'
+    +'var s=(el.textContent||"").trim();'
+    +'if(s.length<8||s.length>400||!looksSpanish(s))return;'
+    +'el.dataset.nmtr=1;'
+    +'if(cache[s]){var d=document.createElement("div");d.className="nm-trans";d.textContent="\\u2192 "+cache[s];'
+    +'d.style.cssText="font-size:11px;color:#5a95f9;opacity:.85;margin-top:2px;font-style:italic";el.appendChild(d);return;}'
+    +'queue.push({text:s,el:el});work();});}'
+    +'new MutationObserver(function(){clearTimeout(window.__nmTd);window.__nmTd=setTimeout(scan,800);}).observe(document.body,{childList:true,subtree:true});'
+    +'setTimeout(scan,1500);})();';
+    try{ wvMsg.executeJavaScript(js); }catch(e){}
+  }
+
+  /* ==================== 🚛 TRUCK MANAGER (real MCP writes — no scraping) ====================
+     Live table of today's assignments + every roster truck's call status.
+     Bulk ON/OFF-call (update_resource truck.on_call — verified writeable) and
+     batch REASSIGN (create+confirm on target order, then delete old assignment).
+     Every destructive action is two-step: first click arms, second confirms. */
+  var tmSel={}, tmQ='', tmArmed=null;
+  function tmRows(){
+    var rows=[], inPlan={};
+    orders.forEach(function(o){
+      (o.assigns||[]).forEach(function(a){
+        var t=T(a.truck); if(!t) return;
+        inPlan[t.id]=1;
+        rows.push({t:t,o:o,a:a});
+      });
+    });
+    // unassigned-but-on-call trucks at the end (so off-call bulk can reach them)
+    trucks.forEach(function(t){ if(!inPlan[t.id]&&t.onCall) rows.push({t:t,o:null,a:null}); });
+    if(tmQ){
+      rows=rows.filter(function(r){
+        var hay=(r.t.num+' '+(r.t.driver||'')+' '+(r.t.owner||'')+' '+(r.o?r.o.disp:'')).toLowerCase();
+        return hay.indexOf(tmQ)>=0;
+      });
+    }
+    return rows;
+  }
+  window.__tabInit_trucks=function(){
+    var body=$id('tabBody-trucks');
+    if(!body.dataset.built){
+      body.dataset.built='1';
+      $id('tabTools-trucks').innerHTML=
+        '<input id="tmQ" placeholder="Search truck, driver, order…" style="background:#141b24;border:1px solid var(--line);color:#fff;border-radius:8px;padding:6px 10px;font-family:inherit;width:200px">'
+        +'<button class="gmap" onclick="tmAct(\'offcall\')" id="tmOff">📴 Off-call (0)</button>'
+        +'<button class="gmap" onclick="tmAct(\'oncall\')" id="tmOn">📞 On-call (0)</button>'
+        +'<button class="gmap" onclick="tmAct(\'reassign\')" id="tmRe">➡ Reassign (0)</button>'
+        +'<button class="gmap" onclick="tmMessage()" id="tmMsg">✉ Message (0)</button>'
+        +'<button class="gmap" onclick="parent.postMessage({type:\'refresh\'},\'*\')" title="Pull fresh state from NewMile">↻</button>';
+      $id('tmQ').addEventListener('input',function(){ tmQ=this.value.trim().toLowerCase(); tmRender(); });
+    }
+    tmArmed=null; tmRender();
+  };
+  function tmCount(){ return Object.keys(tmSel).filter(function(k){return tmSel[k];}).length; }
+  function tmUpdateBtns(){
+    var n=tmCount();
+    if($id('tmOff'))$id('tmOff').textContent=(tmArmed==='offcall'?'⚠ CONFIRM off-call ':'📴 Off-call (')+ (tmArmed==='offcall'?n:n+')');
+    if($id('tmOn')) $id('tmOn').textContent =(tmArmed==='oncall' ?'⚠ CONFIRM on-call ' :'📞 On-call (')+(tmArmed==='oncall'?n:n+')');
+    if($id('tmRe')) $id('tmRe').textContent =(tmArmed==='reassign'?'⚠ pick target below':'➡ Reassign ('+n+')');
+    if($id('tmMsg'))$id('tmMsg').textContent='✉ Message ('+n+')';
+  }
+  window.tmMessage=function(){
+    var ids=Object.keys(tmSel).filter(function(k){return tmSel[k];});
+    if(!ids.length){ toast('Select trucks first',true); return; }
+    openComposer(ids);
+  };
+  window.tmToggle=function(tid){ tmSel[tid]=!tmSel[tid]; tmArmed=null; tmUpdateBtns(); };
+  window.tmAct=function(kind){
+    var n=tmCount();
+    if(!n){ toast('Select trucks first (checkboxes)',true); return; }
+    if(tmArmed!==kind){ tmArmed=kind; tmUpdateBtns();
+      if(kind==='reassign'){ tmRenderTarget(); }
+      else toast('Click '+(kind==='offcall'?'📴':'📞')+' again to CONFIRM '+n+' truck(s)');
+      return;
+    }
+    if(kind==='offcall'||kind==='oncall'){
+      var list=[];
+      Object.keys(tmSel).forEach(function(tid){ if(!tmSel[tid])return; var t=T(tid); if(!t)return;
+        list.push({truckId:parseInt(String(tid).replace(/^t/,''),10), onCall:(kind==='oncall'), num:t.num}); });
+      tmArmed=null;
+      toast('Writing '+list.length+' call-status change(s) to NewMile…');
+      try{ parent.postMessage({type:'oncall',list:list},'*'); }catch(e){ toast('Bridge unavailable',true); }
+    }
+  };
+  function tmRenderTarget(){
+    var el=$id('tmTarget'); if(!el) return;
+    var opts=orders.filter(function(o){return !o.completed&&o.unit!=='hour';})
+      .map(function(o){return '<option value="'+o.id+'">'+(o.disp||o.id).slice(0,46)+' ('+Math.round(remainingQty(o))+' '+unitAbbr(o)+' rem)</option>';}).join('');
+    el.innerHTML='<div class="tm-target">➡ Reassign '+tmCount()+' truck(s) to: <select id="tmTargetSel">'+opts+'</select>'
+      +' loads <input id="tmTargetLds" type="number" value="2" min="1" max="9" style="width:48px">'
+      +' <button class="gmap" onclick="tmDoReassign()">✓ Confirm reassign</button>'
+      +' <button class="gmap" onclick="tmArmedClear()">✕</button></div>';
+  }
+  window.tmArmedClear=function(){ tmArmed=null; var el=$id('tmTarget'); if(el)el.innerHTML=''; tmUpdateBtns(); };
+  window.tmDoReassign=function(){
+    var oid=$id('tmTargetSel')&&$id('tmTargetSel').value; if(!oid||!O(oid)){ toast('Pick a target order',true); return; }
+    var lds=parseInt($id('tmTargetLds').value,10)||2;
+    var o=O(oid), assignments=[], deleteIds=[];
+    Object.keys(tmSel).forEach(function(tid){
+      if(!tmSel[tid]) return; var t=T(tid); if(!t) return;
+      assignments.push({truck:t.num, loads:lds, sequence:1});
+      orders.forEach(function(oo){ if(oo.id===oid) return; (oo.assigns||[]).forEach(function(a){ if(a.truck===tid&&a.aid) deleteIds.push(a.aid); }); });
+    });
+    if(!assignments.length){ toast('Nothing selected',true); return; }
+    toast('Reassigning '+assignments.length+' truck(s) → '+(o.disp||oid)+'…');
+    try{ parent.postMessage({type:'reassign',orderId:parseInt(String(oid).replace(/^o/,''),10),disp:o.disp,material:o.mat,assignments:assignments,deleteIds:deleteIds},'*'); }
+    catch(e){ toast('Bridge unavailable',true); }
+    tmArmedClear();
+  };
+  window.__tmResult=function(kind,res){
+    if(res&&res.error){ toast('🚛 '+kind+' failed: '+res.error,true); return; }
+    if(kind==='oncall'){
+      var ok=res.filter(function(x){return x.ok;}).length;
+      res.forEach(function(x){ if(!x.ok)return; var t=trucks.find(function(tt){return tt.num===x.num;}); });
+      toast('✓ '+ok+'/'+res.length+' call-status changes written to NewMile');
+      tmSel={}; tmRender();
+      try{ parent.postMessage({type:'refresh'},'*'); }catch(e){}
+    } else if(kind==='reassign'){
+      var made=(res.push&&res.push.created||[]).length, del=(res.deleted||[]).filter(function(x){return x.ok;}).length;
+      toast('✓ Reassigned: +'+made+' on target · '+del+' removed from old orders — refreshing');
+      tmSel={};
+    }
+  };
+  function tmRender(){
+    var body=$id('tabBody-trucks'); if(!body) return;
+    var rows=tmRows();
+    var byTruck=window.__dirUsersByTruckId||{};
+    body.innerHTML='<div id="tmTarget"></div>'
+      +'<table class="dir-t"><tr><th></th><th>Truck</th><th>Driver</th><th>📞</th><th>Order</th><th>Loads</th><th>Status</th><th>Call</th></tr>'
+      +rows.slice(0,300).map(function(rw){
+        var t=rw.t,o=rw.o,a=rw.a;
+        var u=byTruck[String(t.id).replace(/^t/,'')];
+        var ph=(u&&u.phone_number)?dirPhone(u.phone_number):'';
+        var st=t.status==='rolling'?'<span class="tm-pill tm-roll">▶ rolling</span>':(o?'<span class="tm-pill tm-asg">assigned</span>':'<span class="tm-pill">free</span>');
+        return '<tr><td><input type="checkbox" '+(tmSel[t.id]?'checked':'')+' onchange="tmToggle(\''+t.id+'\')"></td>'
+          +'<td><b>'+t.num+'</b> <small style="color:#8b96a5">'+(t.group||'')+'</small></td>'
+          +'<td class="dir-ell">'+(t.driver||(u?((u.first_name||'')+' '+(u.last_name||'')):''))+'</td>'
+          +'<td>'+ph+'</td>'
+          +'<td class="dir-ell">'+(o?(o.disp||''):'—')+'</td>'
+          +'<td>'+(a?(progText(a)):'')+'</td>'
+          +'<td>'+st+'</td>'
+          +'<td>'+(t.onCall?'<span class="tm-pill tm-on">on-call</span>':'<span class="tm-pill tm-off">off-call</span>')+'</td></tr>';
+      }).join('')+'</table>'
+      +(rows.length>300?'<div style="color:#8b96a5;font-size:11px;padding:8px">Showing 300 of '+rows.length+' — narrow with search.</div>':'');
+    tmUpdateBtns();
+  }
+
+  /* ==================== 📇 DIRECTORY (live MCP — no scraping) ====================
+     Trucks · Drivers · Locations · Haulers with search, phones, RingCentral
+     click-to-call (rcapp://) + tel: fallback, and CSV export. Cached per session. */
+  var dirData=null, dirTab='trucks', dirQ='';
+  window.__directoryResult=function(res){
+    if(res&&res.error){ var b=$id('tabBody-dir'); if(b)b.innerHTML='<div style="color:var(--red);padding:24px;text-align:center">⚠ '+res.error+'</div>'; return; }
+    dirData=res||{users:[],locations:[],haulers:[]};
+    // index users by truck for enrichment everywhere (map popups, truck manager)
+    var byTruck={};
+    (dirData.users||[]).forEach(function(u){ if(u.truck_id!=null) byTruck[String(u.truck_id)]=u; });
+    window.__dirUsersByTruckId=byTruck;
+    dirRender();
+  };
+  window.__tabInit_dir=function(){
+    var body=$id('tabBody-dir');
+    if(!body.dataset.built){
+      body.dataset.built='1';
+      var tools=$id('tabTools-dir');
+      tools.innerHTML='<input id="dirQ" placeholder="Search name, phone, truck…" style="background:#141b24;border:1px solid var(--line);color:#fff;border-radius:8px;padding:6px 10px;font-family:inherit;width:220px">'
+        +'<button class="gmap" onclick="dirExport()">⬇ CSV</button>'
+        +'<button class="gmap" onclick="dirReload()">↻ Reload</button>';
+      $id('dirQ').addEventListener('input',function(){ dirQ=this.value.trim().toLowerCase(); dirRender(); });
+    }
+    if(!dirData){ body.innerHTML='<div style="color:var(--muted);padding:24px;text-align:center">Pulling directory from NewMile…</div>';
+      try{ parent.postMessage({type:'directory'},'*'); }catch(e){} }
+    else dirRender();
+  };
+  window.dirReload=function(){ dirData=null; window.__tabInit_dir(); };
+  function dirPhone(p){
+    if(!p) return '';
+    var d=String(p).replace(/\D/g,''); if(d.length===10)d='1'+d;
+    return '<a class="dir-call" href="rcapp://r/call?number=%2B'+d+'" title="Call with RingCentral">📞 '+p+'</a>';
+  }
+  function dirSets(){
+    var q=dirQ;
+    function hit(s){ return !q || String(s||'').toLowerCase().indexOf(q)>=0; }
+    var users=(dirData.users||[]).filter(function(u){ return hit(u.first_name+' '+u.last_name)||hit(u.phone_number)||hit(u.truck_number)||hit(u.org_name)||hit(u.email); });
+    var trks=trucks.filter(function(t){ return hit(t.num)||hit(t.driver)||hit(t.owner); });
+    var locs=(dirData.locations||[]).filter(function(l){ return hit(l.name)||hit(l.address); });
+    var hls=(dirData.haulers||[]).filter(function(h){ return hit(h.name)||hit(h.address); });
+    return {users:users,trucks:trks,locations:locs,haulers:hls};
+  }
+  window.dirSetTab=function(t){ dirTab=t; dirRender(); };
+  function dirRender(){
+    var body=$id('tabBody-dir'); if(!body||!dirData) return;
+    var s=dirSets();
+    var tabs=[['trucks','🚛 Trucks ('+s.trucks.length+')'],['drivers','👤 Drivers ('+s.users.length+')'],['locations','📍 Locations ('+s.locations.length+')'],['haulers','🏢 Haulers ('+s.haulers.length+')']];
+    var h='<div class="dir-tabs">'+tabs.map(function(t){return '<button class="fchip '+(dirTab===t[0]?'on':'')+'" onclick="dirSetTab(\''+t[0]+'\')">'+t[1]+'</button>';}).join('')+'</div>';
+    var byTruck=window.__dirUsersByTruckId||{};
+    if(dirTab==='trucks'){
+      h+='<table class="dir-t"><tr><th>Truck</th><th>Group</th><th>Driver</th><th>Phone</th><th>Owner</th><th>Status</th></tr>'
+        +s.trucks.slice(0,400).map(function(t){
+          var u=byTruck[String(t.id).replace(/^t/,'')]||null;
+          var ph=(u&&u.phone_number)||'';
+          return '<tr><td><b>'+t.num+'</b></td><td>'+(t.group||'')+'</td><td>'+(t.driver||(u?(u.first_name+' '+u.last_name):''))+'</td><td>'+dirPhone(ph)+'</td><td class="dir-ell">'+(t.owner||'')+'</td><td>'+(t.status||'')+(t.onCall?'':' · off-call')+'</td></tr>';
+        }).join('')+'</table>';
+    } else if(dirTab==='drivers'){
+      h+='<table class="dir-t"><tr><th>Name</th><th>Phone</th><th>Truck</th><th>Org</th><th>Email</th></tr>'
+        +s.users.slice(0,400).map(function(u){
+          return '<tr><td><b>'+((u.first_name||'')+' '+(u.last_name||'')).trim()+'</b></td><td>'+dirPhone(u.phone_number)+'</td><td>'+(u.truck_number||'')+'</td><td class="dir-ell">'+(u.org_name||'')+'</td><td class="dir-ell">'+(u.email||'')+'</td></tr>';
+        }).join('')+'</table>';
+    } else if(dirTab==='locations'){
+      h+='<table class="dir-t"><tr><th>Name</th><th>Address</th><th></th></tr>'
+        +s.locations.slice(0,400).map(function(l){
+          return '<tr><td><b>'+(l.name||'')+'</b></td><td class="dir-ell">'+(l.address||'')+'</td><td>'+(l.lat!=null?('<a class="dir-call" target="_blank" href="https://www.google.com/maps/search/?api=1&query='+l.lat+','+l.lng+'">🗺</a>'):'')+'</td></tr>';
+        }).join('')+'</table>';
+    } else {
+      h+='<table class="dir-t"><tr><th>Hauler</th><th>Address</th></tr>'
+        +s.haulers.map(function(x){ return '<tr><td><b>'+(x.name||'')+'</b></td><td class="dir-ell">'+(x.address||'')+'</td></tr>'; }).join('')+'</table>';
+    }
+    body.innerHTML=h;
+  }
+  window.dirExport=function(){
+    if(!dirData){ toast('Directory not loaded yet',true); return; }
+    var s=dirSets(), rows=[], name='directory_'+dirTab;
+    function csv(v){ v=String(v==null?'':v); return /[",\n]/.test(v)?('"'+v.replace(/"/g,'""')+'"'):v; }
+    if(dirTab==='trucks'){ rows.push('truck,group,driver,phone,owner,status');
+      var byTruck=window.__dirUsersByTruckId||{};
+      s.trucks.forEach(function(t){ var u=byTruck[String(t.id).replace(/^t/,'')]; rows.push([t.num,t.group||'',t.driver||'',(u&&u.phone_number)||'',t.owner||'',t.status||''].map(csv).join(',')); }); }
+    else if(dirTab==='drivers'){ rows.push('name,phone,truck,org,email');
+      s.users.forEach(function(u){ rows.push([((u.first_name||'')+' '+(u.last_name||'')).trim(),u.phone_number||'',u.truck_number||'',u.org_name||'',u.email||''].map(csv).join(',')); }); }
+    else if(dirTab==='locations'){ rows.push('name,address,lat,lng');
+      s.locations.forEach(function(l){ rows.push([l.name||'',l.address||'',l.lat||'',l.lng||''].map(csv).join(',')); }); }
+    else { rows.push('hauler,address'); s.haulers.forEach(function(x){ rows.push([x.name||'',x.address||''].map(csv).join(',')); }); }
+    var blob=new Blob([rows.join('\r\n')],{type:'text/csv'});
+    var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name+'.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('⬇ '+name+'.csv ('+(rows.length-1)+' rows)');
+  };
+
+  /* ==================== 💰 LOAD QUOTER ====================
+     Full cost/earnings engine — superior to the All-in-One's hidden Fuel & Earnings:
+     real road miles + drive time (OSRM, keyless), cycle-time → loads/day, fuel, opex,
+     driver %, wait time, A/B compare, history. All sticky in localStorage. */
+  var QDEF={jobType:'ton',rate:6.5,fsc:0,qty:500,capTon:24,capYd:18,mpg:5.0,diesel:3.6,drvPct:25,
+            waitMin:15,loadMin:15,unloadMin:10,workHrs:11,tolls:0,nmFee:0,opexWk:350};
+  function qLoad(){ try{ return Object.assign({},QDEF,JSON.parse(localStorage.getItem('mab_quote')||'{}')); }catch(e){ return Object.assign({},QDEF); } }
+  function qSave(v){ try{ localStorage.setItem('mab_quote',JSON.stringify(v)); }catch(e){} }
+  function qHist(){ try{ return JSON.parse(localStorage.getItem('mab_quote_hist')||'[]'); }catch(e){ return []; } }
+  function qHistPush(row){ var h=qHist(); h.unshift(row); h=h.slice(0,10); try{ localStorage.setItem('mab_quote_hist',JSON.stringify(h)); }catch(e){} }
+
+  function knownPlaces(){   // name -> {lat,lng} from today's+tomorrow's resolved orders
+    var m={};
+    [3,4,5].forEach(function(k){ (DAY_ORDERS[k]||[]).forEach(function(o){
+      if(o.pickupLat!=null&&o.pickup) m[o.pickup]={lat:o.pickupLat,lng:o.pickupLng};
+      if(o.dropLat!=null&&o.drop)     m[o.drop]={lat:o.dropLat,lng:o.dropLng};
+    });});
+    return m;
+  }
+  async function qGeocode(q){
+    var places=knownPlaces();
+    if(places[q]) return Object.assign({src:'board'},places[q]);
+    // fuzzy known-name match
+    var norm=q.toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim();
+    for(var name in places){
+      var n2=name.toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim();
+      if(n2===norm||n2.indexOf(norm)>=0||norm.indexOf(n2)>=0) return Object.assign({src:'board'},places[name]);
+    }
+    try{   // Census geocoder (free, no key) for raw addresses
+      var u='https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&format=json&address='+encodeURIComponent(q);
+      var r=await fetch(u); var j=await r.json();
+      var hit=j&&j.result&&j.result.addressMatches&&j.result.addressMatches[0];
+      if(hit) return {lat:hit.coordinates.y,lng:hit.coordinates.x,src:'census'};
+    }catch(e){}
+    return null;
+  }
+  async function qRoute(a,b){   // → {mi, min, src}
+    try{
+      var u='https://router.project-osrm.org/route/v1/driving/'+a.lng+','+a.lat+';'+b.lng+','+b.lat+'?overview=false';
+      var r=await fetch(u); var j=await r.json();
+      var rt=j&&j.routes&&j.routes[0];
+      if(rt) return {mi:rt.distance/1609.34, min:rt.duration/60, src:'OSRM road'};
+    }catch(e){}
+    var mi=enhHavMi(a.lat,a.lng,b.lat,b.lng)*1.27;
+    return {mi:mi, min:mi/45*60, src:'estimate (straight-line ×1.27 @45mph)'};
+  }
+
+  function qCompute(v,route){
+    var capQty = v.jobType==='yard'?v.capYd : v.capTon;          // qty per load
+    var loads = v.jobType==='hour' ? 0 : Math.max(1,Math.ceil(v.qty/(v.jobType==='load'?1:capQty)));
+    if(v.jobType==='load') loads=Math.max(1,Math.round(v.qty));
+    var cycleMin = 2*route.min + (+v.loadMin||0)+(+v.unloadMin||0)+(+v.waitMin||0);
+    var loadsDayTruck = Math.max(1,Math.floor((v.workHrs*60)/Math.max(1,cycleMin)));
+    var rtMi = 2*route.mi;
+    var rev=0;
+    if(v.jobType==='ton'||v.jobType==='yard'){ rev=v.rate*capQty; }   // $ per full load
+    else { rev=v.rate; }                                              // /load or /hour
+    var fscMult=1+((+v.fsc||0)/100);
+    var revLoad = rev*fscMult;
+    var gallons = rtMi/Math.max(1,v.mpg);
+    var fuelLoad = gallons*v.diesel;
+    var opexDay = (+v.opexWk||0)/5;
+    var out={};
+    if(v.jobType==='hour'){
+      var hrs=v.qty||v.workHrs;
+      var gross=revLoad*hrs;
+      var fuel=(hrs*18/Math.max(1,v.mpg))*v.diesel;   // ~18 mi per onsite hour heuristic
+      var driver=gross*(v.drvPct/100);
+      out={mode:'hour',hrs:hrs,gross:gross,fuel:fuel,driver:driver,opex:opexDay,tolls:+v.tolls||0,
+           net:gross-fuel-driver-opexDay-(+v.tolls||0)-(+v.nmFee||0)*0,cycleMin:0,loadsDay:0,rtMi:0};
+    } else {
+      var grossLoad=revLoad, netLoad=grossLoad-fuelLoad-(+v.tolls||0)-(+v.nmFee||0)-grossLoad*(v.drvPct/100);
+      var grossDay=grossLoad*loadsDayTruck, fuelDay=fuelLoad*loadsDayTruck;
+      var driverDay=grossDay*(v.drvPct/100);
+      var netDay=grossDay-fuelDay-driverDay-opexDay-((+v.tolls||0)+(+v.nmFee||0))*loadsDayTruck;
+      var trucksNeeded=Math.ceil(loads/loadsDayTruck);
+      out={mode:v.jobType,loads:loads,cycleMin:cycleMin,loadsDay:loadsDayTruck,rtMi:rtMi,
+           miPerLoad:rtMi,gallons:gallons,fuelLoad:fuelLoad,grossLoad:grossLoad,netLoad:netLoad,
+           grossDay:grossDay,fuelDay:fuelDay,driverDay:driverDay,opexDay:opexDay,netDay:netDay,
+           dollarMi:grossLoad/Math.max(1,rtMi),breakeven:(fuelLoad+(+v.tolls||0)+(+v.nmFee||0)+opexDay/loadsDayTruck)/(1-(v.drvPct/100)),
+           trucksNeeded:trucksNeeded};
+    }
+    out.route=route; return out;
+  }
+  function $q(id){ return document.getElementById(id); }
+  function qNum(id){ return parseFloat($q(id).value)||0; }
+  function qRow(l,v,hl){ return '<div class="q-row'+(hl?' q-hl':'')+'"><span>'+l+'</span><b>'+v+'</b></div>'; }
+  function qMoney(n){ return '$'+(Math.round(n*100)/100).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  var qPinned=null, qLastResult=null;
+
+  window.__tabInit_quote=function(){
+    var body=$id('tabBody-quote');
+    if(body.dataset.built) return;
+    body.dataset.built='1';
+    var v=qLoad();
+    var places=Object.keys(knownPlaces());
+    body.innerHTML=
+      '<div class="q-grid">'
+      +'<div class="q-col">'
+        +'<div class="q-sec">📍 Route</div>'
+        +'<datalist id="qPlaces">'+places.map(function(p){return '<option value="'+p.replace(/"/g,'&quot;')+'">';}).join('')+'</datalist>'
+        +'<label class="q-l">Pickup<input id="qFrom" list="qPlaces" placeholder="Known location or full address…"></label>'
+        +'<label class="q-l">Dropoff<input id="qTo" list="qPlaces" placeholder="Known location or full address…"></label>'
+        +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
+          +'<button class="gmap" onclick="qUseOrder()">⤵ Use focused order</button>'
+          +'<button class="gmap" id="qRouteBtn" onclick="qDoRoute()">🛣 Get miles & time</button>'
+          +'<span id="qRouteOut" style="font-size:12px;color:var(--teal);align-self:center"></span>'
+        +'</div>'
+        +'<div class="q-sec">💵 Job</div>'
+        +'<label class="q-l">Type<select id="qType"><option value="ton">$ / ton</option><option value="yard">$ / yard</option><option value="load">$ / load</option><option value="hour">$ / hour</option></select></label>'
+        +'<label class="q-l">Rate $<input id="qRate" type="number" step="0.05"></label>'
+        +'<label class="q-l">FSC %<input id="qFsc" type="number" step="0.5"></label>'
+        +'<label class="q-l">Quantity (t / yd / loads / hrs)<input id="qQty" type="number" step="1"></label>'
+        +'<label class="q-l">Capacity tons<input id="qCapT" type="number" step="0.5"></label>'
+        +'<label class="q-l">Capacity yards<input id="qCapY" type="number" step="0.5"></label>'
+        +'<div class="q-sec">⛽ Truck & costs</div>'
+        +'<label class="q-l">MPG<input id="qMpg" type="number" step="0.1"></label>'
+        +'<label class="q-l">Diesel $/gal<input id="qDsl" type="number" step="0.01"></label>'
+        +'<label class="q-l">Driver pay % of gross<input id="qDrv" type="number" step="1"></label>'
+        +'<label class="q-l">Wait min/load<input id="qWait" type="number" step="1"></label>'
+        +'<label class="q-l">Load min<input id="qLoadM" type="number" step="1"></label>'
+        +'<label class="q-l">Unload min<input id="qUnloadM" type="number" step="1"></label>'
+        +'<label class="q-l">Workday hours<input id="qWork" type="number" step="0.5"></label>'
+        +'<label class="q-l">Tolls $/load<input id="qTolls" type="number" step="0.5"></label>'
+        +'<label class="q-l">NewMile fee $/load<input id="qNmFee" type="number" step="0.5"></label>'
+        +'<label class="q-l">Weekly opex $ (ins+tech)<input id="qOpex" type="number" step="10"></label>'
+      +'</div>'
+      +'<div class="q-col">'
+        +'<div style="display:flex;gap:7px;margin-bottom:8px;flex-wrap:wrap">'
+          +'<button class="warn qbig" onclick="qRun()">🧮 Quote it</button>'
+          +'<button class="gmap" onclick="qPin()">📌 Pin as A</button>'
+          +'<button class="gmap" onclick="qCopy()">📋 Copy summary</button>'
+        +'</div>'
+        +'<div id="qOut" class="q-out"><div style="color:var(--muted)">Set the route + numbers, then 🧮 Quote it.</div></div>'
+        +'<div id="qCompare"></div>'
+        +'<div class="q-sec" style="margin-top:10px">🕘 Recent quotes</div>'
+        +'<div id="qHist"></div>'
+      +'</div>'
+      +'</div>';
+    // restore sticky values
+    $q('qType').value=v.jobType; $q('qRate').value=v.rate; $q('qFsc').value=v.fsc; $q('qQty').value=v.qty;
+    $q('qCapT').value=v.capTon; $q('qCapY').value=v.capYd; $q('qMpg').value=v.mpg; $q('qDsl').value=v.diesel;
+    $q('qDrv').value=v.drvPct; $q('qWait').value=v.waitMin; $q('qLoadM').value=v.loadMin; $q('qUnloadM').value=v.unloadMin;
+    $q('qWork').value=v.workHrs; $q('qTolls').value=v.tolls; $q('qNmFee').value=v.nmFee; $q('qOpex').value=v.opexWk;
+    qRenderHist();
+  };
+  window.qUseOrder=function(){
+    var o=plFocus?O(plFocus):null;
+    if(!o){ var sel=Array.from(selectedOrders)[0]; o=sel?O(sel):null; }
+    if(!o){ toast('Focus an order in the planner first',true); return; }
+    $q('qFrom').value=o.pickup||''; $q('qTo').value=o.drop||'';
+    if(o.target){ $q('qQty').value=o.target; }
+    if(o.unit){ $q('qType').value=(o.unit==='hour'?'hour':o.unit==='load'?'load':'ton'); }
+    toast('Prefilled from '+o.disp+' — hit 🛣 Get miles & time');
+  };
+  var qRouteData=null;
+  /* route via the app's main process (no CORS; census+nominatim+OSRM) with a pending map */
+  var _routeReqs={}, _routeSeq=0;
+  window.__routeResult=function(reqId,res){ var p=_routeReqs[reqId]; if(p){ delete _routeReqs[reqId]; p(res); } };
+  function bridgeRoute(payload){
+    return new Promise(function(resolve){
+      var id='rq'+(++_routeSeq);
+      _routeReqs[id]=resolve; payload.reqId=id; payload.type='route';
+      try{ parent.postMessage(payload,'*'); }catch(e){ resolve({error:'bridge unavailable'}); }
+      setTimeout(function(){ if(_routeReqs[id]){ delete _routeReqs[id]; resolve({error:'route timeout'}); } },25000);
+    });
+  }
+  window.qDoRoute=async function(){
+    var f=$q('qFrom').value.trim(), t=$q('qTo').value.trim();
+    if(!f||!t){ toast('Type pickup and dropoff first',true); return; }
+    $q('qRouteOut').textContent='resolving…';
+    // known board locations resolve instantly with exact coords
+    var A=await qGeocode(f), B=await qGeocode(t);
+    var res;
+    if(window.parent!==window){            // inside the app → main-process engine
+      res=await bridgeRoute({from:f,to:t,fromCoords:(A&&A.src==='board')?A:null,toCoords:(B&&B.src==='board')?B:null});
+    } else if(A&&B){                        // standalone preview → direct OSRM
+      res=await qRoute(A,B);
+    } else { res={error:'could not locate '+(!A?'pickup':'dropoff')}; }
+    if(!res||res.error){ $q('qRouteOut').textContent='⚠ '+((res&&res.error)||'route failed')+' — try a fuller address'; qRouteData=null; return; }
+    qRouteData=res;
+    $q('qRouteOut').textContent='~'+Math.round(res.mi)+' mi · ~'+Math.round(res.min)+' min one-way ('+res.src+')';
+  };
+  function qGather(){
+    return {jobType:$q('qType').value,rate:qNum('qRate'),fsc:qNum('qFsc'),qty:qNum('qQty'),
+      capTon:qNum('qCapT'),capYd:qNum('qCapY'),mpg:qNum('qMpg'),diesel:qNum('qDsl'),drvPct:qNum('qDrv'),
+      waitMin:qNum('qWait'),loadMin:qNum('qLoadM'),unloadMin:qNum('qUnloadM'),workHrs:qNum('qWork'),
+      tolls:qNum('qTolls'),nmFee:qNum('qNmFee'),opexWk:qNum('qOpex')};
+  }
+  window.qRun=function(){
+    var v=qGather(); qSave(v);
+    var rt=qRouteData||{mi:0,min:0,src:'no route set'};
+    if(!qRouteData && v.jobType!=='hour'){ toast('Tip: set the route for real miles — using 0 mi',true); }
+    var c=qCompute(v,rt); qLastResult={v:v,c:c,from:$q('qFrom').value,to:$q('qTo').value};
+    qRenderOut(c,v);
+    qHistPush({ts:new Date().toISOString().slice(5,16).replace('T',' '),from:$q('qFrom').value,to:$q('qTo').value,
+      type:v.jobType,rate:v.rate,netDay:(c.netDay!=null?Math.round(c.netDay):Math.round(c.net||0))});
+    qRenderHist();
+  };
+  function qRenderOut(c,v){
+    var h='';
+    if(c.mode==='hour'){
+      h=qRow('Hours billed',c.hrs)
+       +qRow('Gross',qMoney(c.gross),1)
+       +qRow('Fuel (est)','−'+qMoney(c.fuel))
+       +qRow('Driver pay ('+v.drvPct+'%)','−'+qMoney(c.driver))
+       +qRow('Opex/day','−'+qMoney(c.opex))
+       +(c.tolls?qRow('Tolls','−'+qMoney(c.tolls)):'')
+       +qRow('NET / day / truck',qMoney(c.net),1);
+    } else {
+      h=qRow('Route',Math.round(c.route.mi)+' mi · '+Math.round(c.route.min)+' min one-way <small>('+c.route.src+')</small>')
+       +qRow('Cycle per load',Math.round(c.cycleMin)+' min ('+(2*Math.round(c.route.min))+' drive + '+(v.loadMin+v.unloadMin+v.waitMin)+' fixed)')
+       +qRow('Loads/day per truck',c.loadsDay,1)
+       +qRow('Trucks for '+c.loads+' loads',c.trucksNeeded,1)
+       +qRow('Miles per load (RT)',Math.round(c.rtMi))
+       +qRow('Revenue / load',qMoney(c.grossLoad))
+       +qRow('Fuel / load ('+(Math.round(c.gallons*10)/10)+' gal)','−'+qMoney(c.fuelLoad))
+       +qRow('$ / mile',qMoney(c.dollarMi))
+       +qRow('Gross / day / truck',qMoney(c.grossDay))
+       +qRow('Driver / day ('+v.drvPct+'%)','−'+qMoney(c.driverDay))
+       +qRow('Fuel / day','−'+qMoney(c.fuelDay))
+       +qRow('Opex / day','−'+qMoney(c.opexDay))
+       +qRow('NET / day / truck',qMoney(c.netDay),1)
+       +qRow('Breakeven rate / load',qMoney(c.breakeven));
+    }
+    $q('qOut').innerHTML=h;
+    if(qPinned) qRenderCompare();
+  }
+  window.qPin=function(){
+    if(!qLastResult){ toast('Run a quote first',true); return; }
+    qPinned=qLastResult; toast('Pinned as A — run another quote to compare');
+    qRenderCompare();
+  };
+  function qRenderCompare(){
+    if(!qPinned){ $q('qCompare').innerHTML=''; return; }
+    var a=qPinned.c, b=qLastResult&&qLastResult!==qPinned?qLastResult.c:null;
+    var an=(a.netDay!=null?a.netDay:a.net)||0, bn=b?((b.netDay!=null?b.netDay:b.net)||0):null;
+    $q('qCompare').innerHTML='<div class="q-sec" style="margin-top:10px">⚖ Compare</div>'
+      +qRow('A · '+(qPinned.from||'?')+' → '+(qPinned.to||'?'),qMoney(an)+' net/day')
+      +(b!=null?qRow('B · '+(qLastResult.from||'?')+' → '+(qLastResult.to||'?'),qMoney(bn)+' net/day',1)
+        +qRow('Winner',(bn>an?'B':'A')+' by '+qMoney(Math.abs(bn-an))):'<div style="font-size:12px;color:var(--muted)">Run quote B…</div>');
+  }
+  window.qCopy=function(){
+    if(!qLastResult){ toast('Run a quote first',true); return; }
+    var c=qLastResult.c, v=qLastResult.v;
+    var s='QUOTE '+qLastResult.from+' -> '+qLastResult.to
+      +'\nRoute: '+Math.round(c.route.mi)+' mi / '+Math.round(c.route.min)+' min one-way ('+c.route.src+')'
+      +'\nType: $'+v.rate+' /'+v.jobType+(v.fsc?' +'+v.fsc+'% FSC':'')
+      +(c.mode!=='hour'?('\nLoads/day/truck: '+c.loadsDay+' · cycle '+Math.round(c.cycleMin)+' min'
+        +'\nRevenue/load: '+qMoney(c.grossLoad)+' · $/mi '+qMoney(c.dollarMi)
+        +'\nNET/day/truck: '+qMoney(c.netDay)+' · breakeven '+qMoney(c.breakeven)+'/load'):
+        ('\nGross: '+qMoney(c.gross)+' · NET/day: '+qMoney(c.net)));
+    _copyFallback(s); toast('Quote copied 📋');
+  };
+  function qRenderHist(){
+    var h=qHist();
+    $q('qHist').innerHTML=h.length?h.map(function(r){
+      return '<div class="q-row"><span>'+r.ts+' · '+(r.from||'?')+'→'+(r.to||'?')+' · $'+r.rate+'/'+r.type+'</span><b>'+qMoney(r.netDay)+'/day</b></div>';
+    }).join(''):'<div style="font-size:12px;color:var(--muted)">No quotes yet.</div>';
+  }
+
+  /* ==================== ✉ COPILOT MESSAGE COMPOSER ====================
+     Drafts from REAL context (driver, order, pickup, time, loads) via templates with
+     merge-fields, EN/ES, editable, mass-send to selected trucks through Samsara driver
+     messaging (matched by phone). Preview-confirm before anything sends. */
+  var COMP_T={
+    dispatch:{en:'Hi {driver}, tomorrow you load at {pickup} — {material} for {order}. Start {time}, {loads} load(s). Please confirm. 🚛',
+              es:'Hola {driver}, mañana cargas en {pickup} — {material} para {order}. Inicio {time}, {loads} carga(s). Confirma por favor. 🚛'},
+    rolling: {en:'Hi {driver}, are you rolling on {order}? Please send a quick update.',
+              es:'Hola {driver}, ¿ya vas rodando con {order}? Mándame un update rápido.'},
+    where:   {en:'Hi {driver}, dispatch here — where are you right now? Need a status update.',
+              es:'Hola {driver}, habla dispatch — ¿dónde andas ahorita? Necesito saber tu estatus.'},
+    custom:  {en:'',es:''}
+  };
+  var samDrivers=null, compList=[], _sendReqs={}, _sendSeq=0;
+  window.__driversResult=function(list){ samDrivers=list||[]; compRender(); };
+  window.__sendMsgResult=function(reqId,res){ var cb=_sendReqs[reqId]; if(cb){ delete _sendReqs[reqId]; cb(res); } };
+  function compCtx(t){   // merge-field context from today's plan/assignments
+    var ctx={driver:(t.driver||'').split(' ')[0]||'driver',truck:t.num,order:'your order',pickup:'the yard',time:'',loads:'',material:''};
+    for(var i=0;i<orders.length;i++){
+      var o=orders[i];
+      var a=(o.assigns||[]).find(function(x){return x.truck===t.id;});
+      if(a){ ctx.order=o.disp||''; ctx.pickup=o.pickup||''; ctx.time=o.time||''; ctx.material=o.mat||''; ctx.loads=(typeof a.ll==='number'?a.ll:''); break; }
+      var p=(planDraft[o.id]||[]).find(function(x){return (x.num||'').toLowerCase()===t.num.toLowerCase();});
+      if(p){ ctx.order=o.disp||''; ctx.pickup=o.pickup||''; ctx.time=o.time||''; ctx.material=o.mat||''; ctx.loads=p.lds||''; break; }
+    }
+    return ctx;
+  }
+  function compFill(tpl,ctx){ return tpl.replace(/\{(\w+)\}/g,function(_,k){ return (ctx[k]!=null&&ctx[k]!=='')?ctx[k]:''; }).replace(/\s+,/g,',').replace(/ {2,}/g,' '); }
+  function compMatch(t){   // truck -> samsara driver via phone (then name)
+    var u=(window.__dirUsersByTruckId||{})[String(t.id).replace(/^t/,'')];
+    var ph=u&&u.phone_number?String(u.phone_number).replace(/\D/g,'').slice(-10):'';
+    if(samDrivers&&ph){ var hit=samDrivers.find(function(d){return d.phone&&d.phone===ph;}); if(hit) return hit; }
+    var nm=(t.driver||'').trim().toLowerCase();
+    if(samDrivers&&nm.length>4){ var h2=samDrivers.find(function(d){return d.name&&d.name.toLowerCase().indexOf(nm)>=0;}); if(h2) return h2; }
+    return null;
+  }
+  window.openComposer=function(truckIds){
+    if(!samDrivers){ try{ parent.postMessage({type:'drivers'},'*'); }catch(e){} }
+    compList=(truckIds||[]).map(function(id){return T(id);}).filter(Boolean);
+    var d=$id('compScrim');
+    if(!d){
+      d=document.createElement('div'); d.id='compScrim';
+      d.addEventListener('click',function(ev){ if(ev.target===d)d.classList.remove('open'); });
+      document.body.appendChild(d);
+    }
+    d.innerHTML='<div id="compBox">'
+      +'<header><b>✉ Message drivers</b>'
+      +'<select id="compTpl" class="comp-sel"><option value="dispatch">Dispatch tomorrow</option><option value="rolling">Confirm rolling</option><option value="where">Where are you</option><option value="custom">Custom</option></select>'
+      +'<select id="compLang" class="comp-sel"><option value="es">Español</option><option value="en">English</option></select>'
+      +'<button class="al-mini" onclick="document.getElementById(\'compScrim\').classList.remove(\'open\')">✕</button></header>'
+      +'<textarea id="compText" placeholder="Write or pick a template — {driver} {truck} {order} {pickup} {time} {loads} {material} auto-fill per driver"></textarea>'
+      +'<div id="compRows"></div>'
+      +'<footer><span id="compNote" class="comp-note">Messages go to each driver\'s Samsara app. Unmatched drivers get a 📋 copy button instead.</span>'
+      +'<button class="qbig" id="compSend" onclick="compSendAll()">Send (0)</button></footer></div>';
+    d.classList.add('open');
+    $id('compTpl').addEventListener('change',compApplyTpl);
+    $id('compLang').addEventListener('change',compApplyTpl);
+    $id('compText').addEventListener('input',compRender);
+    compApplyTpl();
+  };
+  function compApplyTpl(){
+    var k=$id('compTpl').value, lang=$id('compLang').value;
+    $id('compText').value=COMP_T[k][lang]||'';
+    compRender();
+  }
+  function compRender(){
+    var rows=$id('compRows'); if(!rows) return;
+    var tpl=$id('compText').value;
+    if(!compList.length){ rows.innerHTML='<div class="comp-note" style="padding:14px;text-align:center">No trucks selected — open from 🚛 Truck Manager (✉ button) or a map pin.</div>'; $id('compSend').textContent='Send (0)'; return; }
+    var sendable=0;
+    rows.innerHTML=compList.map(function(t,i){
+      var ctx=compCtx(t), msg=compFill(tpl,ctx), drv=compMatch(t);
+      if(drv)sendable++;
+      return '<div class="comp-row" id="compRow'+i+'">'
+        +'<div class="comp-who"><b>'+t.num+'</b> '+(t.driver||'')+(drv?' <span class="tm-pill tm-on">samsara ✓</span>':' <span class="tm-pill tm-off">no match</span>')+'</div>'
+        +'<div class="comp-msg">'+msg.replace(/</g,'&lt;')+'</div>'
+        +'<div class="comp-st" id="compSt'+i+'">'+(drv?'':'<button class="gmap" onclick="_copyFallback(document.querySelectorAll(\'.comp-msg\')['+i+'].textContent);toast(\'Copied 📋\')">📋</button>')+'</div>'
+        +'</div>';
+    }).join('');
+    var btn=$id('compSend'); btn.dataset.armed=''; btn.textContent='Send ('+sendable+')';
+  }
+  window.compSendAll=async function(){
+    var btn=$id('compSend');
+    var tpl=$id('compText').value.trim();
+    if(!tpl){ toast('Write a message first',true); return; }
+    var targets=compList.map(function(t,i){ return {t:t,i:i,drv:compMatch(t)}; }).filter(function(x){return x.drv;});
+    if(!targets.length){ toast('No Samsara-matched drivers in the list',true); return; }
+    if(btn.dataset.armed!=='1'){ btn.dataset.armed='1'; btn.textContent='⚠ CONFIRM send '+targets.length; return; }
+    btn.disabled=true; btn.textContent='Sending…';
+    var ok=0;
+    for(var k=0;k<targets.length;k++){
+      var x=targets[k], ctx=compCtx(x.t), msg=compFill(tpl,ctx);
+      var st=$id('compSt'+x.i); if(st)st.textContent='…';
+      var res=await new Promise(function(resolve){
+        var id='sm'+(++_sendSeq); _sendReqs[id]=resolve;
+        try{ parent.postMessage({type:'sendmsg',reqId:id,driverId:x.drv.id,tok:x.drv.tok,text:msg},'*'); }
+        catch(e){ resolve({error:'bridge'}); }
+        setTimeout(function(){ if(_sendReqs[id]){ delete _sendReqs[id]; resolve({error:'timeout'}); } },20000);
+      });
+      if(st)st.textContent=(res&&res.ok)?'✓':'✗ '+((res&&res.error)||'').slice(0,30);
+      if(res&&res.ok)ok++;
+      await new Promise(function(r2){setTimeout(r2,450);});
+    }
+    btn.disabled=false; btn.dataset.armed=''; btn.textContent='Send ('+targets.length+')';
+    toast('✉ '+ok+'/'+targets.length+' message(s) delivered to Samsara');
+  };
+
   /* ---------- 📷 dashcam snapshot (Samsara Media Retrieval — verified live) ---------- */
   function openCamOverlay(num,url,err){
     var d=$id('camScrim');
@@ -3335,6 +4263,60 @@ setView('board');
     if(res&&res.url) openCamOverlay(num,res.url,null);
     else openCamOverlay(num,null,(res&&res.error)||'Camera did not answer');
   };
+
+  /* ---------- top icon-tabs: 💬 Messages · 🚛 Trucks · 📇 Directory · 💰 Quoter ----------
+     Each is a full-screen .tabscrim modal (z 64) — content filled by its own module section.
+     openTab(key) lazily builds; ESC / scrim-click closes the TOPMOST open layer only. */
+  var TABS=[
+    {key:'msg',   icon:'💬', label:'Messages',  title:'💬 Driver Messages'},
+    {key:'trucks',icon:'🚛', label:'Trucks',    title:'🚛 Truck Manager'},
+    {key:'dir',   icon:'📇', label:'Directory', title:'📇 Directory — trucks · drivers · locations · haulers'},
+    {key:'quote', icon:'💰', label:'Quoter',    title:'💰 Load Quoter'}
+  ];
+  function tabDef(k){ for(var i=0;i<TABS.length;i++) if(TABS[i].key===k) return TABS[i]; return null; }
+  function enhTabModal(key){
+    var id='tab-'+key;
+    var el=$id(id);
+    if(el) return el;
+    var def=tabDef(key);
+    el=document.createElement('div'); el.className='tabscrim'; el.id=id;
+    el.innerHTML='<div class="tabpanel">'
+      +'<header><b>'+def.title+'</b><span class="thead-tools" id="tabTools-'+key+'"></span>'
+      +'<button class="tclose" onclick="closeTab(\''+key+'\')">✕</button></header>'
+      +'<div class="tabbody" id="tabBody-'+key+'"><div style="color:var(--muted);padding:30px;text-align:center">Loading…</div></div></div>';
+    el.addEventListener('click',function(ev){ if(ev.target===el) window.closeTab(key); });
+    document.body.appendChild(el);
+    return el;
+  }
+  window.openTab=function(key){
+    try{
+      var el=enhTabModal(key);
+      el.classList.add('open');
+      var fn=window['__tabInit_'+key];           // each module registers its initializer
+      if(typeof fn==='function') fn();
+    }catch(e){ console.error('openTab',e); toast('Tab error: '+e.message,true); }
+  };
+  window.closeTab=function(key){ var el=$id('tab-'+key); if(el)el.classList.remove('open'); };
+  /* ESC closes the topmost open overlay (cam > map > tabs > push/assign) */
+  document.addEventListener('keydown',function(ev){
+    if(ev.key!=='Escape') return;
+    var order=['camScrim','mapScrim','tab-msg','tab-trucks','tab-dir','tab-quote'];
+    for(var i=0;i<order.length;i++){
+      var el=$id(order[i]);
+      if(el&&el.classList.contains('open')){ el.classList.remove('open'); ev.stopPropagation(); return; }
+    }
+  });
+  function addTopTabs(){
+    var anchor=$id('enhMapBtn')||$id('pushBtn');
+    if(!anchor||!anchor.parentNode||$id('toptab-msg')) return;
+    TABS.forEach(function(d){
+      var b=document.createElement('button'); b.id='toptab-'+d.key; b.className='toptab';
+      b.innerHTML=d.icon+' '+d.label+(d.key==='msg'?'<span class="tbadge" id="msgBadge">0</span>':'');
+      b.title=d.title;
+      b.onclick=function(){ window.openTab(d.key); };
+      anchor.parentNode.insertBefore(b,anchor);
+    });
+  }
 
   function addMapBtn(){
     if($id('enhMapBtn')) return;
@@ -3367,6 +4349,7 @@ setView('board');
       patch('render'); patch('renderPlanner'); patch('renderOrders');
       addPlannerBtn();
       addFilterToggle();
+      addTopTabs();
       addMapBtn();
       document.addEventListener('paste',handlePlannerPaste,true);   // Excel → planner
       // settings start collapsed (remembered) — they only show when you press ⚙ Settings

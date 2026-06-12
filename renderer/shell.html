@@ -5,8 +5,8 @@
 <title>Milestone Load Board</title>
 <style>
   :root{
-    --bg:#0e1422; --bar:#10182a; --line:#2a3550; --ink:#e8ecf3; --mut:#9aa4b8; --dim:#6b7488;
-    --gold:#C8991F; --green:#3FB97A; --red:#FF6B6B; --amber:#E0B94A; --panel:#141b2b;
+    --bg:#141b24; --bar:#1a222c; --line:#313d4a; --ink:#e8ecf3; --mut:#aeb7c0; --dim:#8b96a5;
+    --gold:#C8991F; --green:#22c55e; --red:#ea4e2c; --amber:#fbbf24; --panel:#23303f;
   }
   html,body{margin:0;height:100%;background:var(--bg);font-family:'Segoe UI',system-ui,sans-serif;color:var(--ink);overflow:hidden}
   #bar{height:48px;display:flex;align-items:center;gap:12px;padding:0 12px;background:var(--bar);border-bottom:1px solid var(--line);position:relative;z-index:5}
@@ -25,18 +25,18 @@
   button.warn{background:var(--gold);border-color:var(--gold);color:#1a1205}
   button.ghost{background:transparent}
   button:disabled{opacity:.45;cursor:not-allowed}
-  input[type=date],select{background:#0f1626;border:1px solid var(--line);color:#fff;border-radius:8px;padding:6px 9px;font-family:inherit}
+  input[type=date],select{background:#202b38;border:1px solid var(--line);color:#fff;border-radius:8px;padding:6px 9px;font-family:inherit}
   label.lbl{font-size:12px;color:var(--mut)}
   .spacer{flex:1}
   iframe{border:0;width:100%;height:calc(100% - 48px);display:block;background:var(--bg)}
   #next{font-size:12px;color:var(--dim);min-width:60px}
 
   /* toast */
-  #msg{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#1C2333;border:1px solid var(--line);color:#fff;padding:9px 16px;border-radius:20px;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:60;max-width:70vw;text-align:center}
+  #msg{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#23303f;border:1px solid var(--line);color:#fff;padding:9px 16px;border-radius:20px;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:60;max-width:70vw;text-align:center}
   #msg.show{opacity:1}
 
   /* diagnostics drawer */
-  #diag{position:fixed;top:48px;right:0;width:440px;max-width:92vw;height:calc(100% - 48px);background:#0b1019;border-left:1px solid var(--line);transform:translateX(100%);transition:.22s;z-index:40;display:flex;flex-direction:column}
+  #diag{position:fixed;top:48px;right:0;width:440px;max-width:92vw;height:calc(100% - 48px);background:#141b24;border-left:1px solid var(--line);transform:translateX(100%);transition:.22s;z-index:40;display:flex;flex-direction:column}
   #diag.open{transform:translateX(0)}
   #diag h3{margin:0;padding:12px 14px;font-size:13px;border-bottom:1px solid var(--line);color:var(--mut);display:flex;justify-content:space-between;align-items:center}
   #log{flex:1;overflow:auto;padding:10px 14px;font-family:'Cascadia Code',Consolas,monospace;font-size:11.5px;color:#a9b6cc;white-space:pre-wrap;line-height:1.5}
@@ -45,17 +45,17 @@
   /* push modal */
   #scrim{position:fixed;inset:0;background:rgba(6,10,18,.72);z-index:50;display:none;align-items:center;justify-content:center}
   #scrim.open{display:flex}
-  #push{width:640px;max-width:94vw;max-height:86vh;background:#0f1626;border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.55)}
+  #push{width:640px;max-width:94vw;max-height:86vh;background:#202b38;border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.55)}
   #push header{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
   #push header h2{margin:0;font-size:16px}
   #push header .sub{font-size:12px;color:var(--mut);margin-top:2px}
   #pushBody{overflow:auto;padding:6px 18px}
   .ord{border:1px solid var(--line);border-radius:10px;margin:12px 0;overflow:hidden}
-  .ord .head{padding:10px 12px;background:#131c2e;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .ord .head{padding:10px 12px;background:#23303f;display:flex;justify-content:space-between;align-items:center;gap:8px}
   .ord .head .t{font-weight:700}
   .ord .head .m{font-size:11px;color:var(--mut)}
   .ord .rows{padding:6px 12px}
-  .arow{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px dashed #1d273b}
+  .arow{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px dashed #2e3a47}
   .arow:last-child{border-bottom:0}
   .arow .seq{color:var(--gold)}
   .badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;margin-left:6px}
@@ -89,6 +89,7 @@
       <option value="3600">60 min</option>
     </select>
     <span id="next"></span>
+    <button id="btnUpdate" style="display:none;background:var(--green);border-color:var(--green);color:#06231a" title="A new version is ready — download it">⬇ Update</button>
     <button class="ghost" id="btnDiag" title="Connection diagnostics">⚙</button>
   </div>
 
