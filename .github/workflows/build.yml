@@ -16,10 +16,8 @@ jobs:
       - run: npm ci
       - name: Build config (inject Samsara tokens from repo secrets)
         env:
-          SAMSARA_CACTUS: ${{ secrets.SAMSARA_CACTUS }}
-          SAMSARA_CKJ: ${{ secrets.SAMSARA_CKJ }}
           GH_RELEASES_PAT: ${{ secrets.GH_RELEASES_PAT }}
-        run: node -e "const fs=require('fs');const raw=fs.readFileSync('newmile.config.template.json','utf8').replace(/^﻿/,'');const c=JSON.parse(raw);c.samsara.tokens[0].token=process.env.SAMSARA_CACTUS||'';c.samsara.tokens[1].token=process.env.SAMSARA_CKJ||'';if(c.github)c.github.token=process.env.GH_RELEASES_PAT||'';fs.writeFileSync('newmile.config.json',JSON.stringify(c,null,2));console.log('config ready');"
+        run: node -e "const fs=require('fs');const raw=fs.readFileSync('newmile.config.template.json','utf8').replace(/^﻿/,'');const c=JSON.parse(raw);c.samsara.tokens.forEach(t=>t.token='');if(c.github)c.github.token=process.env.GH_RELEASES_PAT||'';fs.writeFileSync('newmile.config.json',JSON.stringify(c,null,2));console.log('config ready');"
       - name: Build portable exe
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -39,10 +37,8 @@ jobs:
       - run: npm ci
       - name: Build config (inject Samsara tokens from repo secrets)
         env:
-          SAMSARA_CACTUS: ${{ secrets.SAMSARA_CACTUS }}
-          SAMSARA_CKJ: ${{ secrets.SAMSARA_CKJ }}
           GH_RELEASES_PAT: ${{ secrets.GH_RELEASES_PAT }}
-        run: node -e "const fs=require('fs');const raw=fs.readFileSync('newmile.config.template.json','utf8').replace(/^﻿/,'');const c=JSON.parse(raw);c.samsara.tokens[0].token=process.env.SAMSARA_CACTUS||'';c.samsara.tokens[1].token=process.env.SAMSARA_CKJ||'';if(c.github)c.github.token=process.env.GH_RELEASES_PAT||'';fs.writeFileSync('newmile.config.json',JSON.stringify(c,null,2));console.log('config ready');"
+        run: node -e "const fs=require('fs');const raw=fs.readFileSync('newmile.config.template.json','utf8').replace(/^﻿/,'');const c=JSON.parse(raw);c.samsara.tokens.forEach(t=>t.token='');if(c.github)c.github.token=process.env.GH_RELEASES_PAT||'';fs.writeFileSync('newmile.config.json',JSON.stringify(c,null,2));console.log('config ready');"
       - name: Build universal dmg (Apple Silicon + Intel, unsigned)
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'

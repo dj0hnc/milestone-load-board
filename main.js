@@ -362,6 +362,25 @@ ipcMain.handle('nm:drivers', async () => {
     return out;
   } catch (e) { return []; }
 });
+// 🧪 instant key validation for the Admin panel — every market self-checks its token
+ipcMain.handle('nm:testSamsara', async (_e, token) => {
+  try {
+    const t = String(token || '').trim();
+    if (!t) return { error: 'empty token' };
+    const r = await fetch('https://api.samsara.com/fleet/vehicles/stats?types=gps', {
+      headers: { Authorization: 'Bearer ' + t, Accept: 'application/json' }
+    });
+    if (!r.ok) {
+      const body = (await r.text()).slice(0, 120);
+      return { error: 'HTTP ' + r.status + (r.status === 401 ? ' — invalid/expired token or missing API scope' : '') + ' · ' + body };
+    }
+    const j = await r.json();
+    const n = (j.data || []).length;
+    const gps = (j.data || []).filter(v => v.gps && v.gps.latitude != null).length;
+    return { ok: true, vehicles: n, withGps: gps };
+  } catch (e) { return { error: e.message || String(e) }; }
+});
+
 ipcMain.handle('nm:sendDriverMsg', async (_e, { driverId, tok, text }) => {
   try {
     const toks = ((appCfg.samsara && appCfg.samsara.tokens) || []).filter(t => t && t.token);

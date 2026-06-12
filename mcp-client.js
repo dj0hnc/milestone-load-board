@@ -412,6 +412,11 @@ class NewMileClient {
     try { this.profile = await this.callTool('get_user_profile', {}); } catch (e) { this.profile = null; }
     return this.profile;
   }
+  // the signed-in user's org — every market gets ITS OWN data, never a hardcoded org
+  _myOrgId() {
+    const p = this.profile || {};
+    return p.current_org_id || p.org_id || (this.cfg.org && this.cfg.org.orgId) || null;
+  }
 
   // ---------- read helpers ----------
   listOrders(dateISO) {
@@ -492,10 +497,10 @@ class NewMileClient {
     const keys = Object.keys(names);
     if (!keys.length) return out;
 
-    // 1) saved org locations (have lat/lng)
+    // 1) saved org locations (have lat/lng) — ALWAYS the signed-in user's own org
     const locIdx = {};
     try {
-      const orgId = (this.cfg.org && this.cfg.org.orgId) || 1838;
+      const orgId = this._myOrgId();
       const r = await this.callTool('list_resources', { resource_type: 'org_location', filters: { org_id: orgId } });
       ((r && (r.locations || r.results)) || []).forEach(l => {
         if (l.lat == null || l.lng == null) return;
@@ -639,7 +644,7 @@ class NewMileClient {
       totalPages = (r && (r.total_pages || r.pages)) || 1; page++;
     } while (page <= totalPages && page <= 15);
     try {
-      const orgId = (this.cfg.org && this.cfg.org.orgId) || 1838;
+      const orgId = this._myOrgId();
       const l = await this.callTool('list_resources', { resource_type: 'org_location', filters: { org_id: orgId } });
       out.locations = (l && (l.locations || l.results)) || [];
     } catch (e) { this.log('directory locations skipped: ' + e.message); }

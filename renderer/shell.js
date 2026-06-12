@@ -57,8 +57,40 @@ $('#diagClose').onclick=()=>$('#diag').classList.remove('open');
    the user's profile and OVERRIDE the bundled config, so every market runs its own
    Samsara org(s) without rebuilding the app. */
 async function sha256(s){
-  const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(String(s)));
-  return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');
+  try{
+    const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(String(s)));
+    return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');
+  }catch(e){ return sha256js(String(s)); }   // pure-JS fallback — never fail silently
+}
+/* compact pure-JS SHA-256 (fallback when crypto.subtle is unavailable) */
+function sha256js(ascii){
+  function rr(v,a){return (v>>>a)|(v<<(32-a));}
+  var mathPow=Math.pow,maxWord=mathPow(2,32),result='',words=[],asciiBitLength=ascii.length*8;
+  var hash=sha256js.h=sha256js.h||[],k=sha256js.k=sha256js.k||[],primeCounter=k.length,isComposite={};
+  for(var candidate=2;primeCounter<64;candidate++){
+    if(!isComposite[candidate]){
+      for(var i=0;i<313;i+=candidate)isComposite[i]=candidate;
+      hash[primeCounter]=(mathPow(candidate,.5)*maxWord)|0;
+      k[primeCounter++]=(mathPow(candidate,1/3)*maxWord)|0;
+    }
+  }
+  ascii+='\x80'; while(ascii.length%64-56)ascii+='\x00';
+  for(i=0;i<ascii.length;i++){var j=ascii.charCodeAt(i);if(j>>8)return '';words[i>>2]|=j<<((3-i)%4)*8;}
+  words[words.length]=(asciiBitLength/maxWord)|0;words[words.length]=asciiBitLength;
+  for(j=0;j<words.length;){
+    var w=words.slice(j,j+=16),oldHash=hash.slice(0,8);
+    for(i=0;i<64;i++){
+      var w15=w[i-15],w2=w[i-2];
+      var a=hash[0],e=hash[4];
+      var temp1=hash[7]+(rr(e,6)^rr(e,11)^rr(e,25))+((e&hash[5])^(~e&hash[6]))+k[i]
+        +(w[i]=(i<16)?w[i]:(w[i-16]+(rr(w15,7)^rr(w15,18)^(w15>>>3))+w[i-7]+(rr(w2,17)^rr(w2,19)^(w2>>>10)))|0);
+      var temp2=(rr(a,2)^rr(a,13)^rr(a,22))+((a&hash[1])^(a&hash[2])^(hash[1]&hash[2]));
+      hash=[(temp1+temp2)|0].concat(hash);hash[4]=(hash[4]+temp1)|0;
+    }
+    for(i=0;i<8;i++)hash[i]=(hash[i]+oldHash[i])|0;
+  }
+  for(i=0;i<8;i++)for(j=3;j+1;j--){var b=(hash[i]>>(j*8))&255;result+=((b>>4).toString(16))+((b&15).toString(16));}
+  return result;
 }
 let adminUnlocked=false;
 function dtab(which){
@@ -80,10 +112,12 @@ async function renderAdmin(){
       +'<button class="warn" id="admUnlock" style="width:100%">Unlock</button>'
       +'<div id="admErr" style="color:var(--red);font-size:11px;margin-top:6px"></div>';
     const tryUnlock=async()=>{
-      const s=await window.newmile.getSettings();
-      const want=s.adminHash||await sha256('0605');
-      if(await sha256($('#admCode').value)===want){ adminUnlocked=true; renderAdmin(); }
-      else $('#admErr').textContent='Wrong code.';
+      try{
+        const s=await window.newmile.getSettings();
+        const want=s.adminHash||await sha256('0605');
+        if(await sha256($('#admCode').value.trim())===want){ adminUnlocked=true; renderAdmin(); }
+        else $('#admErr').textContent='Wrong code.';
+      }catch(e){ $('#admErr').textContent='Unlock error: '+(e.message||e); }
     };
     $('#admUnlock').onclick=tryUnlock;
     $('#admCode').addEventListener('keydown',e=>{ if(e.key==='Enter')tryUnlock(); });
@@ -125,10 +159,24 @@ function admTokRow(t,i){
   return '<div class="tokrow">'
     +'<input class="tname" placeholder="Fleet name" value="'+String(t.name||'').replace(/"/g,'&quot;')+'">'
     +'<input class="ttok" type="password" placeholder="samsara_api_…" value="'+String(t.token||'').replace(/"/g,'&quot;')+'">'
-    +'<button class="ghost admDel">✕</button></div>';
+    +'<button class="ghost admTest" title="Verify this key against Samsara right now">🧪</button>'
+    +'<button class="ghost admDel">✕</button></div>'
+    +'<div class="hint admTestOut" style="margin:-2px 0 6px"></div>';
 }
 function wireTokRows(){
-  document.querySelectorAll('#admToks .admDel').forEach(b=>{ b.onclick=()=>{ b.closest('.tokrow').remove(); }; });
+  document.querySelectorAll('#admToks .admDel').forEach(b=>{ b.onclick=()=>{ const r=b.closest('.tokrow'); const o=r.nextElementSibling; if(o&&o.classList.contains('admTestOut'))o.remove(); r.remove(); }; });
+  document.querySelectorAll('#admToks .admTest').forEach(b=>{ b.onclick=async()=>{
+    const row=b.closest('.tokrow');
+    const out=row.nextElementSibling;
+    const tok=row.querySelector('.ttok').value.trim();
+    row.querySelector('.ttok').value=tok;                       // kill pasted spaces/newlines
+    out.textContent='🧪 testing…'; out.style.color='var(--dim)';
+    try{
+      const r=await window.newmile.testSamsara(tok);
+      if(r&&r.ok){ out.textContent='✓ Key works — '+r.vehicles+' vehicles ('+r.withGps+' with GPS)'; out.style.color='var(--green)'; }
+      else { out.textContent='✗ '+((r&&r.error)||'failed'); out.style.color='var(--red)'; }
+    }catch(e){ out.textContent='✗ '+(e.message||e); out.style.color='var(--red)'; }
+  };});
 }
 
 /* ---------- auto-refresh ---------- */
