@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('newmile', {
   status: () => ipcRenderer.invoke('nm:status'),
   config: () => ipcRenderer.invoke('nm:config'),
+  version: () => ipcRenderer.invoke('nm:version'),
   getSettings: () => ipcRenderer.invoke('nm:getSettings'),
   saveSettings: (s) => ipcRenderer.invoke('nm:saveSettings', s),
   samsara: () => ipcRenderer.invoke('nm:samsara'),

@@ -162,6 +162,7 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   $('#day').value=localISO();
   $('#day').addEventListener('change',()=>{ dayManual=true; });
   try{ const cfg=await window.newmile.config(); groupsCfg=(cfg&&cfg.groups)||null; }catch(e){}
+  try{ const v=await window.newmile.version(); if(v)$('#appVer').textContent='v'+v; }catch(e){}
   setStatus(await window.newmile.status());
 
   // auto-resume + auto-load: open the app → see TODAY, no clicks needed

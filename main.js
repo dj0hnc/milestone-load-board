@@ -147,6 +147,7 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 // ---------- IPC ----------
 ipcMain.handle('nm:status', () => client.status());
 ipcMain.handle('nm:config', () => appCfg);
+ipcMain.handle('nm:version', () => app.getVersion());
 ipcMain.handle('nm:logs', () => recentLogs.slice(-120));
 ipcMain.handle('nm:connect', async () => { await client.connect(); return client.status(); });
 ipcMain.handle('nm:resume', () => client.resume());   // silent only — never opens sign-in
