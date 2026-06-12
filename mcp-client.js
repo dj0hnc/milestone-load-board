@@ -504,7 +504,11 @@ class NewMileClient {
       const r = await this.callTool('list_resources', { resource_type: 'org_location', filters: { org_id: orgId } });
       ((r && (r.locations || r.results)) || []).forEach(l => {
         if (l.lat == null || l.lng == null) return;
-        locIdx[this._geoNorm(l.name)] = { lat: l.lat, lng: l.lng };
+        // real street address from NewMile — Google links use it instead of just the name
+        const addr = [l.address || l.address_1 || l.street_address || l.address_line_1 || '',
+                      l.city || '', [l.state || '', l.zip || l.zip_code || ''].filter(Boolean).join(' ')]
+                     .map(s => ('' + s).trim()).filter(Boolean).join(', ');
+        locIdx[this._geoNorm(l.name)] = { lat: l.lat, lng: l.lng, addr: addr || null };
       });
     } catch (e) { this.log('org_location pull skipped: ' + e.message); }
     const locKeys = Object.keys(locIdx);
@@ -724,8 +728,8 @@ class NewMileClient {
   //   - truck ON the order, loads changed → update load_limit only
   //   - truck ON the order, unchanged     → never touched
   // Returns { created:[ids], updated:[{truck,from,to}], skipped:[{truck,reason}], unresolved:[truck], confirmed:Bool }
-  async pushOrderBatch(orderId, assignments, useOrderDefault) {
-    const out = { order_id: orderId, created: [], updated: [], skipped: [], unresolved: [], confirmed: false, reordered: [] };
+  async pushOrderBatch(orderId, assignments, useOrderDefault, removed) {
+    const out = { order_id: orderId, created: [], updated: [], skipped: [], unresolved: [], confirmed: false, reordered: [], removed: [] };
 
     // 1) live state — what's already on the order
     let existing = [];
@@ -746,11 +750,11 @@ class NewMileClient {
       if (ex) {
         const want = (typeof a.loads === 'number' && a.loads > 0) ? a.loads : null;
         const have = (ex.load_limit == null) ? null : ex.load_limit;
-        if (want != null && want !== have) {
+        if (want !== have) {   // covers set, change AND clear (want null = open / remove the limit)
           try {
             await this.callTool('update_resource', { resource_type: 'order_assignment', id: ex.id, attrs: { load_limit: want } });
-            out.updated.push({ truck: num, from: have, to: want });
-            this.log('order ' + orderId + ': ' + num + ' load_limit ' + have + ' → ' + want);
+            out.updated.push({ truck: num, from: (have == null ? 'open' : have), to: (want == null ? 'open' : want) });
+            this.log('order ' + orderId + ': ' + num + ' load_limit ' + (have == null ? 'open' : have) + ' → ' + (want == null ? 'open' : want));
           } catch (e) { out.skipped.push({ truck: num, reason: 'update failed: ' + e.message }); }
         } else {
           out.skipped.push({ truck: num, reason: 'already on order — unchanged' });
@@ -761,6 +765,21 @@ class NewMileClient {
       if (!tid) { out.unresolved.push(num); continue; }
       toCreate.push({ truck: num, truck_id: tid, loads: a.loads, sequence: a.sequence || 1 });
     }
+
+    // 2b) removals — trucks the dispatcher took OFF the order on the board/planner.
+    // The board only sends aids it actually showed and the user explicitly removed,
+    // and the push modal previews them. Safety: never delete once loads were hauled.
+    for (const rm of (removed || [])) {
+      const live = existing.find(x => x.id === rm.aid);
+      if (!live) { out.skipped.push({ truck: rm.truck, reason: 'remove: no longer on the order' }); continue; }
+      if ((live.load_count || 0) > 0) { out.skipped.push({ truck: rm.truck, reason: 'remove blocked: ' + live.load_count + ' load(s) already hauled' }); continue; }
+      try {
+        await this.callTool('delete_resource', { resource_type: 'order_assignment', id: rm.aid });
+        out.removed.push(rm.truck);
+        this.log('order ' + orderId + ': removed ' + rm.truck + ' (assignment ' + rm.aid + ')');
+      } catch (e) { out.skipped.push({ truck: rm.truck, reason: 'remove failed: ' + e.message }); }
+    }
+
     if (!toCreate.length) return out;
 
     // 3) bulk_create_assignments (utility). List order = ordinal, so create seq-1 before seq-2.

@@ -1092,14 +1092,28 @@ function finalizeAllReady(){
   render();
   toast(n?`Queued ${n} order${n>1?'s':''} for NewMile sync${skipped?` · ${skipped} short skipped`:''}`:'Nothing new to finalize',!n);
 }
+/* trucks NewMile still has on the order but the dispatcher took OFF here.
+   Uses the pristine nmAssigns snapshot (local edits never touch it). Only trucks
+   that exist in our roster count — an unmapped truck was never shown on the board,
+   so it can never be "removed" by accident. */
+function __removedFor(o,presentNums){
+  return (o.nmAssigns||[]).filter(na=>{
+    if(!na.aid||!na.num) return false;
+    if(presentNums[na.num.trim().toUpperCase()]) return false;
+    return trucks.some(t=>t.num.toLowerCase()===na.num.trim().toLowerCase());
+  }).map(na=>({aid:na.aid, truck:na.num, done:na.done||0}));
+}
 /* hooks the shell uses to sync finalized changes to NewMile */
 window.__getPendingSync=function(){
   return Array.from(window.__pendingSync).filter(oid=>O(oid)).map(oid=>{
     const o=O(oid);
+    const present={};
+    const assignments=o.assigns.map(a=>{const t=T(a.truck);if(!t)return null;
+      present[t.num.trim().toUpperCase()]=1;
+      return { truck:t.num, loads:(typeof a.ll==='number'?a.ll:null), sequence:a.seq||1 };}).filter(Boolean);
     return { order_id:parseInt((''+o.id).replace(/^o/,''),10), disp:o.disp, material:o.mat,
-      assignments:o.assigns.map(a=>{const t=T(a.truck);if(!t)return null;
-        return { truck:t.num, loads:(typeof a.ll==='number'?a.ll:null), sequence:a.seq||1 };}).filter(Boolean) };
-  }).filter(o=>o.assignments.length);
+      assignments, removed:__removedFor(o,present) };
+  }).filter(o=>o.assignments.length||o.removed.length);
 };
 window.__clearPendingSync=function(ids){ (ids||[]).forEach(id=>window.__pendingSync.delete('o'+id)); if(!ids)window.__pendingSync.clear(); };
 
@@ -1167,9 +1181,13 @@ function openAMReport(){
 
 /* SETTINGS / TOPBAR */
 /* ===== Google Maps links — open the run point-to-point in the system browser =====
-   Uses real coords when resolved (org_location/geocoder); falls back to the location
-   name + ", TX" which Google resolves fine for most yards/plants. */
-function _gmPoint(lat,lng,name){ return (lat!=null)?(lat+','+lng):encodeURIComponent((name||'').trim()+', TX'); }
+   Prefers the REAL street address from NewMile's saved location; else exact coords;
+   last resort the location name + ", TX". */
+function _gmPoint(lat,lng,name,addr){
+  if(addr&&addr.trim()) return encodeURIComponent(addr.trim());   // real NewMile address
+  if(lat!=null) return lat+','+lng;
+  return encodeURIComponent((name||'').trim()+', TX');
+}
 /* approx one-way run: straight-line miles × 1.27 road factor, drive @ 45 mph */
 function gmMiles(la1,lo1,la2,lo2){
   const R=3958.8,rad=Math.PI/180,dLa=(la2-la1)*rad,dLo=(lo2-lo1)*rad;
@@ -1196,8 +1214,8 @@ function openRouteMap(e,oid){
   if(e)e.stopPropagation();
   const o=O(oid); if(!o){toast('Order not found',true);return;}
   if(!(o.pickup||o.pickupLat!=null)||!(o.drop||o.dropLat!=null)){toast('No pickup/dropoff info on this order',true);return;}
-  const org=_gmPoint(o.pickupLat,o.pickupLng,o.pickup);
-  const dst=_gmPoint(o.dropLat,o.dropLng,o.drop);
+  const org=_gmPoint(o.pickupLat,o.pickupLng,o.pickup,o.pickupAddr);
+  const dst=_gmPoint(o.dropLat,o.dropLng,o.drop,o.dropAddr);
   const url='https://www.google.com/maps/dir/?api=1&origin='+org+'&destination='+dst+'&travelmode=driving';
   _copyLink(url);                       // copy first — share it straight away
   window.open(url,'_blank');
@@ -1213,7 +1231,7 @@ function openOrderNotes(e,oid){
 function openPinMap(e,oid,which){
   if(e)e.stopPropagation();
   const o=O(oid); if(!o)return;
-  const q=which==='drop'?_gmPoint(o.dropLat,o.dropLng,o.drop):_gmPoint(o.pickupLat,o.pickupLng,o.pickup);
+  const q=which==='drop'?_gmPoint(o.dropLat,o.dropLng,o.drop,o.dropAddr):_gmPoint(o.pickupLat,o.pickupLng,o.pickup,o.pickupAddr);
   window.open('https://www.google.com/maps/search/?api=1&query='+q,'_blank');
 }
 
@@ -1739,11 +1757,14 @@ window.__getPlan=function(){
   var out=[];
   oids.forEach(function(oid){
     var o=O(oid); var pairs=(planDraft[oid]||[]).filter(function(pp){return (pp.num||'').trim();});
-    if(!pairs.length) return;
+    var present={}; pairs.forEach(function(pp){ present[(pp.num||'').trim().toUpperCase()]=1; });
+    var removed=__removedFor(o,present);
+    if(!pairs.length&&!removed.length) return;
     out.push({order_id:parseInt((''+o.id).replace(/^o/,''),10),disp:o.disp,material:o.mat,
       assignments:pairs.map(function(pp){var n=(pp.num||'').trim();
         return {truck:n,loads:(typeof pp.lds==='number'&&pp.lds>0)?pp.lds:null,
-          sequence:(seqMap[oid]&&seqMap[oid][n.toUpperCase()])||1};})});
+          sequence:(seqMap[oid]&&seqMap[oid][n.toUpperCase()])||1};}),
+      removed:removed});
   });
   return { orders: out };
 };
@@ -1934,6 +1955,10 @@ setView('board');
   @media (max-width:760px){.q-grid{grid-template-columns:1fr}}
   .q-col{min-width:0}
   .q-sec{font-size:11px;font-weight:800;color:var(--gold-soft);text-transform:uppercase;letter-spacing:.6px;margin:12px 0 6px}
+  .q-adv{margin-top:12px;border:1px solid #313d4a;border-radius:9px;padding:6px 9px;background:#1d2733}
+  .q-adv summary{cursor:pointer;font-size:11.5px;font-weight:800;color:#8b96a5;text-transform:uppercase;letter-spacing:.5px;user-select:none}
+  .q-adv summary small{text-transform:none;font-weight:400;letter-spacing:0}
+  .q-adv[open] summary{margin-bottom:5px;color:var(--gold-soft)}
   .q-sec:first-child{margin-top:0}
   .q-l{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--text-dim);margin:4px 0}
   .q-l input,.q-l select{width:150px;background:#141b24;border:1px solid var(--line);color:#fff;border-radius:7px;padding:6px 8px;font-family:inherit;font-size:13px}
@@ -2854,7 +2879,7 @@ setView('board');
      real road miles + drive time (OSRM, keyless), cycle-time → loads/day, fuel, opex,
      driver %, wait time, A/B compare, history. All sticky in localStorage. */
   var QDEF={jobType:'ton',rate:6.5,fsc:0,qty:500,capTon:24,capYd:18,mpg:5.0,diesel:3.6,drvPct:25,
-            waitMin:15,loadMin:15,unloadMin:10,workHrs:11,tolls:0,nmFee:0,opexWk:350};
+            waitMin:15,loadMin:15,unloadMin:10,workHrs:11,tolls:0,nmFee:0,opexWk:350,target:0};
   function qLoad(){ try{ return Object.assign({},QDEF,JSON.parse(localStorage.getItem('mab_quote')||'{}')); }catch(e){ return Object.assign({},QDEF); } }
   function qSave(v){ try{ localStorage.setItem('mab_quote',JSON.stringify(v)); }catch(e){} }
   function qHist(){ try{ return JSON.parse(localStorage.getItem('mab_quote_hist')||'[]'); }catch(e){ return []; } }
@@ -2957,24 +2982,26 @@ setView('board');
           +'<button class="gmap" id="qRouteBtn" onclick="qDoRoute()">🛣 Get miles & time</button>'
           +'<span id="qRouteOut" style="font-size:12px;color:var(--teal);align-self:center"></span>'
         +'</div>'
-        +'<div class="q-sec">💵 Job</div>'
+        +'<div class="q-sec">💵 Job — the basics</div>'
         +'<label class="q-l">Type<select id="qType"><option value="ton">$ / ton</option><option value="yard">$ / yard</option><option value="load">$ / load</option><option value="hour">$ / hour</option></select></label>'
         +'<label class="q-l">Rate $<input id="qRate" type="number" step="0.05"></label>'
-        +'<label class="q-l">FSC %<input id="qFsc" type="number" step="0.5"></label>'
         +'<label class="q-l">Quantity (t / yd / loads / hrs)<input id="qQty" type="number" step="1"></label>'
-        +'<label class="q-l">Capacity tons<input id="qCapT" type="number" step="0.5"></label>'
-        +'<label class="q-l">Capacity yards<input id="qCapY" type="number" step="0.5"></label>'
-        +'<div class="q-sec">⛽ Truck & costs</div>'
-        +'<label class="q-l">MPG<input id="qMpg" type="number" step="0.1"></label>'
-        +'<label class="q-l">Diesel $/gal<input id="qDsl" type="number" step="0.01"></label>'
-        +'<label class="q-l">Driver pay % of gross<input id="qDrv" type="number" step="1"></label>'
-        +'<label class="q-l">Wait min/load<input id="qWait" type="number" step="1"></label>'
-        +'<label class="q-l">Load min<input id="qLoadM" type="number" step="1"></label>'
-        +'<label class="q-l">Unload min<input id="qUnloadM" type="number" step="1"></label>'
-        +'<label class="q-l">Workday hours<input id="qWork" type="number" step="0.5"></label>'
-        +'<label class="q-l">Tolls $/load<input id="qTolls" type="number" step="0.5"></label>'
-        +'<label class="q-l">NewMile fee $/load<input id="qNmFee" type="number" step="0.5"></label>'
-        +'<label class="q-l">Weekly opex $ (ins+tech)<input id="qOpex" type="number" step="10"></label>'
+        +'<label class="q-l">Truck capacity (tons)<input id="qCapT" type="number" step="0.5"></label>'
+        +'<label class="q-l">🎯 Target net $/day (optional)<input id="qTarget" type="number" step="50" placeholder="e.g. 900"></label>'
+        +'<details class="q-adv"><summary>⚙ Advanced — fuel & costs <small>(preloaded, tap to adjust)</small></summary>'
+          +'<label class="q-l">FSC %<input id="qFsc" type="number" step="0.5"></label>'
+          +'<label class="q-l">Capacity yards<input id="qCapY" type="number" step="0.5"></label>'
+          +'<label class="q-l">MPG<input id="qMpg" type="number" step="0.1"></label>'
+          +'<label class="q-l">Diesel $/gal<input id="qDsl" type="number" step="0.01"></label>'
+          +'<label class="q-l">Driver pay % of gross<input id="qDrv" type="number" step="1"></label>'
+          +'<label class="q-l">Wait min/load<input id="qWait" type="number" step="1"></label>'
+          +'<label class="q-l">Load min<input id="qLoadM" type="number" step="1"></label>'
+          +'<label class="q-l">Unload min<input id="qUnloadM" type="number" step="1"></label>'
+          +'<label class="q-l">Workday hours<input id="qWork" type="number" step="0.5"></label>'
+          +'<label class="q-l">Tolls $/load<input id="qTolls" type="number" step="0.5"></label>'
+          +'<label class="q-l">NewMile fee $/load<input id="qNmFee" type="number" step="0.5"></label>'
+          +'<label class="q-l">Weekly opex $ (ins+tech)<input id="qOpex" type="number" step="10"></label>'
+        +'</details>'
       +'</div>'
       +'<div class="q-col">'
         +'<div style="display:flex;gap:7px;margin-bottom:8px;flex-wrap:wrap">'
@@ -2993,6 +3020,7 @@ setView('board');
     $q('qCapT').value=v.capTon; $q('qCapY').value=v.capYd; $q('qMpg').value=v.mpg; $q('qDsl').value=v.diesel;
     $q('qDrv').value=v.drvPct; $q('qWait').value=v.waitMin; $q('qLoadM').value=v.loadMin; $q('qUnloadM').value=v.unloadMin;
     $q('qWork').value=v.workHrs; $q('qTolls').value=v.tolls; $q('qNmFee').value=v.nmFee; $q('qOpex').value=v.opexWk;
+    if(v.target) $q('qTarget').value=v.target;
     qRenderHist();
   };
   window.qUseOrder=function(){
@@ -3036,7 +3064,7 @@ setView('board');
     return {jobType:$q('qType').value,rate:qNum('qRate'),fsc:qNum('qFsc'),qty:qNum('qQty'),
       capTon:qNum('qCapT'),capYd:qNum('qCapY'),mpg:qNum('qMpg'),diesel:qNum('qDsl'),drvPct:qNum('qDrv'),
       waitMin:qNum('qWait'),loadMin:qNum('qLoadM'),unloadMin:qNum('qUnloadM'),workHrs:qNum('qWork'),
-      tolls:qNum('qTolls'),nmFee:qNum('qNmFee'),opexWk:qNum('qOpex')};
+      tolls:qNum('qTolls'),nmFee:qNum('qNmFee'),opexWk:qNum('qOpex'),target:qNum('qTarget')};
   }
   window.qRun=function(){
     var v=qGather(); qSave(v);
@@ -3058,6 +3086,12 @@ setView('board');
        +qRow('Opex/day','−'+qMoney(c.opex))
        +(c.tolls?qRow('Tolls','−'+qMoney(c.tolls)):'')
        +qRow('NET / day / truck',qMoney(c.net),1);
+      if(v.target>0){
+        var dfH=c.net-v.target;
+        var needGrossH=(v.target+c.fuel+c.opex+(+v.tolls||0))/(1-(v.drvPct/100));
+        var needRateH=needGrossH/Math.max(1,c.hrs)/(1+((+v.fsc||0)/100));
+        h+=qRow('🎯 Target '+qMoney(v.target)+'/day',(dfH>=0?'✓ MET · +':'✗ short · −')+qMoney(Math.abs(dfH))+(dfH>=0?'':' → need ~'+qMoney(needRateH)+'/hr'),1);
+      }
     } else {
       h=qRow('Route',Math.round(c.route.mi)+' mi · '+Math.round(c.route.min)+' min one-way <small>('+c.route.src+')</small>')
        +qRow('Cycle per load',Math.round(c.cycleMin)+' min ('+(2*Math.round(c.route.min))+' drive + '+(v.loadMin+v.unloadMin+v.waitMin)+' fixed)')
@@ -3073,6 +3107,15 @@ setView('board');
        +qRow('Opex / day','−'+qMoney(c.opexDay))
        +qRow('NET / day / truck',qMoney(c.netDay),1)
        +qRow('Breakeven rate / load',qMoney(c.breakeven));
+      if(v.target>0){
+        var df=c.netDay-v.target;
+        var needLoad=(v.target/c.loadsDay + c.fuelLoad + (+v.tolls||0)+(+v.nmFee||0) + c.opexDay/c.loadsDay)/(1-(v.drvPct/100));
+        var needRate=needLoad/(1+((+v.fsc||0)/100));
+        var unit='load';
+        if(v.jobType==='ton'){ needRate=needRate/Math.max(1,v.capTon); unit='ton'; }
+        else if(v.jobType==='yard'){ needRate=needRate/Math.max(1,v.capYd); unit='yard'; }
+        h+=qRow('🎯 Target '+qMoney(v.target)+'/day',(df>=0?'✓ MET · +':'✗ short · −')+qMoney(Math.abs(df))+(df>=0?'':' → need ~'+qMoney(needRate)+'/'+unit),1);
+      }
     }
     $q('qOut').innerHTML=h;
     if(qPinned) qRenderCompare();

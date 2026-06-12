@@ -440,9 +440,9 @@ async function autoSync(){
     try{
       const useDefault=isOrderDefault(o);
       const asg=o.assignments.filter(a=>!/ATX Bluewing/i.test(a.truck));
-      const r=await window.newmile.pushOrder({orderId:o.order_id, assignments:asg, useOrderDefault:useDefault});
+      const r=await window.newmile.pushOrder({orderId:o.order_id, assignments:asg, useOrderDefault:useDefault, removed:(o.removed||[])});
       done++; doneIds.push(o.order_id);
-      appendLog('auto-sync '+o.order_id+' ('+(o.disp||'')+'): +'+(r.created||[]).length+' new · ~'+(r.updated||[]).length+' updated · ='+(r.skipped||[]).length+' untouched');
+      appendLog('auto-sync '+o.order_id+' ('+(o.disp||'')+'): +'+(r.created||[]).length+' new · ~'+(r.updated||[]).length+' updated · −'+(r.removed||[]).length+' removed · ='+(r.skipped||[]).length+' untouched');
     }catch(e){ toast('Auto-sync order '+o.order_id+' failed: '+(e.message||e)); appendLog('auto-sync '+o.order_id+' FAILED: '+(e.message||e)); }
   }
   clearPendingSync(doneIds);
@@ -476,8 +476,8 @@ async function refreshDay(){
     const pc=all.pickupCoords||{}, dc=all.dropCoords||{}, om=all.orderMeta||{};
     [4,5].forEach(k=>payload.dayMap[k].forEach(o=>{
       const id=parseInt((''+o.id).replace(/^o/,''),10);
-      const c=pc[id]; if(c){ o.pickupLat=c.lat; o.pickupLng=c.lng; }
-      const d=dc[id]; if(d){ o.dropLat=d.lat; o.dropLng=d.lng; }
+      const c=pc[id]; if(c){ o.pickupLat=c.lat; o.pickupLng=c.lng; if(c.addr)o.pickupAddr=c.addr; }
+      const d=dc[id]; if(d){ o.dropLat=d.lat; o.dropLng=d.lng; if(d.addr)o.dropAddr=d.addr; }
       const m=om[id]; if(m&&m.project_id){ o.projectId=m.project_id; }
     }));
     try{
@@ -546,7 +546,10 @@ function mapOrder(o, asgRows, numToId, nmNotes){
     notes: completed ? '✓ Order COMPLETE in NewMile — do not assign'
          : (assigns.length ? ('NewMile live: '+assigns.length+' truck'+(assigns.length!=1?'s':'')+' on this order') : (nm>0?('NewMile: '+nm+' trucks assigned'):'No trucks yet — to cover')),
     nmNotes:(nmNotes||[]),
-    finalized:assigns.length>0, modified:false, assigns:assigns
+    finalized:assigns.length>0, modified:false, assigns:assigns,
+    // pristine NewMile snapshot — local edits never touch it; the push diff uses it
+    // to know which trucks the dispatcher REMOVED (aid = order_assignment id)
+    nmAssigns:(asgRows||[]).map(r=>({aid:r.id, num:(r.truck_number||'').trim(), done:(unit==='hour'?0:(r.load_count||0))}))
   };
 }
 const JUNK=/(DOWN|Camera|De-Leased|Train loads|Need)/i;
@@ -662,15 +665,20 @@ function openPush(){
   const plan={orders:merged};
   pendingPlan=plan;
   const tot=plan.orders.reduce((a,o)=>a+o.assignments.length,0);
-  $('#pushSub').textContent=plan.orders.length+' order(s) · '+tot+' assignment(s)';
+  const totRm=plan.orders.reduce((a,o)=>a+((o.removed||[]).length),0);
+  $('#pushSub').textContent=plan.orders.length+' order(s) · '+tot+' assignment(s)'+(totRm?' · '+totRm+' removal(s)':'');
   const body=$('#pushBody'); body.innerHTML='';
   plan.orders.forEach(o=>{
     const def=isOrderDefault(o);
-    const rows=o.assignments.map(a=>{
+    let rows=o.assignments.map(a=>{
       const bw=/ATX Bluewing/i.test(a.truck);
-      return `<div class="arow"><span>${esc(a.truck)} · ${a.loads} load${a.loads==1?'':'s'} ${a.sequence>1?'<span class="seq">seq '+a.sequence+'</span>':''}</span>`+
+      const lds=(typeof a.loads==='number'&&a.loads>0)?(a.loads+' load'+(a.loads==1?'':'s')):'∞ open';
+      return `<div class="arow"><span>${esc(a.truck)} · ${lds} ${a.sequence>1?'<span class="seq">seq '+a.sequence+'</span>':''}</span>`+
              `<span>${bw?'<span class="badge b-skip">excluded</span>':(def?'<span class="badge b-def">order_default</span>':'<span class="badge b-rate">contracted</span>')}</span></div>`;
     }).join('');
+    rows+=(o.removed||[]).map(rm=>
+      `<div class="arow"><span style="color:#ea4e2c">− ${esc(rm.truck)} — will be REMOVED from this order</span>`+
+      `<span>${rm.done>0?'<span class="badge b-skip">'+rm.done+' hauled — will be kept</span>':'<span class="badge b-skip">remove</span>'}</span></div>`).join('');
     const div=document.createElement('div'); div.className='ord'; div.dataset.oid=o.order_id;
     div.innerHTML=`<div class="head"><div><div class="t">Order ${o.order_id}${def?'<span class="badge b-def">EYK/Watercrest</span>':''}${o._src==='finalized'?'<span class="badge b-rate">✓ finalized on board</span>':''}</div><div class="m">${esc(o.disp||'')} ${o.material?'· '+esc(o.material):''}</div></div>`+
                   `<button class="warn" data-push="${o.order_id}" style="padding:5px 10px">Push</button></div><div class="rows">${rows}</div>`;
@@ -692,11 +700,11 @@ async function runPush(onlyOrderId){
       const useDefault=isOrderDefault(o);
       // drop ATX Bluewing defensively at the edge too
       const asg=o.assignments.filter(a=>!/ATX Bluewing/i.test(a.truck));
-      const r=await window.newmile.pushOrder({orderId:o.order_id, assignments:asg, useOrderDefault:useDefault});
+      const r=await window.newmile.pushOrder({orderId:o.order_id, assignments:asg, useOrderDefault:useDefault, removed:(o.removed||[])});
       pushed++;
       clearPendingSync([o.order_id]);
-      const made=(r.created||[]).length, upd=(r.updated||[]).length, sk=(r.skipped||[]).length, un=(r.unresolved||[]).length;
-      let summary=`+${made} new`+(upd?` · ~${upd} updated`:'')+(sk?` · ${sk} untouched`:'')+(un?` · ?${un}`:'');
+      const made=(r.created||[]).length, upd=(r.updated||[]).length, rm=(r.removed||[]).length, sk=(r.skipped||[]).length, un=(r.unresolved||[]).length;
+      let summary=`+${made} new`+(upd?` · ~${upd} updated`:'')+(rm?` · −${rm} removed`:'')+(sk?` · ${sk} untouched`:'')+(un?` · ?${un}`:'');
       if(card){ card.textContent=(r.confirmed||made||upd?'✓ ':'')+summary; card.className=un?'res-bad':'res-ok'; }
       if(un) toast(`Order ${o.order_id}: ${un} truck(s) not found in NewMile: ${(r.unresolved||[]).join(', ')}`);
     }catch(e){ if(card){ card.disabled=false; card.textContent='retry'; } toast('Order '+o.order_id+' failed: '+(e.message||e)); }

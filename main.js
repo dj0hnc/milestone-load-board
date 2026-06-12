@@ -192,8 +192,8 @@ ipcMain.handle('nm:zoom', (_e, factor) => {
   catch (e) { return { error: e.message }; }
 });
 ipcMain.handle('nm:deleteAssignments', (_e, ids) => client.deleteAssignments(ids));
-ipcMain.handle('nm:pushOrder', (_e, { orderId, assignments, useOrderDefault }) =>
-  client.pushOrderBatch(orderId, assignments, useOrderDefault));
+ipcMain.handle('nm:pushOrder', (_e, { orderId, assignments, useOrderDefault, removed }) =>
+  client.pushOrderBatch(orderId, assignments, useOrderDefault, removed));
 
 /*
  * Samsara GPS snapshot (Phase 2b move-check). Vehicle names in Samsara match the
