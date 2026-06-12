@@ -582,9 +582,10 @@ class NewMileClient {
     const noteTargets = [].concat(ot.map(o => o.id), otm.map(o => o.id));
     const detailRows = await this._pool(noteTargets, 6, async (oid) =>
       this.callTool('get_resource', { resource_type: 'order', id: oid }));
-    const orderNotes = {};
+    const orderNotes = {}, orderMeta = {};
     noteTargets.forEach((oid, i) => {
       const d = detailRows[i]; if (!d) return;
+      if (d.project_id) orderMeta[oid] = { project_id: d.project_id };   // for ⟲ crew-from-project
       const n = [];
       if (d.pick_up_notes) n.push({ l: 'Pickup notes (drivers)', t: d.pick_up_notes });
       if (d.drop_off_notes) n.push({ l: 'Dropoff notes (drivers)', t: d.drop_off_notes });
@@ -606,7 +607,36 @@ class NewMileClient {
     } catch (e) { this.log('location coords skipped: ' + e.message); }
 
     this.log('refreshAll done: ' + oy.length + '/' + ot.length + '/' + otm.length + ' orders · ' + trucks.length + ' trucks · ' + tickets.length + ' tickets · ' + asgCount + ' live assignments');
-    return { date: dateISO, priorDay: prior, orders: { y: oy, t: ot, tm: otm }, assignments, trucks, tickets, pickupCoords, dropCoords, orderNotes };
+    return { date: dateISO, priorDay: prior, orders: { y: oy, t: ot, tm: otm }, assignments, trucks, tickets, pickupCoords, dropCoords, orderNotes, orderMeta };
+  }
+
+  // ---------- ⟲ crew from project history ----------
+  // Trucks that recently ran THIS project: recent orders by project_id → their live
+  // assignments → unique trucks with last load_limit + how often they ran it.
+  async projectTrucks(projectId, excludeOrderId) {
+    if (!projectId) return { trucks: [] };
+    const from = this._shiftISO(new Date().toISOString().slice(0, 10), -14);
+    const to = new Date().toISOString().slice(0, 10);
+    const r = await this.callTool('list_resources', {
+      resource_type: 'order',
+      filters: { project_id: projectId, order_date_from: from, order_date_to: to, sort: 'start_date', dir: 'desc', page_size: 25 }
+    });
+    const rows = ((r && (r.orders || r.results)) || []).filter(o => o.id !== excludeOrderId).slice(0, 6);
+    const seen = {};
+    const lists = await this._pool(rows.map(o => o.id), 6, (oid) => this.orderAssignments(oid));
+    rows.forEach((o, i) => {
+      const asg = ((lists[i] || {}).order_assignments || (lists[i] || {}).results || lists[i] || []);
+      (Array.isArray(asg) ? asg : []).forEach(a => {
+        const num = (a.truck_number || '').trim(); if (!num) return;
+        const k = num.toUpperCase();
+        if (!seen[k]) seen[k] = { num: num, lastLL: a.load_limit, runs: 0, lastDate: o.start_date };
+        seen[k].runs++;
+        if (seen[k].lastLL == null && a.load_limit != null) seen[k].lastLL = a.load_limit;
+      });
+    });
+    const out = Object.values(seen).sort((a, b) => b.runs - a.runs);
+    this.log('crew: project ' + projectId + ' → ' + out.length + ' trucks from ' + rows.length + ' recent orders');
+    return { trucks: out, orders: rows.length };
   }
 
   // ---------- 🚛 truck manager writes (verified: truck.on_call writeable, assignment delete exists) ----------

@@ -211,6 +211,7 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   $('#day').addEventListener('change',()=>{ dayManual=true; });
   try{ const cfg=await window.newmile.config(); groupsCfg=(cfg&&cfg.groups)||null; }catch(e){}
   try{ const v=await window.newmile.version(); if(v)$('#appVer').textContent='v'+v; }catch(e){}
+  try{ const z=parseFloat(localStorage.getItem('mab_zoom')||'1'); if(z!==1) window.newmile.zoom(z); }catch(e){}
   setStatus(await window.newmile.status());
 
   // auto-resume + auto-load: open the app → see TODAY, no clicks needed
@@ -280,6 +281,24 @@ window.addEventListener('DOMContentLoaded', async ()=>{
       return;
     }
     if(e.data.type==='msgreload'){ try{ wvMsg&&wvMsg.reload(); }catch(err){} return; }
+    if(e.data.type==='msgzoom'){
+      try{
+        let z=parseFloat(localStorage.getItem('mab_msg_zoom')||'1');
+        z=e.data.dir==='0'?1:Math.min(1.8,Math.max(0.5,z+(e.data.dir==='+'?0.1:-0.1)));
+        localStorage.setItem('mab_msg_zoom',String(z));
+        wvMsg&&wvMsg.setZoomFactor(z);
+        toast('💬 zoom '+Math.round(z*100)+'%');
+      }catch(err){}
+      return;
+    }
+    if(e.data.type==='zoom'){ appZoom(e.data.dir); return; }
+    if(e.data.type==='projtrucks' && e.data.reqId){
+      try{
+        const res=await window.newmile.projectTrucks({projectId:e.data.projectId,excludeOrderId:e.data.excludeOrderId});
+        board().__projTrucksResult && board().__projTrucksResult(e.data.reqId,res);
+      }catch(err){ board().__projTrucksResult && board().__projTrucksResult(e.data.reqId,{error:String(err&&err.message||err)}); }
+      return;
+    }
     if(e.data.type==='msgtrans'){
       wvMsgTrans=!!e.data.on;
       try{ wvMsg&&wvMsg.executeJavaScript('window.__nmTransEnabled='+(wvMsgTrans?'true':'false')+';'); }catch(err){}
@@ -325,6 +344,25 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   $('#auto').value=String(saved); $('#auto').onchange=(e)=>setAuto(parseInt(e.target.value,10)||0);
   if(saved) setAuto(saved);
 });
+
+/* ---------- 🔍 app-wide zoom (Ctrl + / − / 0) — persisted ---------- */
+async function appZoom(dir){
+  let z=parseFloat(localStorage.getItem('mab_zoom')||'1');
+  z=dir==='0'?1:Math.min(2,Math.max(0.5,Math.round((z+(dir==='+'?0.1:-0.1))*10)/10));
+  localStorage.setItem('mab_zoom',String(z));
+  await window.newmile.zoom(z);
+  toast('🔍 zoom '+Math.round(z*100)+'%');
+}
+window.addEventListener('keydown',(e)=>{
+  if(!(e.ctrlKey||e.metaKey)) return;
+  if(e.key==='='||e.key==='+'){ e.preventDefault(); appZoom('+'); }
+  else if(e.key==='-'){ e.preventDefault(); appZoom('-'); }
+  else if(e.key==='0'){ e.preventDefault(); appZoom('0'); }
+});
+window.addEventListener('wheel',(e)=>{
+  if(!e.ctrlKey) return; e.preventDefault();
+  appZoom(e.deltaY<0?'+':'-');
+},{passive:false});
 
 /* ---------- 💬 messaging webview ----------
    Lives HERE in the main frame — Electron does not render <webview> inside iframes,
@@ -435,11 +473,12 @@ async function refreshDay(){
       priorDay:all.priorDay
     };
     // deadhead data: pickup coords on orders + Samsara parking position on trucks
-    const pc=all.pickupCoords||{}, dc=all.dropCoords||{};
+    const pc=all.pickupCoords||{}, dc=all.dropCoords||{}, om=all.orderMeta||{};
     [4,5].forEach(k=>payload.dayMap[k].forEach(o=>{
       const id=parseInt((''+o.id).replace(/^o/,''),10);
       const c=pc[id]; if(c){ o.pickupLat=c.lat; o.pickupLng=c.lng; }
       const d=dc[id]; if(d){ o.dropLat=d.lat; o.dropLng=d.lng; }
+      const m=om[id]; if(m&&m.project_id){ o.projectId=m.project_id; }
     }));
     try{
       const snap=await window.newmile.samsara();   // 5-min cached in main; reused by move-check
@@ -497,7 +536,8 @@ function mapOrder(o, asgRows, numToId, nmNotes){
   const assigns=mapAssigns(asgRows, numToId||{}, unit);
   const completed=(['completed','closed','cancelled'].indexOf(o.status)>=0) || (unit==='ton'&&target>0&&deliv>=target);
   return {
-    id:'o'+o.id, disp:(o.reference_number||'').trim(), cust:o.customer_name||o.material_name||'', mat:o.material_name||'',
+    id:'o'+o.id, projectId:o.project_id||null, projectName:o.project_name||'',
+    disp:(o.reference_number||'').trim(), cust:o.customer_name||o.material_name||'', mat:o.material_name||'',
     pickup:(o.vendor_location||'').trim(), drop:(o.delivery_location||'').trim(),
     unit:unit, target:target,
     status:statusOf(o.status), nmStatus:o.status, completed:completed, startHr:h, time:ampm(h),

@@ -300,6 +300,13 @@ input{font-family:inherit}
   .pl-grid td.tally.cac.has{color:#fbbf24}.pl-grid td.tally.agg.has{color:#9affc4}.pl-grid td.tally.sub.has{color:#FF9C9C}
   .pl-grid td.totc{text-align:center;font-weight:800;color:#22c55e;background:#0f2a20}
   .pl-grid td.pairc{padding:3px 4px;background:#202b38}
+  /* ⇅ run-order column: drag handle + ▲▼ — row position drives per-truck sequences */
+  .pl-grid .seqc{width:46px;min-width:46px;text-align:center;cursor:grab;background:#11192b;user-select:none}
+  .pl-grid td.seqc .sq{font-weight:800;color:#5a95f9;font-size:12px}
+  .pl-grid td.seqc .sqbs{display:inline-flex;flex-direction:column;margin-left:3px;vertical-align:middle}
+  .pl-grid td.seqc .sqb{border:0;background:none;color:#7d8794;cursor:pointer;font-size:8px;line-height:1.1;padding:0 2px}
+  .pl-grid td.seqc .sqb:hover{color:#fff}
+  .pl-grid tbody tr.focused td.seqc .sq{color:#C8991F}
   .pl-grid .pair{display:inline-flex;gap:2px;margin-right:3px}
   .pl-grid input.trk,.pl-grid input.lds{background:#1b2336;border:1px solid #313d4a;color:#fff;border-radius:6px;
     font-size:12px;padding:4px 5px;font-family:inherit;height:28px}
@@ -384,6 +391,7 @@ input{font-family:inherit}
   .pd-chip input.dtrk:focus{outline:none}
   .pd-chip .dg{font-size:9px;font-weight:800;padding:1px 5px;border-radius:6px;background:#202b38;color:#5a95f9}
   .pd-chip .dg.g-cac{color:#fbbf24}.pd-chip .dg.g-ww{color:#7CC6FF}.pd-chip .dg.g-rho{color:#B69CFF}.pd-chip .dg.g-pow{color:#FFD27C}.pd-chip .dg.g-agg{color:#9affc4}.pd-chip .dg.g-sub{color:#FF9C9C}
+  .pd-chip .dg.dseq{background:#5a95f9;color:#fff}
   .pd-chip input.dlds{width:30px;text-align:center;background:#202b38;border:1px solid #313d4a;border-radius:6px;color:#fbbf24;font-size:12px;padding:3px 2px;height:24px}
   .pd-chip input:focus{outline:none;border-color:#5a95f9}
   .pd-chip .ddel{color:#FF9C9C;background:transparent;border:none;cursor:pointer;font-size:12px;padding:0 3px}
@@ -794,7 +802,7 @@ function renderOrders(){
         <div class="odisp">${o.disp} · ${String(o.startHr).padStart(2,'0')}:00</div>
         <div class="omat">${o.mat}</div><div class="ocust">${o.cust}</div>
         <div class="oroute"><span class="gm-pt" onclick="openPinMap(event,'${o.id}','pickup')" title="Open pickup pin in Google Maps">${o.pickup}</span> <span class="arr">→</span> <span class="gm-pt" onclick="openPinMap(event,'${o.id}','drop')" title="Open dropoff pin in Google Maps">${o.drop}</span> <button class="gmap" onclick="openRouteMap(event,'${o.id}')" title="Open the run point-to-point in Google Maps">🗺</button></div>
-        <div class="osched">🕖 ${o.time||(String(o.startHr).padStart(2,'0')+':00')} ${estRouteHtml(o)}${(o.nmNotes&&o.nmNotes.length)?` <button class="gmap notei" onclick="openOrderNotes(event,'${o.id}')" title="This order has NewMile notes — tap to read">📝 ${o.nmNotes.length}</button>`:''}</div>
+        <div class="osched">🕖 ${o.time||(String(o.startHr).padStart(2,'0')+':00')} ${estRouteHtml(o)}${(o.nmNotes&&o.nmNotes.length)?` <button class="gmap notei" onclick="openOrderNotes(event,'${o.id}')" title="This order has NewMile notes — tap to read">📝 ${o.nmNotes.length}</button>`:''}${o.projectId?` <button class="gmap crewi" onclick="pullCrew(event,'${o.id}')" title="Pull the trucks that recently ran this project → Planner">⟲ Crew</button>`:''}</div>
         ${o.notes?`<div class="onotes"><span class="nl">NM</span> ${o.notes}</div>`:''}</div>
       ${countHtml}
       <div class="dropzone">${chips||'<div class="dz-empty">Drop a truck here to assign</div>'}</div>
@@ -1209,6 +1217,43 @@ function openPinMap(e,oid,which){
   window.open('https://www.google.com/maps/search/?api=1&query='+q,'_blank');
 }
 
+/* ⟲ Crew — pull the trucks that recently ran this order's PROJECT (last 14 days,
+   via the shell→MCP bridge) and drop them into the Planner draft for fast assigning. */
+var _projReqs={}, _projSeq=0, _projBusy={};
+window.__projTrucksResult=function(reqId,res){ var cb=_projReqs[reqId]; if(cb){ delete _projReqs[reqId]; cb(res); } };
+function pullCrew(e,oid){
+  if(e)e.stopPropagation();
+  var o=O(oid); if(!o||!o.projectId){ toast('No project on this order',true); return; }
+  if(_projBusy[oid]) return; _projBusy[oid]=1;
+  toast('⟲ Pulling trucks from recent orders on this project…');
+  var id='pj'+(++_projSeq);
+  _projReqs[id]=function(res){ delete _projBusy[oid]; crewApply(oid,res); };
+  setTimeout(function(){ if(_projReqs[id]){ delete _projReqs[id]; delete _projBusy[oid]; toast('Crew pull timed out — try again',true); } },30000);
+  try{ parent.postMessage({type:'projtrucks',reqId:id,projectId:o.projectId,excludeOrderId:parseInt((''+oid).replace(/^o/,''),10)},'*'); }
+  catch(err){ delete _projReqs[id]; delete _projBusy[oid]; toast('Crew pull failed: '+err.message,true); }
+}
+function crewApply(oid,res){
+  var o=O(oid); if(!o) return;
+  if(!res||res.error){ toast('Crew pull: '+((res&&res.error)||'no response'),true); return; }
+  var list=res.trucks||[];
+  if(!list.length){ toast('No trucks found on this project in the last 14 days',true); return; }
+  if(!selectedOrders.has(oid)) selectedOrders.add(oid);
+  planInitDraft();
+  if(!planDraft[oid]) planDraft[oid]=[];
+  var have={}; planDraft[oid].forEach(function(p){ var k=(p.num||'').trim().toUpperCase(); if(k)have[k]=1; });
+  var added=0;
+  list.forEach(function(tr){
+    var k=(tr.num||'').trim().toUpperCase(); if(!k||have[k])return; have[k]=1;
+    // last load-limit the truck ran on this project; EMPTY when unknown — never invent loads
+    planDraft[oid].push({num:tr.num,lds:(typeof tr.lastLL==='number'&&tr.lastLL>0)?tr.lastLL:''});
+    added++;
+  });
+  if(!plannerOpen) openPlanner();
+  plFocus=oid; renderPlanner(); renderOrders();
+  toast(added?('⟲ '+added+' truck(s) from '+(res.orders||0)+' recent project order(s) → '+o.disp+' — review loads, then finalize')
+             :('All '+list.length+' previous project trucks are already planned on this order'),!added);
+}
+
 /* (the old fake 30s "auto-refresh draft sync" countdown was demo-only and is gone —
    the REAL NewMile auto-refresh is the "Auto" dropdown in the app's title bar) */
 function toggleSettings(){
@@ -1265,6 +1310,45 @@ function toast(msg,warn){const el=$('#toast');el.textContent=msg;el.style.backgr
 /* ===== PLANNER TRAY — Excel-like bottom planning sheet ===== */
 let plannerOpen=false;
 let planDraft={};
+/* Explicit top→bottom row order — drives per-truck run sequences (row 1 runs first).
+   selectedOrders is a Set (no order), so this array is the source of truth for position. */
+let planSeq=[];
+function plOrderedOids(){
+  planSeq=planSeq.filter(oid=>selectedOrders.has(oid)&&O(oid));
+  [...selectedOrders].forEach(oid=>{ if(O(oid)&&planSeq.indexOf(oid)<0) planSeq.push(oid); });
+  return planSeq.slice();
+}
+function planMove(oid,dir){
+  plOrderedOids();
+  const i=planSeq.indexOf(oid); if(i<0)return;
+  const j=i+(dir==='up'?-1:1); if(j<0||j>=planSeq.length)return;
+  const t=planSeq[i]; planSeq[i]=planSeq[j]; planSeq[j]=t;
+  renderPlanner();
+}
+let _plDragOid=null;
+function plDragStart(e,oid){ _plDragOid=oid; try{e.dataTransfer.setData('text/plain',oid);e.dataTransfer.effectAllowed='move';}catch(err){} }
+function plDragOver(e){ if(_plDragOid) e.preventDefault(); }
+function plDrop(e,oid){
+  e.preventDefault();
+  if(!_plDragOid||_plDragOid===oid){_plDragOid=null;return;}
+  plOrderedOids();
+  const from=planSeq.indexOf(_plDragOid), to=planSeq.indexOf(oid);
+  if(from<0||to<0){_plDragOid=null;return;}
+  planSeq.splice(from,1); planSeq.splice(to,0,_plDragOid);
+  _plDragOid=null; renderPlanner();
+}
+/* per-truck sequence by planner row position: a truck on rows 2 and 5 gets seq 1 then 2 */
+function planSeqMap(){
+  const count={}, map={};
+  plOrderedOids().forEach(oid=>{
+    map[oid]={};
+    (planDraft[oid]||[]).forEach(p=>{
+      const k=(p.num||'').trim().toUpperCase(); if(!k||map[oid][k])return;
+      count[k]=(count[k]||0)+1; map[oid][k]=count[k];
+    });
+  });
+  return map;
+}
 function planGroup(t){
   if(!t) return 'sub';
   if(t.fleet==='cactus') return 'cac';
@@ -1320,17 +1404,18 @@ const PL_GROUPS=[['ww','WW'],['rho','RHO'],['pow','POW'],['cac','CAC'],['agg','A
 function renderPlanner(){
   if(!plannerOpen) return;
   planInitDraft();
-  const oids=[...selectedOrders].filter(oid=>O(oid));
+  const oids=plOrderedOids();
   document.getElementById('plCount').textContent=oids.length+' order'+(oids.length!=1?'s':'');
   const SPARE=3; let maxPairs=5; oids.forEach(oid=>{maxPairs=Math.max(maxPairs,(planDraft[oid]||[]).length+SPARE);});
   let head=`<thead><tr>
+      <th class="seqc" title="Run order — top row goes first. Drag rows or use ▲▼.">⇅</th>
       <th class="fz c1">Disp #</th><th class="fz c2">Material</th><th>Dropoff</th><th>Ord</th><th>Rem</th>
       ${PL_GROUPS.map(g=>`<th class="grp">${g[1]}</th>`).join('')}
       <th>Trks</th><th>Lds</th><th>Tons</th>
       <th colspan="${maxPairs+1}" style="text-align:left;color:#8b96a5">type TRK # + LDS per truck — group counts auto-fill ▶</th>
     </tr></thead>`;
   let rows='';
-  oids.forEach(oid=>{
+  oids.forEach((oid,rowIdx)=>{
     const o=O(oid); const pairs=planDraft[oid]||[];
     const rem=o.unit==='ton'?Math.max(0,o.target-(o.deliv||0)):o.target;
     let pcells='';
@@ -1342,7 +1427,10 @@ function renderPlanner(){
       </span></td>`;
     }
     pcells+=`<td class="pairc"><button class="addpair" onclick="planAddPair('${oid}')">+</button></td>`;
-    rows+=`<tr data-oid="${oid}" class="${plFocus===oid?'focused':''}" onclick="planFocusRow('${oid}',event)">
+    rows+=`<tr data-oid="${oid}" class="${plFocus===oid?'focused':''}" onclick="planFocusRow('${oid}',event)" ondragover="plDragOver(event)" ondrop="plDrop(event,'${oid}')">
+      <td class="seqc" draggable="true" ondragstart="plDragStart(event,'${oid}')" title="Run order ${rowIdx+1} — drag to move, or ▲▼">
+        <span class="sq">${rowIdx+1}</span><span class="sqbs"><button class="sqb" onclick="planMove('${oid}','up');event.stopPropagation()" title="Move up — runs earlier">▲</button><button class="sqb" onclick="planMove('${oid}','down');event.stopPropagation()" title="Move down — runs later">▼</button></span>
+      </td>
       <td class="fz c1">${o.disp}</td><td class="fz c2">${o.mat}</td>
       <td class="dropc" title="${o.drop||''}">${o.drop||''}</td>
       <td class="numc">${o.target}</td>
@@ -1352,7 +1440,7 @@ function renderPlanner(){
       ${pcells}</tr>`;
   });
   let foot=`<tfoot><tr>
-    <td class="fz c1">TOTAL</td><td class="fz c2"></td><td></td><td></td><td></td>
+    <td class="seqc"></td><td class="fz c1">TOTAL</td><td class="fz c2"></td><td></td><td></td><td></td>
     ${PL_GROUPS.map(g=>`<td class="tally ${g[0]}" data-gt="${g[0]}">0</td>`).join('')}
     <td class="totc" data-gt="trks">0</td><td class="totc" data-gt="lds">0</td><td class="totc" data-gt="tons">0</td>
     <td colspan="${maxPairs+1}"></td></tr></tfoot>`;
@@ -1385,7 +1473,7 @@ function planRecalc(oid){
   row.querySelector('td[data-tot="tons"]').textContent=tons?tons.toLocaleString():0;
 }
 function planRecalcTotals(){
-  const oids=[...selectedOrders].filter(oid=>O(oid));
+  const oids=plOrderedOids();
   const G={ww:0,rho:0,pow:0,cac:0,agg:0,sub:0}; let trks=0,lds=0;
   oids.forEach(oid=>{(planDraft[oid]||[]).filter(p=>(p.num||'').trim()).forEach(p=>{
     const t=trucks.find(x=>x.num.toLowerCase()===(p.num||'').trim().toLowerCase());
@@ -1492,13 +1580,16 @@ function renderPlanDetail(){
   const rem=o.unit==='ton'?Math.max(0,o.target-(o.deliv||0)):o.target;
   const tt=planDetailTotals(plFocus);
   const nmNote=(o.nm||0)>0?('<span class="pd-nm">NewMile: '+o.nm+' on order</span>'):'';
+  const _sm=planSeqMap()[plFocus]||{};
   const chips=pairs.map((p,i)=>{
     const t=trucks.find(x=>x.num.toLowerCase()===(p.num||'').trim().toLowerCase());
     const g=(t?planGroup(t):planGroupByNum(p.num)).toUpperCase();
     const drv=t&&t.driver?t.driver:'';
+    const sq=_sm[(p.num||'').trim().toUpperCase()]||0;
     return '<div class="pd-chip" title="'+drv.replace(/"/g,'')+'">'
       +'<input class="dtrk" value="'+(p.num||'').replace(/"/g,'&quot;')+'" placeholder="trk#" list="plTruckList" oninput="planEdit(\''+plFocus+'\','+i+',\'num\',this.value)" onchange="renderPlanner()">'
       +'<span class="dg g-'+g.toLowerCase()+'">'+g+'</span>'
+      +(sq>1?'<span class="dg dseq" title="Run #'+sq+' of the day for this truck — set by planner row order">'+sq+'º</span>':'')
       +'<input class="dlds" value="'+(p.lds!==''&&p.lds!=null?p.lds:'')+'" placeholder="ld" inputmode="numeric" oninput="planEdit(\''+plFocus+'\','+i+',\'lds\',this.value);updatePlanDetailTotals()" onchange="renderPlanner()">'
       +'<button class="ddel" title="Remove" onclick="planRemovePair(\''+plFocus+'\','+i+')">✕</button>'
       +'</div>';
@@ -1533,8 +1624,9 @@ function plannerDateISO(){
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
 }
 function exportPlan(){
-  const oids=[...selectedOrders].filter(oid=>O(oid));
+  const oids=plOrderedOids();
   if(!oids.length){toast('Select orders first',true);return;}
+  const seqMap=planSeqMap();
   const ordersOut=[];
   let totalTrucks=0;
   oids.forEach(oid=>{
@@ -1542,7 +1634,9 @@ function exportPlan(){
     const pairs=(planDraft[oid]||[]).filter(p=>(p.num||'').trim());
     if(!pairs.length) return; // only export orders that actually have trucks typed
     const assignments=pairs.map(p=>{
-      const a={truck:(p.num||'').trim(), loads:(typeof p.lds==='number'&&p.lds>0)?p.lds:2};
+      const n=(p.num||'').trim();
+      const a={truck:n, loads:(typeof p.lds==='number'&&p.lds>0)?p.lds:2,
+        sequence:(seqMap[oid]&&seqMap[oid][n.toUpperCase()])||1};
       return a;
     });
     totalTrucks+=assignments.length;
@@ -1574,7 +1668,7 @@ function exportPlan(){
   toast(`Exported plan_${dateISO}.json · ${ordersOut.length} order(s) · ${totalTrucks} trucks → drop in Cowork plans/`);
 }
 function commitPlanner(){
-  const oids=[...selectedOrders].filter(oid=>O(oid));
+  const oids=plOrderedOids();        // row order top→bottom decides per-truck sequences
   if(!oids.length){toast('No orders selected',true);return;}
   let totAssigns=0, touched=0; const perTruck={};
   oids.forEach(oid=>{
@@ -1640,16 +1734,31 @@ window.__applyLiveData=function(p){
   }catch(e){ console.error('applyLiveData',e); }
 };
 window.__getPlan=function(){
-  var oids=Array.from(selectedOrders).filter(function(oid){return O(oid);});
+  var oids=plOrderedOids();          // planner row order top→bottom = run order
+  var seqMap=planSeqMap();
   var out=[];
   oids.forEach(function(oid){
     var o=O(oid); var pairs=(planDraft[oid]||[]).filter(function(pp){return (pp.num||'').trim();});
     if(!pairs.length) return;
     out.push({order_id:parseInt((''+o.id).replace(/^o/,''),10),disp:o.disp,material:o.mat,
-      assignments:pairs.map(function(pp){return {truck:(pp.num||'').trim(),loads:(typeof pp.lds==='number'&&pp.lds>0)?pp.lds:2,sequence:1};})});
+      assignments:pairs.map(function(pp){var n=(pp.num||'').trim();
+        return {truck:n,loads:(typeof pp.lds==='number'&&pp.lds>0)?pp.lds:2,
+          sequence:(seqMap[oid]&&seqMap[oid][n.toUpperCase()])||1};})});
   });
   return { orders: out };
 };
+
+/* 🔍 Ctrl +/−/0 and Ctrl+wheel land HERE (board iframe) — forward to the shell's app zoom */
+window.addEventListener('keydown',function(e){
+  if(!(e.ctrlKey||e.metaKey)) return;
+  var d=(e.key==='='||e.key==='+')?'+':(e.key==='-')?'-':(e.key==='0')?'0':null;
+  if(!d) return; e.preventDefault();
+  try{ parent.postMessage({type:'zoom',dir:d},'*'); }catch(err){}
+});
+window.addEventListener('wheel',function(e){
+  if(!e.ctrlKey) return; e.preventDefault();
+  try{ parent.postMessage({type:'zoom',dir:e.deltaY<0?'+':'-'},'*'); }catch(err){}
+},{passive:false});
 
 render();
 setView('board');
@@ -1738,6 +1847,7 @@ setView('board');
   .gmap{font-size:11px;border:1px solid #313d4a;background:#23303f;border-radius:6px;padding:1px 6px;cursor:pointer;margin-left:6px;line-height:1.4;vertical-align:middle;color:#e8ecf3}
   .gmap:hover{border-color:#5a95f9;background:#16243a}
   .gmap.notei{border-color:#C8991F66;color:#fbbf24}
+  .gmap.crewi{border-color:#5a95f966;color:#7CC6FF}
   .gm-pt{cursor:pointer;border-bottom:1px dotted #3a4763}
   .gm-pt:hover{color:#5a95f9;border-bottom-color:#5a95f9}
   .rmi{font-size:11px;color:#5a95f9;margin-left:8px;white-space:nowrap}
@@ -2425,6 +2535,9 @@ setView('board');
       $id('tabTools-msg').innerHTML=
         '<label class="enh-pf-l" title="Auto-translate Spanish driver messages (subtle line under each)"><input type="checkbox" id="msgTrChk" '+(msgCfg().translate?'checked':'')+'> 🌐 Translate</label>'
         +'<button class="gmap" onclick="openComposer([])">✉ New message</button>'
+        +'<button class="gmap" onclick="msgZoom(\'-\')" title="Zoom messaging out">➖</button>'
+        +'<button class="gmap" onclick="msgZoom(\'+\')" title="Zoom messaging in">➕</button>'
+        +'<button class="gmap" onclick="msgZoom(\'0\')" title="Reset messaging zoom">100%</button>'
         +'<button class="gmap" onclick="wvMsgReload()">↻</button>';
       $id('msgTrChk').addEventListener('change',function(){
         localStorage.setItem('mab_translate',this.checked?'1':'0');
@@ -2436,6 +2549,7 @@ setView('board');
     var bdg=$id('msgBadge'); if(bdg){ bdg.classList.remove('show'); }
   };
   window.wvMsgReload=function(){ try{ parent.postMessage({type:'msgreload'},'*'); }catch(e){} };
+  window.msgZoom=function(dir){ try{ parent.postMessage({type:'msgzoom',dir:dir},'*'); }catch(e){} };
   /* closeTab is defined later by the tab scaffold — wrap it at init time (see init()) */
   function msgWrapCloseTab(){
     var orig=window.closeTab;

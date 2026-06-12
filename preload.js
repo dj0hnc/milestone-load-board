@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('newmile', {
   directory: () => ipcRenderer.invoke('nm:directory'),
   setOnCall: (list) => ipcRenderer.invoke('nm:setOnCall', list),
   drivers: () => ipcRenderer.invoke('nm:drivers'),
+  projectTrucks: (p) => ipcRenderer.invoke('nm:projectTrucks', p),
+  zoom: (factor) => ipcRenderer.invoke('nm:zoom', factor),
   sendDriverMsg: (p) => ipcRenderer.invoke('nm:sendDriverMsg', p),
   deleteAssignments: (ids) => ipcRenderer.invoke('nm:deleteAssignments', ids),
   logs: () => ipcRenderer.invoke('nm:logs'),
