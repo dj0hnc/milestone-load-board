@@ -93,7 +93,7 @@ let appCfg = null;
  */
 function settingsPath() { return path.join(app.getPath('userData'), 'app-settings.json'); }
 function loadSettings() {
-  try { return JSON.parse(fs.readFileSync(settingsPath(), 'utf8')) || {}; } catch (e) { return {}; }
+  try { return JSON.parse(fs.readFileSync(settingsPath(), 'utf8').replace(/^﻿/, '')) || {}; } catch (e) { return {}; }
 }
 function applySettings(cfg, s) {
   if (!s) return cfg;
