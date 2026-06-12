@@ -563,7 +563,7 @@ let filters={fleet:'all',avail:'all',worked:'all',terminal:'all'};
 let sortIdle=true, selectMode=false, amMode=false;
 let selected=new Set();
 let activeTruck=null;
-let lastLL=2;                 // remembered load limit (prefill only — asked per order)
+let lastLL='open';            // remembered load limit (prefill only) — default ∞ Open: the dispatcher sets limits, never the tool
 let modalCtx=null;            // {mode, truckId, orderId, idx}
 let modalLL=2, modalSeq=1, modalSeqMax=1;
 
@@ -1012,12 +1012,12 @@ function applySelectedToOrder(oid,ll){
 function openModal(ctx){
   const o=ctx.orderId?O(ctx.orderId):null;
   if(ctx.mode==='single'&&o&&o.assigns.some(a=>a.truck===ctx.truckId)){const t=T(ctx.truckId);toast(`${t.num} is already on ${o.disp} — tap its chip to edit`,true);return;}
-  modalCtx=ctx;modalLL=2;
+  modalCtx=ctx;modalLL=lastLL;
   let title='',sub='';
   if(ctx.mode==='single'){const t=T(ctx.truckId);const cnt=truckOrderCount(ctx.truckId);modalSeqMax=cnt+1;modalSeq=cnt+1;title=`Assign ${t.num}`;sub=`To <b>${o.disp} — ${o.mat}</b><br>${o.cust}`;$('#okBtn').textContent='Assign';}
   else if(ctx.mode==='bulk'){modalLL=lastLL;modalSeqMax=1;title=`Assign ${selected.size} trucks → ${o.disp}`;sub=`Load limit for <b>${o.disp} — ${o.mat}</b> — each order can differ. Trucks auto-sequence.`;$('#okBtn').textContent='Assign to this order';}
   else if(ctx.mode==='multiOrder'){modalLL=lastLL;modalSeqMax=1;title=`Assign ${ctx.truckIds.length} truck(s) → ${selectedOrders.size} orders`;sub=`One load limit applied to <b>all ${selectedOrders.size} selected orders</b>. Trucks auto-sequence per order.`;$('#okBtn').textContent='Assign to all selected';}
-  else if(ctx.mode==='edit'){const a=o.assigns[ctx.idx];const t=T(a.truck);modalLL=a.ll;modalSeqMax=Math.max(2,truckOrderCount(a.truck));modalSeq=a.seq;title=`Edit ${t.num}`;sub=`On <b>${o.disp} — ${o.mat}</b>`;$('#okBtn').textContent='Save';}
+  else if(ctx.mode==='edit'){const a=o.assigns[ctx.idx];const t=T(a.truck);modalLL=(a.ll==null?'open':a.ll);modalSeqMax=Math.max(2,truckOrderCount(a.truck));modalSeq=a.seq;title=`Edit ${t.num}`;sub=`On <b>${o.disp} — ${o.mat}</b>`;$('#okBtn').textContent='Save';}
   $('#mTitle').textContent=title;$('#mSub').innerHTML=sub;
   renderLLOpts();renderSeqOpts();
   $('#scrim').classList.add('show');
@@ -1380,7 +1380,7 @@ function planInitDraft(){
   [...selectedOrders].forEach(oid=>{
     if(planDraft[oid]) return;
     const o=O(oid); if(!o){planDraft[oid]=[];return;}
-    planDraft[oid]=o.assigns.map(a=>{const t=T(a.truck);return {num:t?t.num:'', lds:(typeof a.ll==='number'?a.ll:2)};}).filter(p=>p.num);
+    planDraft[oid]=o.assigns.map(a=>{const t=T(a.truck);return {num:t?t.num:'', lds:(typeof a.ll==='number'?a.ll:'')};}).filter(p=>p.num);
   });
   Object.keys(planDraft).forEach(oid=>{ if(!selectedOrders.has(oid)) delete planDraft[oid]; });
 }
@@ -1513,8 +1513,8 @@ function planPick(tid){
   // drop into the active cell if empty, else append a new pair
   let idx=planLastFocus.i;
   if(idx==null||!(planDraft[oid][idx])||(planDraft[oid][idx].num||'').trim()){
-    planDraft[oid].push({num:t.num,lds:2}); idx=planDraft[oid].length-1;
-  } else { planDraft[oid][idx]={num:t.num,lds:planDraft[oid][idx].lds||2}; }
+    planDraft[oid].push({num:t.num,lds:''}); idx=planDraft[oid].length-1;
+  } else { planDraft[oid][idx]={num:t.num,lds:planDraft[oid][idx].lds||''}; }
   document.getElementById('plResults').classList.remove('show');
   document.getElementById('plSearch').value='';
   renderPlanner();
@@ -1555,7 +1555,7 @@ function planDropTruck(oid,tid,multi){
   const ids=multi?[...selected]:[tid]; let added=0;
   ids.forEach(id=>{const t=T(id);if(!t)return;
     if(planDraft[oid].some(p=>(p.num||'').trim().toLowerCase()===t.num.toLowerCase()))return;
-    planDraft[oid].push({num:t.num,lds:(typeof lastLL==='number'&&lastLL>0)?lastLL:2});added++;});
+    planDraft[oid].push({num:t.num,lds:(typeof lastLL==='number'&&lastLL>0)?lastLL:''});added++;});
   plFocus=oid; renderPlanner();
   toast(added?(added+' truck(s) \u2192 '+O(oid).disp):'Already in the plan for this order',!added);
 }
@@ -1635,7 +1635,7 @@ function exportPlan(){
     if(!pairs.length) return; // only export orders that actually have trucks typed
     const assignments=pairs.map(p=>{
       const n=(p.num||'').trim();
-      const a={truck:n, loads:(typeof p.lds==='number'&&p.lds>0)?p.lds:2,
+      const a={truck:n, loads:(typeof p.lds==='number'&&p.lds>0)?p.lds:null,   // null = open / no limit
         sequence:(seqMap[oid]&&seqMap[oid][n.toUpperCase()])||1};
       return a;
     });
@@ -1681,7 +1681,7 @@ function commitPlanner(){
       if(newAssigns.some(a=>a.truck===id)) return;
       const baseSeq=(perTruck[id]!=null?perTruck[id]:truckOrderCount(id));
       const seq=baseSeq+1; perTruck[id]=seq;
-      const ll=(typeof p.lds==='number'&&p.lds>0)?p.lds:2;
+      const ll=(typeof p.lds==='number'&&p.lds>0)?p.lds:'open';   // no number typed → ∞ open, never an invented limit
       newAssigns.push({truck:id,ll,seq,done:prevDone[p.num.trim().toLowerCase()]||0});
       const t=T(id); if(t&&t.status==='free') t.status='assigned'; totAssigns++;
     });
@@ -1742,7 +1742,7 @@ window.__getPlan=function(){
     if(!pairs.length) return;
     out.push({order_id:parseInt((''+o.id).replace(/^o/,''),10),disp:o.disp,material:o.mat,
       assignments:pairs.map(function(pp){var n=(pp.num||'').trim();
-        return {truck:n,loads:(typeof pp.lds==='number'&&pp.lds>0)?pp.lds:2,
+        return {truck:n,loads:(typeof pp.lds==='number'&&pp.lds>0)?pp.lds:null,
           sequence:(seqMap[oid]&&seqMap[oid][n.toUpperCase()])||1};})});
   });
   return { orders: out };
@@ -2700,14 +2700,14 @@ setView('board');
     var opts=orders.filter(function(o){return !o.completed&&o.unit!=='hour';})
       .map(function(o){return '<option value="'+o.id+'">'+(o.disp||o.id).slice(0,46)+' ('+Math.round(remainingQty(o))+' '+unitAbbr(o)+' rem)</option>';}).join('');
     el.innerHTML='<div class="tm-target">➡ Reassign '+tmCount()+' truck(s) to: <select id="tmTargetSel">'+opts+'</select>'
-      +' loads <input id="tmTargetLds" type="number" value="2" min="1" max="9" style="width:48px">'
+      +' loads <input id="tmTargetLds" type="number" placeholder="∞" min="1" max="9" style="width:48px" title="Leave empty = open (no load limit)">'
       +' <button class="gmap" onclick="tmDoReassign()">✓ Confirm reassign</button>'
       +' <button class="gmap" onclick="tmArmedClear()">✕</button></div>';
   }
   window.tmArmedClear=function(){ tmArmed=null; var el=$id('tmTarget'); if(el)el.innerHTML=''; tmUpdateBtns(); };
   window.tmDoReassign=function(){
     var oid=$id('tmTargetSel')&&$id('tmTargetSel').value; if(!oid||!O(oid)){ toast('Pick a target order',true); return; }
-    var lds=parseInt($id('tmTargetLds').value,10)||2;
+    var lds=parseInt($id('tmTargetLds').value,10)||null;   // empty = open / no limit — dispatcher decides
     var o=O(oid), assignments=[], deleteIds=[];
     Object.keys(tmSel).forEach(function(tid){
       if(!tmSel[tid]) return; var t=T(tid); if(!t) return;
