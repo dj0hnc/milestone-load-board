@@ -1,4 +1,4 @@
-﻿{
+{
     "_comment":  "NewMile connection. Endpoints VERIFIED live 2026-06-10. discovery=true auto-fetches from /.well-known; the values below are the confirmed fallback if discovery is ever unavailable.",
     "mcpUrl":  "https://app.newmile.com/mcp",
     "oauth":  {

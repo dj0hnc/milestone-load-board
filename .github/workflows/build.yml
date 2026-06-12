@@ -18,7 +18,7 @@ jobs:
         env:
           SAMSARA_CACTUS: ${{ secrets.SAMSARA_CACTUS }}
           SAMSARA_CKJ: ${{ secrets.SAMSARA_CKJ }}
-        run: node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('newmile.config.template.json','utf8'));c.samsara.tokens[0].token=process.env.SAMSARA_CACTUS||'';c.samsara.tokens[1].token=process.env.SAMSARA_CKJ||'';fs.writeFileSync('newmile.config.json',JSON.stringify(c,null,2));console.log('config ready');"
+        run: node -e "const fs=require('fs');const raw=fs.readFileSync('newmile.config.template.json','utf8').replace(/^﻿/,'');const c=JSON.parse(raw);c.samsara.tokens[0].token=process.env.SAMSARA_CACTUS||'';c.samsara.tokens[1].token=process.env.SAMSARA_CKJ||'';fs.writeFileSync('newmile.config.json',JSON.stringify(c,null,2));console.log('config ready');"
       - name: Build portable exe
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -40,7 +40,7 @@ jobs:
         env:
           SAMSARA_CACTUS: ${{ secrets.SAMSARA_CACTUS }}
           SAMSARA_CKJ: ${{ secrets.SAMSARA_CKJ }}
-        run: node -e "const fs=require('fs');const c=JSON.parse(fs.readFileSync('newmile.config.template.json','utf8'));c.samsara.tokens[0].token=process.env.SAMSARA_CACTUS||'';c.samsara.tokens[1].token=process.env.SAMSARA_CKJ||'';fs.writeFileSync('newmile.config.json',JSON.stringify(c,null,2));console.log('config ready');"
+        run: node -e "const fs=require('fs');const raw=fs.readFileSync('newmile.config.template.json','utf8').replace(/^﻿/,'');const c=JSON.parse(raw);c.samsara.tokens[0].token=process.env.SAMSARA_CACTUS||'';c.samsara.tokens[1].token=process.env.SAMSARA_CKJ||'';fs.writeFileSync('newmile.config.json',JSON.stringify(c,null,2));console.log('config ready');"
       - name: Build universal dmg (Apple Silicon + Intel, unsigned)
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
