@@ -622,21 +622,26 @@ class NewMileClient {
       filters: { project_id: projectId, order_date_from: from, order_date_to: to, sort: 'start_date', dir: 'desc', page_size: 25 }
     });
     const rows = ((r && (r.orders || r.results)) || []).filter(o => o.id !== excludeOrderId).slice(0, 6);
-    const seen = {};
-    const lists = await this._pool(rows.map(o => o.id), 6, (oid) => this.orderAssignments(oid));
-    rows.forEach((o, i) => {
-      const asg = ((lists[i] || {}).order_assignments || (lists[i] || {}).results || lists[i] || []);
+    // ONLY the most recent prior order that actually ran trucks — the dispatcher wants
+    // last run's crew, not the whole 14-day history. Rows come sorted newest first.
+    for (const o of rows) {
+      const res = await this.orderAssignments(o.id);
+      const asg = ((res || {}).order_assignments || (res || {}).results || res || []);
+      const seen = {};
       (Array.isArray(asg) ? asg : []).forEach(a => {
         const num = (a.truck_number || '').trim(); if (!num) return;
         const k = num.toUpperCase();
-        if (!seen[k]) seen[k] = { num: num, lastLL: a.load_limit, runs: 0, lastDate: o.start_date };
-        seen[k].runs++;
-        if (seen[k].lastLL == null && a.load_limit != null) seen[k].lastLL = a.load_limit;
+        if (!seen[k]) seen[k] = { num: num, lastLL: a.load_limit, lastDate: o.start_date };
+        else if (seen[k].lastLL == null && a.load_limit != null) seen[k].lastLL = a.load_limit;
       });
-    });
-    const out = Object.values(seen).sort((a, b) => b.runs - a.runs);
-    this.log('crew: project ' + projectId + ' → ' + out.length + ' trucks from ' + rows.length + ' recent orders');
-    return { trucks: out, orders: rows.length };
+      const out = Object.values(seen);
+      if (out.length) {
+        this.log('crew: project ' + projectId + ' → ' + out.length + ' trucks from last run ' + (o.start_date || o.id));
+        return { trucks: out, orders: 1, lastDate: o.start_date || '', lastDisp: o.dispatch_number || o.display_id || ('#' + o.id) };
+      }
+    }
+    this.log('crew: project ' + projectId + ' → no prior order with trucks in 14 days');
+    return { trucks: [], orders: 0 };
   }
 
   // ---------- 🚛 truck manager writes (verified: truck.on_call writeable, assignment delete exists) ----------

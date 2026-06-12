@@ -1236,7 +1236,7 @@ function crewApply(oid,res){
   var o=O(oid); if(!o) return;
   if(!res||res.error){ toast('Crew pull: '+((res&&res.error)||'no response'),true); return; }
   var list=res.trucks||[];
-  if(!list.length){ toast('No trucks found on this project in the last 14 days',true); return; }
+  if(!list.length){ toast('No prior run with trucks on this project in the last 14 days',true); return; }
   if(!selectedOrders.has(oid)) selectedOrders.add(oid);
   planInitDraft();
   if(!planDraft[oid]) planDraft[oid]=[];
@@ -1250,8 +1250,8 @@ function crewApply(oid,res){
   });
   if(!plannerOpen) openPlanner();
   plFocus=oid; renderPlanner(); renderOrders();
-  toast(added?('⟲ '+added+' truck(s) from '+(res.orders||0)+' recent project order(s) → '+o.disp+' — review loads, then finalize')
-             :('All '+list.length+' previous project trucks are already planned on this order'),!added);
+  toast(added?('⟲ '+added+' truck(s) from the LAST run of this project'+(res.lastDate?(' ('+res.lastDate+')'):'')+' → '+o.disp+' — review loads, then finalize')
+             :('All '+list.length+' trucks from the last run are already planned on this order'),!added);
 }
 
 /* (the old fake 30s "auto-refresh draft sync" countdown was demo-only and is gone —
