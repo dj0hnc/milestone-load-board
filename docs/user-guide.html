@@ -1,0 +1,416 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Milestone Load Board — User Guide</title>
+<style>
+  :root{
+    --navy:#23303f; --navy2:#1a222c; --navy3:#141b24; --panel:#2e3a47;
+    --gold:#C8991F; --gold-soft:#E3B73E; --blue:#5a95f9; --green:#22c55e;
+    --orange:#fb923c; --red:#ea4e2c; --muted:#8b96a5; --line:#313d4a;
+    --text:#eff4fb; --dim:#aeb7c0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  @page{size:Letter;margin:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--navy3);color:var(--text);font-size:11.5px;line-height:1.55}
+  .page{width:8.5in;min-height:11in;padding:.55in .6in;page-break-after:always;background:var(--navy3);position:relative}
+  .page:last-child{page-break-after:auto}
+
+  /* cover */
+  .cover{display:flex;flex-direction:column;justify-content:center;background:
+    radial-gradient(900px 500px at 90% -10%, rgba(90,149,249,.10), transparent 60%),
+    radial-gradient(700px 420px at -5% 110%, rgba(200,153,31,.10), transparent 55%), var(--navy3)}
+  .wordmark{font-size:46px;font-weight:800;letter-spacing:2px}
+  .wordmark .a{color:#fff}.wordmark .b{color:var(--gold)}
+  .seed{display:inline-block;width:26px;height:26px;border-radius:50% 50% 50% 0;background:linear-gradient(135deg,var(--gold-soft),var(--gold));transform:rotate(45deg);margin:0 4px;position:relative;top:3px}
+  .cover .sub{font-size:20px;color:var(--dim);margin-top:8px;letter-spacing:.5px}
+  .cover .ver{display:inline-block;margin-top:26px;background:var(--panel);border:1px solid var(--line);border-radius:24px;padding:8px 18px;font-size:13px;color:var(--gold-soft);font-weight:700;width:fit-content}
+  .cover .meta{margin-top:60px;color:var(--muted);font-size:12px}
+  .cover .tagline{margin-top:18px;font-size:14px;color:var(--dim);max-width:5.4in}
+  .coverbar{position:absolute;left:0;top:0;width:100%;height:10px;background:linear-gradient(90deg,var(--gold),var(--blue))}
+
+  h1{font-size:21px;font-weight:800;color:#fff;border-bottom:2px solid var(--gold);padding-bottom:7px;margin-bottom:14px;letter-spacing:.3px}
+  h1 .n{color:var(--gold);margin-right:8px}
+  h2{font-size:14px;font-weight:800;color:var(--gold-soft);margin:16px 0 7px;letter-spacing:.2px}
+  h3{font-size:12px;font-weight:700;color:var(--blue);margin:10px 0 4px}
+  p{margin:0 0 8px;color:var(--dim)}
+  b,strong{color:var(--text)}
+  ul,ol{margin:2px 0 10px 18px;color:var(--dim)}
+  li{margin-bottom:4px}
+  .pill{display:inline-block;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:1px 9px;font-size:10px;font-weight:700;color:var(--text);white-space:nowrap}
+  .pill.gold{background:rgba(200,153,31,.16);border-color:var(--gold);color:var(--gold-soft)}
+  .pill.blue{background:rgba(90,149,249,.14);border-color:var(--blue);color:var(--blue)}
+  .pill.green{background:rgba(34,197,94,.14);border-color:var(--green);color:var(--green)}
+  .pill.red{background:rgba(234,78,44,.14);border-color:var(--red);color:var(--red)}
+  .pill.orange{background:rgba(251,146,60,.14);border-color:var(--orange);color:var(--orange)}
+
+  .card{background:var(--navy2);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin:8px 0}
+  .card.tip{border-left:4px solid var(--green)}
+  .card.warn{border-left:4px solid var(--orange)}
+  .card.ex{border-left:4px solid var(--blue)}
+  .card .t{font-weight:800;color:#fff;font-size:11.5px;margin-bottom:4px}
+
+  table{width:100%;border-collapse:collapse;margin:6px 0 12px;font-size:10.8px}
+  th{text-align:left;background:var(--navy2);color:var(--gold-soft);font-size:9.6px;text-transform:uppercase;letter-spacing:.6px;padding:6px 9px;border-bottom:2px solid var(--gold)}
+  td{padding:6px 9px;border-bottom:1px solid var(--line);color:var(--dim);vertical-align:top}
+  td b{color:var(--text)}
+
+  code,.kbd{font-family:'Cascadia Code',Consolas,monospace;font-size:10.3px;background:var(--navy2);border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--gold-soft)}
+  .mock{background:var(--navy2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-family:'Cascadia Code',Consolas,monospace;font-size:10.2px;color:var(--dim);margin:7px 0;white-space:pre-wrap}
+  .mock .g{color:var(--green)} .mock .o{color:var(--orange)} .mock .b{color:var(--blue)} .mock .y{color:var(--gold-soft)} .mock .r{color:var(--red)}
+
+  .toc td{padding:7px 9px;font-size:12px}
+  .toc .sec{color:var(--text);font-weight:700}
+  .foot{position:absolute;bottom:.32in;left:.6in;right:.6in;display:flex;justify-content:space-between;font-size:9px;color:var(--muted);border-top:1px solid var(--line);padding-top:6px}
+  .twocol{display:flex;gap:14px}
+  .twocol>div{flex:1;min-width:0}
+  .step{display:flex;gap:9px;margin-bottom:8px}
+  .step .num{flex:none;width:20px;height:20px;border-radius:50%;background:var(--gold);color:#1a1205;font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center}
+  .step .tx{color:var(--dim)} .step .tx b{color:var(--text)}
+</style>
+</head>
+<body>
+
+<!-- ============ COVER ============ -->
+<div class="page cover">
+  <div class="coverbar"></div>
+  <div class="wordmark"><span class="a">MILEST</span><span class="seed"></span><span class="a">NE</span></div>
+  <div class="sub">Load Board — <b style="color:var(--gold)">Dispatch Cockpit</b></div>
+  <div class="ver">USER GUIDE · v2.1.1</div>
+  <div class="tagline">Plan, assign, push, message and track your entire fleet — live-connected to NewMile and Samsara. One portable app for Windows and Mac. No installation, no IT ticket.</div>
+  <div class="meta">
+    Miles Ahead Brands — Internal use only<br>
+    Milestone Supply · CKJ Transport · Cactus Express · AGGSHIP<br>
+    June 2026
+  </div>
+</div>
+
+<!-- ============ TOC ============ -->
+<div class="page">
+  <h1><span class="n">§</span>Contents</h1>
+  <table class="toc">
+    <tr><td class="sec">1 · Install — Windows &amp; Mac</td><td>Get running in two minutes</td></tr>
+    <tr><td class="sec">2 · Getting started</td><td>Connect to NewMile, the top bar, auto-refresh, updates</td></tr>
+    <tr><td class="sec">3 · The Board</td><td>Live stats ribbon, day navigation, reading an order card</td></tr>
+    <tr><td class="sec">4 · Trucks &amp; filters</td><td>Fleet groups, rotation, live Samsara filters</td></tr>
+    <tr><td class="sec">5 · Planning</td><td>Planner tray, paste from Excel, ⚡ Smart Dispatch auto-plan</td></tr>
+    <tr><td class="sec">6 · Pushing to NewMile</td><td>Finalize → sync, the Push preview, safety rules</td></tr>
+    <tr><td class="sec">7 · Live Alerts</td><td>What fires, clicking through, dismissing, tuning</td></tr>
+    <tr><td class="sec">8 · 🗺 Live Map</td><td>Find any truck, dashcam snapshots, message from the pin</td></tr>
+    <tr><td class="sec">9 · 💬 Messages</td><td>NewMile messaging inside the app, translator, mass-send composer</td></tr>
+    <tr><td class="sec">10 · 🚛 Truck Manager</td><td>Bulk on/off-call, batch reassign</td></tr>
+    <tr><td class="sec">11 · 📇 Directory</td><td>Phones, click-to-call, CSV export</td></tr>
+    <tr><td class="sec">12 · 💰 Load Quoter</td><td>Real road miles, cost engine, worked example</td></tr>
+    <tr><td class="sec">13 · Reports</td><td>PM Assigned &amp; AM Rolling by fleet group</td></tr>
+    <tr><td class="sec">14 · Settings &amp; troubleshooting</td><td>Every knob, common fixes</td></tr>
+  </table>
+  <div class="card tip"><div class="t">💡 The 30-second mental model</div>
+  Open the app → it connects and loads <b>today</b> by itself → you plan trucks onto orders (drag, type, paste from Excel, or let <b>⚡ Auto-plan</b> do it) → hit <b>Finalize</b> on each ready order → press <b>⟳ Push to NewMile</b> (or just wait — the next refresh writes it for you). Everything else in this guide is power tools around that loop.</div>
+  <div class="foot"><span>Milestone Load Board v2.1.1 — User Guide</span><span>Miles Ahead Brands · internal</span></div>
+</div>
+
+<!-- ============ 1 INSTALL ============ -->
+<div class="page">
+  <h1><span class="n">1</span>Install — Windows &amp; Mac</h1>
+  <div class="twocol">
+    <div>
+      <h2>🪟 Windows</h2>
+      <div class="step"><div class="num">1</div><div class="tx">Get <b>MilestoneLoadBoard-2.1.1-portable.exe</b> from the company SharePoint / Teams link.</div></div>
+      <div class="step"><div class="num">2</div><div class="tx">Copy it anywhere — Desktop, Documents, even a USB stick. It is a <b>single portable file</b>: no installer, no admin rights.</div></div>
+      <div class="step"><div class="num">3</div><div class="tx"><b>Double-click it.</b> The very first launch takes ~10 seconds (it unpacks itself). After that it opens fast.</div></div>
+      <div class="card warn"><div class="t">⚠ "Windows protected your PC"</div>
+      If Windows SmartScreen appears the first time (normal for internal tools), click <b>More info → Run anyway</b>. You will never see it again.</div>
+    </div>
+    <div>
+      <h2>🍎 Mac</h2>
+      <div class="step"><div class="num">1</div><div class="tx">Get <b>MilestoneLoadBoard-2.1.1.dmg</b> (works on Apple&nbsp;Silicon and Intel).</div></div>
+      <div class="step"><div class="num">2</div><div class="tx">Open the .dmg and drag the app to <b>Applications</b>.</div></div>
+      <div class="step"><div class="num">3</div><div class="tx">First time only: <b>right-click the app → Open → Open</b> (the app is internally distributed, not App-Store signed). After that it opens normally.</div></div>
+      <div class="card warn"><div class="t">⚠ If macOS still blocks it</div>
+      Open Terminal and run:<br><code>xattr -cr /Applications/MilestoneLoadBoard.app</code></div>
+    </div>
+  </div>
+  <h2>Updating to a new version</h2>
+  <p>When a new version is published, the app shows a green <span class="pill green">⬇ Update v2.x.x</span> button in the title bar. Click it — the new file downloads to your Downloads folder. Close the app and run the new file. Your login, settings and history are kept automatically (they live in your user profile, not in the file).</p>
+  <p>Manual route: replace your old .exe / .app with the new one from SharePoint. Same result.</p>
+  <div class="foot"><span>1 · Install</span><span>Milestone Load Board v2.1.1</span></div>
+</div>
+
+<!-- ============ 2 GETTING STARTED ============ -->
+<div class="page">
+  <h1><span class="n">2</span>Getting started</h1>
+  <h2>Connecting to NewMile</h2>
+  <div class="step"><div class="num">1</div><div class="tx">Open the app. If you have signed in before, it <b>reconnects silently</b> and loads today's board with zero clicks.</div></div>
+  <div class="step"><div class="num">2</div><div class="tx">First time: click <span class="pill green">Connect to NewMile</span>. A NewMile sign-in window opens <b>inside the app</b>. Log in with <b>your own NewMile account</b> — every dispatcher sees exactly what their NewMile permissions allow.</div></div>
+  <div class="step"><div class="num">3</div><div class="tx">The status light turns <b style="color:var(--green)">green</b> and shows your name and org. Done.</div></div>
+  <h2>The title bar, left to right</h2>
+  <table>
+    <tr><th>Control</th><th>What it does</th></tr>
+    <tr><td><b>Status light + name</b></td><td>Green = connected. Red = click <b>Reconnect</b> (one click, no password re-entry).</td></tr>
+    <tr><td><b>Day</b></td><td>Which date to sync. It follows <b>today automatically</b> (launch, focus, midnight rollover) unless you pick a date yourself.</td></tr>
+    <tr><td><b>↻ Refresh</b></td><td>Full live sync: yesterday + today + tomorrow orders, every assignment, the truck roster, rotation, Samsara GPS, order notes and pickup coordinates. Also <b>writes any queued finalized orders first</b> (see §6).</td></tr>
+    <tr><td><b>Auto</b></td><td>Hands-free refresh every 5/15/30/60 min. The countdown shows next pull.</td></tr>
+    <tr><td><span class="pill green">⬇ Update</span></td><td>Appears only when a newer version exists. One click downloads it.</td></tr>
+    <tr><td><b>⚙</b></td><td>Connection log — every sync, push and Samsara call, timestamped. Your first stop if something looks off.</td></tr>
+  </table>
+  <h2>The board's own top bar</h2>
+  <p><span class="pill">BOARD | PLANNER</span> view toggle · <span class="pill">‹ day ›</span> switch between yesterday / today / tomorrow (synced data only) · <span class="pill green">LIVE</span> appears once real NewMile data is loaded · then the tool tabs: <span class="pill blue">💬 Messages</span> <span class="pill blue">🚛 Trucks</span> <span class="pill blue">📇 Directory</span> <span class="pill blue">💰 Quoter</span> <span class="pill blue">🗺 Map</span> and the gold <span class="pill gold">⟳ Push to NewMile</span>.</p>
+  <div class="card tip"><div class="t">💡 Esc always works</div>Esc closes the top-most open window (camera → map → tool tabs → push preview), one layer at a time.</div>
+  <div class="foot"><span>2 · Getting started</span><span>Milestone Load Board v2.1.1</span></div>
+</div>
+
+<!-- ============ 3 THE BOARD ============ -->
+<div class="page">
+  <h1><span class="n">3</span>The Board</h1>
+  <h2>The stats ribbon — every number is real</h2>
+  <p>Hover any stat for a tooltip stating exactly where the number comes from. Two stats toggle when clicked:</p>
+  <table>
+    <tr><th>Stat</th><th>Source</th></tr>
+    <tr><td><b>Delivered vs ordered %</b> ⇄ <b>Plan coverage %</b></td><td>NewMile delivered tons vs ordered (live) — click to flip to how much of the needed loads your plan covers. Tomorrow shows plan-coverage automatically.</td></tr>
+    <tr><td><b>Trucks on orders</b> ⇄ <b>Trucks free</b></td><td>Unique trucks with live NewMile assignments / roster trucks not assigned this day.</td></tr>
+    <tr><td><b>Loads hauled</b></td><td>NewMile load_count — 100% live.</td></tr>
+    <tr><td><b>Loads to Cover</b></td><td>Still missing after NewMile + your plan. Click to filter to short orders only.</td></tr>
+    <tr><td><b>Open · Done orders</b></td><td>Completed = NewMile status or tonnage reached.</td></tr>
+    <tr><td><b>Queued for sync</b></td><td>Finalized orders waiting to write to NewMile. 0 = board and NewMile match.</td></tr>
+  </table>
+  <h2>Reading an order card</h2>
+  <div class="mock"><span class="g">✓ En NewMile</span>  <b style="color:#fff">Ed Bell #57 · 04:00</b>
+#57 Limestone · Ed Bell Construction
+<span class="b">MM Celina Rail</span> → <span class="b">Webber WOK US-380</span>  <span class="y">🗺</span>
+🕖 4:00 AM   <span class="b">~32 mi · ~43 min</span>   <span class="y">📝 2</span>
+1,000 t Ordered | 463 t Delivered · live | 9 Loads to add
+<span class="g">12 trucks · NewMile · loads in 18</span></div>
+  <ul>
+    <li><b>Pickup / dropoff names are clickable</b> — they open that exact pin in Google Maps.</li>
+    <li><b>🗺</b> opens the full run (pickup → dropoff, driving) in Google Maps <b>and copies the link</b> to your clipboard — paste it straight to a driver.</li>
+    <li><b>~mi · ~min</b> appears once the locations are resolved — approximate one-way run.</li>
+    <li><b>📝 N</b> means the order carries NewMile notes (driver notes, gate codes, internal memo). Click to read them.</li>
+    <li><b>Truck chips</b> show every live assignment: sequence, truck #, progress (done/limit). Tap a chip to edit limit/sequence, ✕ to remove from the plan.</li>
+    <li><span class="pill green">✓ COMPLETED — do not assign</span> marks finished orders — they gray out, refuse drops and are skipped by Auto-plan.</li>
+  </ul>
+  <h2>Day navigation</h2>
+  <p>The ‹ › arrows move between <b>yesterday</b> (real actuals — trucks, loads, tons as they happened), <b>today</b> (live) and <b>tomorrow</b> (what's already in NewMile — keep assigning to it). All three days carry full real assignments.</p>
+  <div class="foot"><span>3 · The Board</span><span>Milestone Load Board v2.1.1</span></div>
+</div>
+
+<!-- ============ 4 TRUCKS & FILTERS ============ -->
+<div class="page">
+  <h1><span class="n">4</span>Trucks &amp; filters</h1>
+  <p>The left rail lists the full roster (1,000+ trucks, ATX Bluewing excluded by standing rule). Drag a truck onto an order card or planner row to assign. Search by truck #, driver or owner.</p>
+  <h2>The collapsible filter box</h2>
+  <p>Click <span class="pill">▸ Filters</span> to expand (the chip shows how many filters are active). Sections:</p>
+  <table>
+    <tr><th>Section</th><th>Chips</th><th>Notes</th></tr>
+    <tr><td><b>🚛 Fleet</b></td><td>All · Cactus (CE) · KT · AGG + CT · CKJ Subs · Other Subs</td><td>Same buckets as the PM/AM reports.</td></tr>
+    <tr><td><b>📋 Status</b></td><td>🟢 Free — unassigned · 📌 Assigned · 🚛 Rolling</td><td>Rolling = hauling right now per NewMile (live count shown).</td></tr>
+    <tr><td><b>🔄 Rotation</b></td><td>💤 Rested — next up · ⚡ Ran yesterday</td><td>From the previous working day's real load tickets — the fairness signal.</td></tr>
+    <tr><td><b>🛰 Samsara</b></td><td>▶ Moving now · ⏸ Parked · ∅ No GPS</td><td>Live GPS this minute. Subs without Samsara show under No GPS.</td></tr>
+    <tr><td><b>📍 Terminal</b></td><td>Powderly · Rhome · Whitewright</td><td>KT trucks by terminal letter.</td></tr>
+  </table>
+  <div class="card ex"><div class="t">📋 Example combos that answer real questions</div>
+  <b>"Who should work tomorrow?"</b> → 💤 Rested + 🟢 Free.<br>
+  <b>"Who is assigned but sitting still after 9 AM?"</b> → 📌 Assigned + ⏸ Parked. (The 🛰 alert catches these automatically too.)<br>
+  <b>"Give me free KT trucks out of Rhome"</b> → KT + 🟢 Free + Rhome.</div>
+  <div class="foot"><span>4 · Trucks &amp; filters</span><span>Milestone Load Board v2.1.1</span></div>
+</div>
+
+<!-- ============ 5 PLANNING ============ -->
+<div class="page">
+  <h1><span class="n">5</span>Planning</h1>
+  <h2>The Planner tray</h2>
+  <p>Click an order (or select several, or press <b>📋 All orders</b>) — the Excel-style tray opens on top: one row per order with TRK / LDS cells, live group tallies (WW·RHO·POW·CAC·AGG·SUB) and totals. Type truck numbers, drag trucks in, or paste from Excel. Drag the gold handle to resize; <b>⬇ Export plan</b> still produces the plan_DATE.json if you ever need the file.</p>
+  <h2>📋 Paste straight from Excel</h2>
+  <p>Copy your cells in Excel, click any TRK box, press <b>Ctrl+V</b> (Cmd+V on Mac). The grid <b>grows automatically</b> if you paste more trucks than there are boxes.</p>
+  <div class="card ex"><div class="t">Accepted formats — all auto-detected</div>
+  <b>Horizontal pairs</b> (the dispatch-sheet layout): <code>1109 | 4 | 1123 | 4 | 1082 | 4 …</code> → each truck gets its loads.<br>
+  <b>Trucks only</b>: <code>1117 | 2012 | 351</code> → trucks pasted, LDS left <b>empty</b> (never invented).<br>
+  <b>Vertical two columns</b>: truck in A, loads in B.<br>
+  Rule: a pure 1–2 digit number right after a truck = its load limit. Everything else (3+ digits, KT-…, letters) = a truck.</div>
+  <h2>⚡ Smart Dispatch panel (bottom-right)</h2>
+  <table>
+    <tr><th>Control</th><th>What it does</th></tr>
+    <tr><td><b>⚡ Auto-plan</b> <span class="pill">Alt+A</span></td><td>Fills every uncovered selected order (or all uncovered) with trucks. <b>Rotation is law</b>: rested trucks first, always. Among equally-rested candidates it prefers the one parked closest to the pickup (live Samsara GPS) — and picks <b>randomly among equivalents</b>, so the same trucks don't get the good runs every day.</td></tr>
+    <tr><td><b>🎲 Re-roll</b></td><td>Deal a <b>different</b> valid plan — same fairness, new combination. Keeps anything already live in NewMile.</td></tr>
+    <tr><td><b>⚙ Plan filters</b></td><td>Constrain the pool: include/exclude fleet groups, max deadhead miles, GPS-only, on-call-only, fixed loads-per-truck. Remembered.</td></tr>
+    <tr><td><b>Options — (order)</b></td><td>Focus an order and the panel offers <b>3 alternative truck sets</b> with average deadhead — click <b>Use</b> to apply one to just that order.</td></tr>
+    <tr><td><b>KPIs</b></td><td>Projected fulfillment, trucks/tons planned, orders still short, rested trucks idle, avg deadhead of the last auto-plan.</td></tr>
+    <tr><td><b>Rule checks</b></td><td>Live validation <b>before</b> you push: missing load limits, ATX Bluewing, no-driver trucks, duplicates across orders, EYK/Watercrest rate flag, trucks parked &gt;75 mi from pickup.</td></tr>
+  </table>
+  <div class="foot"><span>5 · Planning</span><span>Milestone Load Board v2.1.1</span></div>
+</div>
+
+<!-- ============ 6 PUSH ============ -->
+<div class="page">
+  <h1><span class="n">6</span>Pushing to NewMile</h1>
+  <h2>The one mental model</h2>
+  <div class="step"><div class="num">1</div><div class="tx">Plan trucks onto an order (any method from §5).</div></div>
+  <div class="step"><div class="num">2</div><div class="tx">Press <b>Finalize</b> on the order card → it is <b>queued</b> for NewMile.</div></div>
+  <div class="step"><div class="num">3</div><div class="tx">Either press <span class="pill gold">⟳ Push to NewMile</span> to write it <b>now</b> (preview first), or do nothing — <b>the next refresh (manual or auto) writes the queue automatically</b>, then pulls the fresh truth back.</div></div>
+  <h2>The Push preview</h2>
+  <p>Every order shows its trucks, loads and rate badges. Push orders one by one or <b>Confirm &amp; push all</b>. Results per order:</p>
+  <div class="mock"><span class="g">✓ +3 new</span> · <span class="b">~1 updated</span> · <span class="y">4 untouched</span></div>
+  <ul>
+    <li><b>new</b> — created and confirmed in NewMile (drivers see them).</li>
+    <li><b>updated</b> — truck was already on the order with a different load limit → only the limit was changed.</li>
+    <li><b>untouched</b> — already there, identical. <b>The app never re-writes or disturbs existing assignments.</b></li>
+  </ul>
+  <h2>Safety rules — enforced automatically, every time</h2>
+  <table>
+    <tr><th>Rule</th><th>Detail</th></tr>
+    <tr><td>Rate block</td><td><code>contracted_rate</code> · driver pay 0 · custom · Ton — on every assignment.</td></tr>
+    <tr><td>EYK / Watercrest</td><td>Auto-detected → <code>order_default</code> rates instead.</td></tr>
+    <tr><td>ATX Bluewing</td><td>Never assigned. Filtered everywhere.</td></tr>
+    <tr><td>Never</td><td>send_offer · close_order. Orders staying <i>pending</i> in NewMile is normal and correct.</td></tr>
+    <tr><td>Idempotent</td><td>Pushing twice changes nothing the second time.</td></tr>
+  </table>
+  <div class="card tip"><div class="t">💡 Where did my order go?</div>If an order disappears from view after finalizing, it's a filter: it just became <b>covered</b> and you have the "needing loads ▸" view on. The toast tells you when this happens. Your work is never lost — refreshes preserve your selection, drafts and the day you're viewing.</div>
+  <div class="foot"><span>6 · Pushing to NewMile</span><span>Milestone Load Board v2.1.1</span></div>
+</div>
+
+<!-- ============ 7 ALERTS ============ -->
+<div class="page">
+  <h1><span class="n">7</span>Live Alerts</h1>
+  <p>The right column watches the day for you. <b>Click any alert to jump to its order.</b> Hover → ✕ dismisses it for the day ("checked"); <b>Clear all</b> wipes the current list (new ones still come in). The whole panel collapses with ▾.</p>
+  <table>
+    <tr><th>Alert</th><th>Fires when</th></tr>
+    <tr><td><span class="pill red">🛰 Not moving</span></td><td>After your set hour: a truck is <b>assigned</b> today, has <b>no load started</b> in NewMile, and Samsara GPS shows it <b>sitting still</b>. Call the driver or rotate a backup in.</td></tr>
+    <tr><td><span class="pill red">🚨 NOT STARTED</span></td><td>After your set hour: an order has material due and <b>zero loads hauled</b>. The text says whether trucks are assigned ("find out why nothing is moving") or not ("cover it now").</td></tr>
+    <tr><td><span class="pill orange">🐌 only X% done</span></td><td>Order started but is below your % watermark.</td></tr>
+    <tr><td><span class="pill orange">🚩 Short</span></td><td>Order not fully covered — shows loads still needed.</td></tr>
+    <tr><td><span class="pill red">⛔ No-show</span></td><td>Truck marked no-show in AM Check.</td></tr>
+    <tr><td><span class="pill blue">✎ Re-finalize</span></td><td>Plan edited after finalizing — queue it again.</td></tr>
+    <tr><td><span class="pill blue">🔄 Idle trucks</span></td><td>Fair-rotation reminder.</td></tr>
+  </table>
+  <p>All thresholds (hours, %, minutes) live in <b>⚙ Settings</b> under the alerts — see §14.</p>
+  <div class="foot"><span>7 · Live Alerts</span><span>Milestone Load Board v2.1.1</span></div>
+
+  <h1 style="margin-top:26px"><span class="n">8</span>🗺 Live Map</h1>
+  <p>Click <span class="pill blue">🗺 Map</span> any time — it opens on demand (never in your way).</p>
+  <ul>
+    <li><b>Search any truck</b> by number or driver → the map jumps to its live Samsara position. <b style="color:var(--green)">Green</b> = moving (with mph) · <b style="color:var(--orange)">amber</b> = parked.</li>
+    <li>The popup shows driver, phone (click-to-call), speed and GPS time.</li>
+    <li><b>📷 Dashcam snapshot</b> — requests a live road-facing photo from the truck's camera. Takes 30–60 s (the cam uploads on demand); the window updates alone. Works while the truck is running.</li>
+    <li><b>✉ Message</b> — opens the composer pre-addressed to that driver (§9).</li>
+    <li>If an order is focused in the planner, its run (pickup → dropoff) is drawn on the map too.</li>
+  </ul>
+</div>
+
+<!-- ============ 9 MESSAGES ============ -->
+<div class="page">
+  <h1><span class="n">9</span>💬 Messages</h1>
+  <h2>NewMile messaging, inside the app</h2>
+  <p>The 💬 tab embeds the real NewMile messaging page. <b>First time:</b> you may see the NewMile sign-in there — log in once, it sticks forever (separate from the main connection).</p>
+  <ul>
+    <li><b>Unread badge</b> on the 💬 tab + a chime when a new driver message arrives.</li>
+    <li><b>Repeating reminder</b> every N seconds (you choose, §14) until you open the tab or the count hits zero — no more missed drivers.</li>
+    <li><b>🌐 Translator</b> — Spanish messages get a subtle blue "→ English" line underneath, automatically. Toggle it with the 🌐 checkbox; it changes nothing in NewMile itself.</li>
+  </ul>
+  <h2>✉ The message composer</h2>
+  <p>Open it from a map pin, from 🚛 Truck Manager (select trucks → ✉ Message), or 💬 → ✉ New message. Pick a template, pick the language, and the merge fields fill <b>per driver from live data</b>:</p>
+  <div class="mock">Template (Español · Dispatch tomorrow):
+"Hola {driver}, mañana cargas en {pickup} — {material} para {order}.
+ Inicio {time}, {loads} carga(s). Confirma por favor. 🚛"
+
+Resolved for truck 1117:
+<span class="g">"Hola Jacob, mañana cargas en MM Celina Rail — #57 Limestone para
+ Ed Bell #57. Inicio 4:00 AM, 4 carga(s). Confirma por favor. 🚛"</span></div>
+  <ul>
+    <li>Templates: <b>Dispatch tomorrow · Confirm rolling · Where are you · Custom</b> — English and Spanish. Fully editable before sending.</li>
+    <li><b>Mass-send</b>: select 15 trucks in Truck Manager → each driver gets his own personalized text. Preview lists every recipient first; the Send button requires a <b>second confirming click</b>.</li>
+    <li>Delivery goes to each driver's <b>Samsara app</b> (matched by phone). Rows marked <span class="pill orange">no match</span> get a 📋 copy button instead — paste into NewMile chat manually.</li>
+    <li>Per-row result: <b style="color:var(--green)">✓ delivered</b> or ✗ with the reason.</li>
+  </ul>
+  <div class="foot"><span>9 · Messages</span><span>Milestone Load Board v2.1.1</span></div>
+</div>
+
+<!-- ============ 10-11 ============ -->
+<div class="page">
+  <h1><span class="n">10</span>🚛 Truck Manager</h1>
+  <p>One live table of the day: every assigned truck (order, loads done/limit, rolling status) plus all on-call trucks. Search, check the boxes, then act in bulk — <b>every action needs a second confirming click</b> (the button turns ⚠ CONFIRM).</p>
+  <table>
+    <tr><th>Action</th><th>What happens</th></tr>
+    <tr><td><b>📴 Off-call (n) / 📞 On-call (n)</b></td><td>Flips call status for all selected trucks — written straight to NewMile. Perfect for end-of-day "off-call everyone left over".</td></tr>
+    <tr><td><b>➡ Reassign (n)</b></td><td>Pick a target order + loads → trucks are created &amp; confirmed on the new order and <b>removed from their old one</b>. The board refreshes itself after.</td></tr>
+    <tr><td><b>✉ Message (n)</b></td><td>Opens the composer with the selected trucks (§9).</td></tr>
+    <tr><td><b>📞 phone links</b></td><td>Click a number → RingCentral dials it.</td></tr>
+  </table>
+
+  <h1 style="margin-top:24px"><span class="n">11</span>📇 Directory</h1>
+  <p>Live company directory pulled fresh from NewMile — no more hunting for numbers:</p>
+  <ul>
+    <li><b>Trucks</b> — number, group, driver, phone, owner, status.</li>
+    <li><b>Drivers</b> — 1,100+ people with phones (RingCentral click-to-call), truck, org, email.</li>
+    <li><b>Locations</b> — every saved yard/plant with a 🗺 pin link.</li>
+    <li><b>Haulers</b> — connected hauler orgs.</li>
+  </ul>
+  <p>Search across everything; <b>⬇ CSV</b> exports the current view straight into Excel. Driver phones also appear automatically in map pins and Truck Manager.</p>
+  <div class="foot"><span>10–11 · Truck Manager &amp; Directory</span><span>Milestone Load Board v2.1.1</span></div>
+</div>
+
+<!-- ============ 12 QUOTER ============ -->
+<div class="page">
+  <h1><span class="n">12</span>💰 Load Quoter</h1>
+  <p>Price any run in a minute, with <b>real road miles and drive time</b> — not guesses.</p>
+  <div class="step"><div class="num">1</div><div class="tx"><b>Route</b>: type pickup &amp; dropoff (known yards autocomplete; any full address works) → <b>🛣 Get miles &amp; time</b>. Or click <b>⤵ Use focused order</b> to prefill from the board.</div></div>
+  <div class="step"><div class="num">2</div><div class="tx"><b>Job</b>: $/ton, $/yard, $/load or $/hour, rate, FSC %, quantity, truck capacity.</div></div>
+  <div class="step"><div class="num">3</div><div class="tx"><b>Costs</b>: MPG, diesel, driver %, wait/load/unload minutes, workday hours, tolls, NewMile fee, weekly opex. <b>All values stick</b> — set them once.</div></div>
+  <div class="step"><div class="num">4</div><div class="tx"><b>🧮 Quote it.</b></div></div>
+  <div class="card ex"><div class="t">Worked example — 500 t of base, $6.50/t, 24 t trucks, 32 mi run</div>
+  <div class="mock">Route                 32 mi · 43 min one-way (OSRM road)
+Cycle per load        126 min (86 drive + 40 fixed)
+<span class="y">Loads/day per truck   5</span>
+<span class="y">Trucks for 21 loads   5</span>
+Revenue / load        $156.00      $ / mile  $2.44
+Fuel / load (12.8 gal) −$46.08
+Gross / day / truck   $780.00
+Driver / day (25%)    −$195.00     Fuel / day −$230.40
+Opex / day            −$70.00
+<span class="g">NET / day / truck     $284.60</span>
+Breakeven rate / load $128.11</div></div>
+  <ul>
+    <li><b>📌 Pin as A</b> then run a second quote → side-by-side compare with the winner called out. Perfect for "this rate vs that rate" or "this pit vs that pit".</li>
+    <li><b>📋 Copy summary</b> — paste the whole quote into Teams/email.</li>
+    <li>Last 10 quotes are kept in the history list.</li>
+  </ul>
+  <div class="foot"><span>12 · Load Quoter</span><span>Milestone Load Board v2.1.1</span></div>
+</div>
+
+<!-- ============ 13-14 ============ -->
+<div class="page">
+  <h1><span class="n">13</span>Reports — PM Assigned &amp; AM Rolling</h1>
+  <p>Both buttons live in the summary strip. <b>📋 PM Assigned</b> is the night report (what got assigned); <b>🌅 AM Rolling</b> is the morning check (assigned vs actually rolling — rolling is <b>live from NewMile</b>, no manual tapping needed). Both break the fleet into the real groups and copy to clipboard with one click:</p>
+  <div class="mock">TRUCKS ASSIGNED: 138
+  KT — Kennemer (6):     46
+  CE — Cactus (5):       57
+  AGGSHIP + CT:          12
+  CKJ Subs:              14
+  Other Subs:             9</div>
+  <p>Sub grouping uses owner rules (e.g. "… - CKJ" owners). A misfiled sub? It's a one-line fix in <code>newmile.config.json → groups → owner_overrides</code>.</p>
+
+  <h1 style="margin-top:22px"><span class="n">14</span>Settings &amp; troubleshooting</h1>
+  <h2>⚙ Settings (right column — click to expand)</h2>
+  <table>
+    <tr><th>Setting</th><th>Default</th></tr>
+    <tr><td>Uncovered alert after</td><td>9:00 AM</td></tr>
+    <tr><td>Flag truck idle after</td><td>3 days</td></tr>
+    <tr><td>Avg tons / load (estimates)</td><td>25 t</td></tr>
+    <tr><td>No-loads → no-show after</td><td>90 min</td></tr>
+    <tr><td>🛰 Samsara move-check after</td><td>9:00 AM</td></tr>
+    <tr><td>🚨 No-progress alert after / below %</td><td>8:00 AM / 10%</td></tr>
+    <tr><td>💬 Message reminder every</td><td>30 s</td></tr>
+  </table>
+  <h2>Quick fixes</h2>
+  <table>
+    <tr><th>Symptom</th><th>Fix</th></tr>
+    <tr><td>Red light / "session expired"</td><td>Click <b>Reconnect</b> — one click, silent.</td></tr>
+    <tr><td>Numbers look stale</td><td><b>↻ Refresh</b>, or turn on <b>Auto</b>.</td></tr>
+    <tr><td>💬 shows a login page</td><td>Normal the first time — sign in once.</td></tr>
+    <tr><td>📷 snapshot times out</td><td>Truck is probably shut off. Try while it's running.</td></tr>
+    <tr><td>Anything weird</td><td>Open <b>⚙</b> — the log says exactly what happened. Screenshot it to the tool owner.</td></tr>
+  </table>
+  <p style="margin-top:14px;color:var(--muted);font-size:10px">Milestone Load Board v2.1.1 · Built for Miles Ahead Brands dispatch — Milestone Supply · CKJ · Cactus Express · AGGSHIP · Internal distribution only. The app embeds fleet API credentials — do not share outside the company.</p>
+  <div class="foot"><span>13–14 · Reports, Settings &amp; troubleshooting</span><span>Milestone Load Board v2.1.1</span></div>
+</div>
+
+</body>
+</html>
