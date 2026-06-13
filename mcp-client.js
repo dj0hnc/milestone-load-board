@@ -704,10 +704,19 @@ class NewMileClient {
     // search the roster for this truck number
     const r = await this.callTool('list_resources', { resource_type: 'truck', filters: { search: num, page_size: 50 } });
     const rows = (r && (r.trucks || r.rows || r.results)) || [];
+    // 1) exact truck_number match wins. 2) else, if the typed number is CONTAINED in exactly
+    // ONE truck's number, use it — this is the dispatcher's normal workflow: type the bare
+    // number (e.g. "9483") and let it resolve to the single trucker that has it ("VT9483"),
+    // prefix/suffix and all. Only refuse when it's AMBIGUOUS (multiple matches) or none, so we
+    // never silently assign the wrong truck. dedupe candidates by id (search can repeat).
     let hit = rows.find(t => this._normNum(t.truck_number) === key);
-    if (!hit && rows.length === 1) hit = rows[0];
+    if (!hit) {
+      const contains = rows.filter(t => this._normNum(t.truck_number).indexOf(key) >= 0);
+      const ids = Array.from(new Set(contains.map(t => t.id)));
+      if (ids.length === 1) hit = contains[0];
+    }
     const id = hit ? hit.id : null;
-    this._truckIdCache.set(key, id);
+    if (id != null) this._truckIdCache.set(key, id);   // don't cache misses — roster may refresh
     return id;
   }
 
