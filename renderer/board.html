@@ -802,7 +802,7 @@ function renderOrders(){
         <div class="odisp">${o.disp} · ${String(o.startHr).padStart(2,'0')}:00</div>
         <div class="omat">${o.mat}</div><div class="ocust">${o.cust}</div>
         <div class="oroute"><span class="gm-pt" onclick="openPinMap(event,'${o.id}','pickup')" title="Open pickup pin in Google Maps">${o.pickup}</span> <span class="arr">→</span> <span class="gm-pt" onclick="openPinMap(event,'${o.id}','drop')" title="Open dropoff pin in Google Maps">${o.drop}</span> <button class="gmap" onclick="openRouteMap(event,'${o.id}')" title="Open the run point-to-point in Google Maps">🗺</button></div>
-        <div class="osched">🕖 ${o.time||(String(o.startHr).padStart(2,'0')+':00')} ${estRouteHtml(o)}${(o.nmNotes&&o.nmNotes.length)?` <button class="gmap notei" onclick="openOrderNotes(event,'${o.id}')" title="This order has NewMile notes — tap to read">📝 ${o.nmNotes.length}</button>`:''}${o.projectId?` <button class="gmap crewi" onclick="pullCrew(event,'${o.id}')" title="Pull the trucks that recently ran this project → Planner">⟲ Crew</button>`:''}</div>
+        <div class="osched">🕖 ${o.time||(String(o.startHr).padStart(2,'0')+':00')} ${estRouteHtml(o)}${(o.nmNotes&&o.nmNotes.length)?` <button class="gmap notei" onclick="openOrderNotes(event,'${o.id}')" title="This order has NewMile notes — tap to read">📝 ${o.nmNotes.length}</button>`:''}${o.projectId?` <button class="gmap crewi" onclick="pullCrew(event,'${o.id}')" title="Pull the trucks that recently ran this project → Planner">⟲ Crew</button>`:''} <button class="gmap nearbyi" onclick="findNearbyDesktop(event,'${o.id}')" title="Find trucks near the pickup that are free/finishing, with Samsara drive time left">🎯 Nearby</button></div>
         ${o.notes?`<div class="onotes"><span class="nl">NM</span> ${o.notes}</div>`:''}</div>
       ${countHtml}
       <div class="dropzone">${chips||'<div class="dz-empty">Drop a truck here to assign</div>'}</div>
@@ -3006,6 +3006,7 @@ setView('board');
       +'<div class="q-col">'
         +'<div style="display:flex;gap:7px;margin-bottom:8px;flex-wrap:wrap">'
           +'<button class="warn qbig" onclick="qRun()">🧮 Quote it</button>'
+          +'<button class="gmap" onclick="qNewMile()" title="Use NewMile\'s own rate engine (drive time, loads/day, rate at target margin)">💠 NewMile rate</button>'
           +'<button class="gmap" onclick="qPin()">📌 Pin as A</button>'
           +'<button class="gmap" onclick="qCopy()">📋 Copy summary</button>'
         +'</div>'
@@ -3044,6 +3045,40 @@ setView('board');
       setTimeout(function(){ if(_routeReqs[id]){ delete _routeReqs[id]; resolve({error:'route timeout'}); } },25000);
     });
   }
+  /* 🎯 HOS + 💰 NewMile-calc bridges (same pattern as route) */
+  var _hosReqs={}, _hosSeq=0, _calcReqs={}, _calcSeq=0;
+  window.__hosResult=function(id,res){ var p=_hosReqs[id]; if(p){ delete _hosReqs[id]; p(res); } };
+  window.__calcResult=function(id,res){ var p=_calcReqs[id]; if(p){ delete _calcReqs[id]; p(res); } };
+  function bridgeHos(){ return new Promise(function(resolve){ var id='hq'+(++_hosSeq); _hosReqs[id]=resolve;
+    try{ parent.postMessage({type:'hos',reqId:id},'*'); }catch(e){ resolve({}); }
+    setTimeout(function(){ if(_hosReqs[id]){ delete _hosReqs[id]; resolve({}); } },20000); }); }
+  function bridgeCalc(name,args){ return new Promise(function(resolve){ var id='cq'+(++_calcSeq); _calcReqs[id]=resolve;
+    try{ parent.postMessage({type:'calc',reqId:id,name:name,args:args},'*'); }catch(e){ resolve({error:'bridge unavailable'}); }
+    setTimeout(function(){ if(_calcReqs[id]){ delete _calcReqs[id]; resolve({error:'calc timeout'}); } },20000); }); }
+
+  /* 🎯 Find nearby free trucks (distance to pickup + Samsara HOS drive time). Reuses the
+     existing assign modal on tap. Additive — does not touch existing flows. */
+  window.findNearbyDesktop=async function(e,oid){
+    if(e&&e.stopPropagation)e.stopPropagation();
+    var o=(typeof O==='function')&&O(oid); if(!o){toast&&toast('Order not found',true);return;}
+    var scr=document.getElementById('repScrim'), body=document.getElementById('repBody'), title=document.getElementById('repTitle');
+    if(title)title.textContent='🎯 Nearby free trucks → '+(o.disp||'order');
+    if(body)body.innerHTML='<div style="padding:14px;color:#8b96a5">Checking Samsara positions + HOS…</div>';
+    if(scr)scr.classList.add('show');
+    var hos={}; try{ hos=await bridgeHos()||{}; }catch(err){}
+    var onOrder={}; (o.assigns||[]).forEach(function(a){var t=T(a.truck); if(t)onOrder[(t.num||'').toLowerCase()]=1;});
+    var cands=trucks.filter(function(t){ return (t.onCall||t.status==='rolling'||t.status==='assigned') && !onOrder[(t.num||'').toLowerCase()]; }).map(function(t){
+      var d=distTo(o,t);
+      var h=hos[(t.driver||'').toLowerCase()];
+      return {t:t,d:d,drv:(h&&h.driveMin!=null)?h.driveMin:null,rested:t.workedYest===false,free:t.status!=='rolling'};
+    }).sort(function(a,b){ return (b.free-a.free)||(b.rested-a.rested)||((a.d==null)-(b.d==null))||((a.d||9e9)-(b.d||9e9)); });
+    if(!cands.length){ if(body)body.innerHTML='<div style="padding:14px;color:#8b96a5">No free/finishing trucks found right now.</div>'; return; }
+    if(body)body.innerHTML='<div style="padding:6px 4px;color:#8b96a5;font-size:12px">Closest to pickup, rested first, with drive time. Tap to assign.</div>'+cands.slice(0,40).map(function(c){
+      var bits=[]; if(c.d!=null)bits.push('📍 '+Math.round(c.d)+' mi'); bits.push(c.free?'🟢 free':'⏳ rolling'); if(c.rested)bits.push('💤 rested'); if(c.drv!=null)bits.push('⏱ '+(c.drv>=60?(Math.floor(c.drv/60)+'h'+(c.drv%60?(c.drv%60)+'m':'')):(c.drv+'m')));
+      return '<div onclick="nearbyAdd(\''+oid+'\',\''+c.t.id+'\')" style="display:flex;justify-content:space-between;gap:10px;padding:10px 6px;border-bottom:1px solid #1f283d;cursor:pointer"><span><b>'+(c.t.num||'')+'</b> <span style="color:#8b96a5">'+(c.t.driver||'')+'</span> <span style="color:#5a95f9;font-size:11px">'+(c.t.group||'')+'</span></span><span style="color:#aeb7c0;font-size:12px">'+bits.join(' · ')+' ＋</span></div>';
+    }).join('');
+  };
+  window.nearbyAdd=function(oid,tid){ var s=document.getElementById('repScrim'); if(s)s.classList.remove('show'); if(typeof openModal==='function') openModal({mode:'single',truckId:tid,orderId:oid}); };
   window.qDoRoute=async function(){
     var f=$q('qFrom').value.trim(), t=$q('qTo').value.trim();
     if(!f||!t){ toast('Type pickup and dropoff first',true); return; }
@@ -3066,6 +3101,31 @@ setView('board');
       waitMin:qNum('qWait'),loadMin:qNum('qLoadM'),unloadMin:qNum('qUnloadM'),workHrs:qNum('qWork'),
       tolls:qNum('qTolls'),nmFee:qNum('qNmFee'),opexWk:qNum('qOpex'),target:qNum('qTarget')};
   }
+  /* 💠 NewMile's own rate engine: drive time → loads/day → rate @ target margin (+ margin from a typed rate). */
+  window.qNewMile=async function(){
+    var v=qGather(); qSave(v);
+    var mi=qRouteData?qRouteData.mi:0;
+    if(!mi){ toast('Tap 🛣 Get miles & time first',true); return; }
+    var units=v.capTon||22, target=v.target||0, rate=v.rate||0;
+    if(!target){ toast('Enter 🎯 target net $/day for a NewMile rate',true); return; }
+    var out=$q('qOut'); out.innerHTML='<div style="color:var(--muted)"><span class="spin"></span> NewMile is calculating…</div>';
+    var speed=45, ld=(v.loadMin||15)+(v.unloadMin||10), traf=0.10, work=(v.workHrs||9.5)*60, margin=20;
+    var dt=await bridgeCalc('calculate_drive_time',{distance_miles:mi,speed_mph:speed});
+    var driveMin=parseFloat(dt&&dt.drive_time_minutes)||0;
+    var lpdR=await bridgeCalc('calculate_loads_per_day',{drive_time_minutes:driveMin,load_dump_time_minutes:ld,traffic_factor:traf,work_day_length_minutes:work});
+    var lpd=parseFloat(lpdR&&lpdR.estimated_loads_per_day)||0;
+    var frR=await bridgeCalc('calculate_freight_rate',{loads_per_day:lpd,margin_pct:margin,target_truck_revenue:target,units_per_load:units});
+    var h=qRow('Route',Math.round(mi)+' mi one-way')
+      +qRow('Drive time (1-way)',Math.round(driveMin)+' min')
+      +qRow('Loads/day per truck',(Math.round(lpd*10)/10),1)
+      +qRow('Rate @ '+margin+'% margin','$'+(frR&&frR.freight_rate)+' /unit',1)
+      +qRow('= per load','$'+(frR&&frR.rate_per_load))
+      +qRow('Daily revenue target','$'+(frR&&frR.required_daily_revenue));
+    if(rate>0){ var mg=await bridgeCalc('calculate_freight_margin',{freight_rate:rate,loads_per_day:lpd,target_truck_revenue:target,units_per_load:units});
+      h+=qRow('Your $'+rate+'/unit → margin',(Math.round(parseFloat(mg&&mg.margin_pct)*10)/10)+'%',1)+qRow('Daily revenue/truck','$'+Math.round(parseFloat(mg&&mg.actual_daily_revenue))); }
+    h+='<div class="sub" style="margin-top:6px">💠 NewMile rate engine</div>';
+    out.innerHTML=h;
+  };
   window.qRun=function(){
     var v=qGather(); qSave(v);
     var rt=qRouteData||{mi:0,min:0,src:'no route set'};

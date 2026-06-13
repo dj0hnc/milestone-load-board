@@ -251,6 +251,16 @@ window.addEventListener('DOMContentLoaded', async ()=>{
       }catch(err){ board().__routeResult && board().__routeResult(e.data.reqId,{error:String(err&&err.message||err)}); }
       return;
     }
+    if(e.data.type==='hos' && e.data.reqId){
+      try{ const res=await window.newmile.hos(); board().__hosResult && board().__hosResult(e.data.reqId,res); }
+      catch(err){ board().__hosResult && board().__hosResult(e.data.reqId,{error:String(err&&err.message||err)}); }
+      return;
+    }
+    if(e.data.type==='calc' && e.data.reqId){
+      try{ const res=await window.newmile.calc(e.data.name,e.data.args); board().__calcResult && board().__calcResult(e.data.reqId,res); }
+      catch(err){ board().__calcResult && board().__calcResult(e.data.reqId,{error:String(err&&err.message||err)}); }
+      return;
+    }
     if(e.data.type==='oncall' && Array.isArray(e.data.list)){
       try{
         const res=await window.newmile.setOnCall(e.data.list);

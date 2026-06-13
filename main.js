@@ -403,6 +403,85 @@ ipcMain.handle('nm:sendDriverMsg', async (_e, { driverId, tok, text }) => {
 });
 
 /*
+ * 🎯 Samsara HOS clocks — remaining DRIVE minutes per driver, for "find nearby trucks that
+ * still have drive time". Defensive parse across Samsara shapes. 10-min cache.
+ */
+let _hosCache = { at: 0, data: null };
+function _hosRemain(clocks, kind) {
+  if (!clocks) return null;
+  const want = kind === 'drive' ? /driv/i : /shift|onduty|on_duty/i;
+  let found = null;
+  (function walk(o, ctx) {
+    if (!o || typeof o !== 'object') return;
+    for (const k in o) { const v = o[k];
+      if (typeof v === 'object') walk(v, want.test(k) ? true : ctx);
+      else if (ctx && /remain/i.test(k) && typeof v === 'number' && found == null) found = v;
+    }
+  })(clocks, false);
+  return found;
+}
+ipcMain.handle('nm:hos', async () => {
+  try {
+    if (_hosCache.data && (Date.now() - _hosCache.at) < 10 * 60 * 1000) return _hosCache.data;
+    const toks = ((appCfg.samsara && appCfg.samsara.tokens) || []).filter(t => t && t.token);
+    const out = {};
+    for (const t of toks) {
+      try {
+        const r = await fetch('https://api.samsara.com/fleet/hos/clocks?limit=512', { headers: { Authorization: 'Bearer ' + t.token, Accept: 'application/json' } });
+        if (!r.ok) { pushLog('samsara HOS ' + t.name + ': HTTP ' + r.status); continue; }
+        const j = await r.json();
+        (j.data || []).forEach(d => {
+          const name = ((d.driver && d.driver.name) || d.name || '').trim().toLowerCase(); if (!name) return;
+          const dm = _hosRemain(d.clocks, 'drive'), sm = _hosRemain(d.clocks, 'shift');
+          out[name] = { driveMin: dm == null ? null : Math.round(dm / 60000), shiftMin: sm == null ? null : Math.round(sm / 60000) };
+        });
+      } catch (e) { pushLog('samsara HOS failed: ' + e.message); }
+    }
+    _hosCache = { at: Date.now(), data: out };
+    return out;
+  } catch (e) { return {}; }
+});
+
+/*
+ * 💰 NewMile real rate calculators (drive time, loads/day, freight rate/margin) — passthrough
+ * to call_utility, whitelisted. Powers the desktop Quoter with NewMile's own math.
+ */
+const CALC_OK = new Set(['calculate_drive_time', 'calculate_loads_per_day', 'calculate_freight_rate', 'calculate_freight_margin', 'calculate_material_rate', 'calculate_material_margin']);
+ipcMain.handle('nm:calc', async (_e, { name, args }) => {
+  try {
+    if (!CALC_OK.has(name)) return { error: 'utility not allowed' };
+    return await client.callTool('call_utility', { utility_name: name, args: args || {} });
+  } catch (e) { return { error: e.message || String(e) }; }
+});
+
+/*
+ * 📷 Read a photo of an Excel/plan sheet → {text, pairs:[{num,lds}]} (free OCR, tesseract.js).
+ * Lazy-required so the app still runs if tesseract isn't bundled.
+ */
+let _ocrWorker = null;
+function _ocrParse(text) {
+  const toks = String(text || '').split(/[\t\n\r ,;|]+/).map(s => s.trim()).filter(Boolean);
+  const isLoad = s => /^\d{1,2}$/.test(s); const out = []; let k = 0;
+  while (k < toks.length) { const cur = toks[k]; if (isLoad(cur)) { k++; continue; }
+    const nxt = toks[k + 1]; if (nxt != null && isLoad(nxt)) { out.push({ num: cur, lds: parseInt(nxt, 10) }); k += 2; } else { out.push({ num: cur, lds: '' }); k++; } }
+  return out;
+}
+ipcMain.handle('nm:ocr', async (_e, { image }) => {
+  try {
+    if (!image) return { error: 'no image' };
+    const { createWorker } = require('tesseract.js');
+    if (!_ocrWorker) _ocrWorker = await createWorker('eng');
+    const buf = Buffer.from(image, 'base64');
+    const { data } = await _ocrWorker.recognize(buf);
+    const text = (data && data.text) || '';
+    return { text, pairs: _ocrParse(text) };
+  } catch (e) {
+    if (/Cannot find module 'tesseract/.test(String(e.message))) return { error: 'OCR engine not bundled in this build' };
+    return { error: e.message || String(e) };
+  }
+});
+
+/*
  * Quoter route engine (main process = no CORS): geocode via Census then Nominatim,
  * road miles + minutes via the public OSRM router. In-memory cache per session.
  */
