@@ -2253,10 +2253,16 @@ setView('board');
     try{
       var oids=Array.from(selectedOrders).filter(function(o){return O(o);});
       if(!oids.length){
-        orders.forEach(function(o){ if(o.unit!=='hour' && !o.completed && loadsToCover(o)>0) selectedOrders.add(o.id); });
+        // uncovered OR visually-empty (no chips and no NewMile coverage) → plan them
+        orders.forEach(function(o){ if(o.unit!=='hour' && !o.completed && (loadsToCover(o)>0 || (o.assigns.length===0 && !(o.nm>0)))) selectedOrders.add(o.id); });
         oids=Array.from(selectedOrders).filter(function(o){return O(o);});
       }
-      if(!oids.length){ toast('No uncovered orders to auto-plan',true); return; }
+      if(!oids.length){
+        var emptyNm=orders.filter(function(o){return !o.completed&&o.unit!=='hour'&&o.assigns.length===0&&o.nm>0;}).length;
+        var hourly=orders.filter(function(o){return !o.completed&&o.unit==='hour'&&o.assigns.length===0;}).length;
+        toast(emptyNm?('⚠ '+emptyNm+' orden(es) salen vacías pero YA tienen trocas en NewMile (subs no mapeados al roster) — por eso no las cubre'):(hourly?'Solo quedan órdenes por hora — el auto-plan no las dimensiona':'No hay órdenes sin cubrir para auto-plan'),true);
+        return;
+      }
       if(typeof plannerOpen==='undefined' || !plannerOpen) openPlanner();
       planInitDraft();
       if(reroll){   // 🎲: wipe what the LAST auto-plan drafted (keep NewMile-existing rows) and deal a fresh hand
@@ -2268,11 +2274,15 @@ setView('board');
       }
 
       var pool=planPool();
+      if(!pool.length){ toast('No hay trocas disponibles para el auto-plan — revisa ⚙ Plan filters (on-call / GPS / deadhead máx) y el filtro de flota',true); return; }
 
       var assigned=0, ordersTouched=0, dhSum=0, dhN=0, newSuggest={};
       oids.forEach(function(oid){
         var o=O(oid); if(!o || o.unit==='hour' || o.completed) return;
-        var need=loadsToCover(o); if(need<=0) return;          // already covered (incl. existing NewMile trucks)
+        // visually-empty (no chips, no NewMile coverage) → plan its full need (≥1 even if no target);
+        // otherwise just cover the remaining loads.
+        var need=(o.assigns.length===0 && !(o.nm>0)) ? Math.max(loadsNeeded(o)||0, o.minTrucks||0, 1) : loadsToCover(o);
+        if(need<=0) return;          // already covered (incl. existing NewMile trucks)
         planDraft[oid]=planDraft[oid]||[];
         var cur=planDraft[oid].filter(function(p){return (p.num||'').trim();}).length;
         var perTruck=planOpts.ldsTarget>0?planOpts.ldsTarget
@@ -2296,7 +2306,7 @@ setView('board');
       lastSuggested=newSuggest;
       window.__lastDeadhead = dhN ? Math.round(dhSum/dhN) : null;
       renderPlanner(); refresh();
-      toast(assigned? ('⚡ Auto-plan: '+assigned+' rested truck(s) across '+ordersTouched+' order(s)'+(window.__lastDeadhead!=null?(' · ~'+window.__lastDeadhead+' mi avg deadhead'):'')+' — review & adjust') : 'Nothing to add — orders look covered',!assigned);
+      toast(assigned? ('⚡ Auto-plan: '+assigned+' rested truck(s) across '+ordersTouched+' order(s)'+(window.__lastDeadhead!=null?(' · ~'+window.__lastDeadhead+' mi avg deadhead'):'')+' — review & adjust') : 'No pude asignar — sube el "Max deadhead" en ⚙ Plan filters o quita on-call/GPS; quizá ninguna troca queda dentro del rango',!assigned);
     }catch(e){ console.error('autoPlan',e); toast('Auto-plan error: '+e.message,true); }
   }
 
