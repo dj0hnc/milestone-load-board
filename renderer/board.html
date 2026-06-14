@@ -414,7 +414,7 @@ input{font-family:inherit}
   <div class="tb-spacer"></div>
   <div class="daynav">
     <button class="nav" onclick="shiftDay(-1)">‹</button>
-    <button class="on today" id="dayLbl">WED · JUN 10</button>
+    <button class="on today" id="dayLbl">HOY</button>
     <button class="nav" onclick="shiftDay(1)">›</button>
   </div>
   <div class="live" id="liveBadge" style="display:none" title="Data synced live from NewMile this session"><span class="dot"></span>LIVE</div>
@@ -808,7 +808,7 @@ function renderOrders(){
         <div class="odisp">${o.disp} · ${String(o.startHr).padStart(2,'0')}:00</div>
         <div class="omat">${o.mat}</div><div class="ocust">${o.cust}</div>
         <div class="oroute"><span class="gm-pt" onclick="openPinMap(event,'${o.id}','pickup')" title="Open pickup pin in Google Maps">${o.pickup}</span> <span class="arr">→</span> <span class="gm-pt" onclick="openPinMap(event,'${o.id}','drop')" title="Open dropoff pin in Google Maps">${o.drop}</span> <button class="gmap" onclick="openRouteMap(event,'${o.id}')" title="Open the run point-to-point in Google Maps">🗺</button></div>
-        <div class="osched">🕖 ${o.time||(String(o.startHr).padStart(2,'0')+':00')} ${estRouteHtml(o)}${(o.nmNotes&&o.nmNotes.length)?` <button class="gmap notei" onclick="openOrderNotes(event,'${o.id}')" title="This order has NewMile notes — tap to read">📝 ${o.nmNotes.length}</button>`:''}${o.projectId?` <button class="gmap crewi" onclick="pullCrew(event,'${o.id}')" title="Pull the trucks that recently ran this project → Planner">⟲ Crew</button>`:''} <button class="gmap nearbyi" onclick="findNearbyDesktop(event,'${o.id}')" title="Find trucks near the pickup that are free/finishing, with Samsara drive time left">🎯 Nearby</button></div>
+        <div class="osched">🕖 ${o.time||(String(o.startHr).padStart(2,'0')+':00')} ${estRouteHtml(o)}${(o.nmNotes&&o.nmNotes.length)?` <button class="gmap notei" onclick="openOrderNotes(event,'${o.id}')" title="This order has NewMile notes — tap to read">📝 ${o.nmNotes.length}</button>`:''}${o.projectId?` <button class="gmap crewi" onclick="pullCrew(event,'${o.id}')" title="Pull the trucks that recently ran this project → Planner">⟲ Crew</button>`:''} <button class="gmap nearbyi" onclick="findNearbyDesktop(event,'${o.id}')" title="Find trucks near the pickup that are free/finishing, with Samsara drive time left">🎯 Nearby</button> <button class="gmap readi" onclick="readOrderFromSheet(event,'${o.id}')" title="Read THIS order's trucks/loads from the day's Excel sheet (OneDrive) straight into the order">📄 Excel</button></div>
         ${o.notes?`<div class="onotes"><span class="nl">NM</span> ${o.notes}</div>`:''}</div>
       ${countHtml}
       <div class="dropzone">${chips||'<div class="dz-empty">Drop a truck here to assign</div>'}</div>
@@ -1318,9 +1318,13 @@ function pushNow(){
   catch(e){ toast('Open this board inside the Milestone app to push',true); }
 }
 
-const days=['SAT · JUN 6','SUN · JUN 7','MON · JUN 8','TUE · JUN 9','WED · JUN 10','THU · JUN 11'];
+// default labels are computed from the REAL local today (dIdx 4 = today) so the date box shows
+// today on first open — before NewMile sync replaces them. (No more stale "Jun 10" placeholder.)
+const __locTodayISO=(function(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');})();
+const days=[-4,-3,-2,-1,0,1].map(function(n){return __fmtDay(__isoShift(__locTodayISO,n));});
 const dayStatus=['past','past','past','past','today','future'];
 let dIdx=4;
+try{var __dl0=document.getElementById('dayLbl'); if(__dl0)__dl0.textContent=days[dIdx];}catch(e){}
 function shiftDay(d){
   // with live data only yesterday/today/tomorrow are synced — don't navigate beyond them
   const lo=window.__liveLoaded?3:0, hi=days.length-1;
@@ -1503,6 +1507,39 @@ async function readPlanIntoPlanner(){
     toast(msg, !filled);
     if(warned.length){ console.warn('Plan match — VERIFY material/pickup:\n'+warned.join('\n')); alert('⚠ Revisa material/pickup en:\n\n'+warned.join('\n')); }
   }catch(e){ console.error('readPlanIntoPlanner',e); toast('Read error: '+e.message,true); }
+}
+/* per-order: read THIS order's trucks/loads from the day's Excel sheet straight onto the order
+   (button on the order card, next to 🎯 Nearby). Fills o.assigns directly + marks it draft. */
+async function readOrderFromSheet(e,oid){
+  if(e&&e.stopPropagation)e.stopPropagation();
+  try{
+    var o=O(oid); if(!o){toast('Order not found',true);return;}
+    var dayEl=document.getElementById('day'); var day=(dayEl&&dayEl.value)||window.__boardToday||__locTodayISO;
+    toast('Leyendo el plan de '+(o.disp||'la orden')+'…');
+    var r=await window.newmile.readPlan(day);
+    if(!r||r.error){ toast('Plan: '+((r&&r.error)||'falló'),true); return; }
+    if(!r.orders){ toast('Ese archivo no es la hoja de órdenes del día',true); return; }
+    var so=matchSheetOrder(o, r.orders);
+    if(!so){ toast('No encontré '+(o.disp||'esta orden')+' en la hoja',true); return; }
+    var tr=(so.trucks||[]).filter(function(t){return (t.num||'').trim();});
+    if(!tr.length){ toast((o.disp||'orden')+': sin trocas en la hoja',true); return; }
+    var added=0, dup=0, unresolved=[];
+    tr.forEach(function(p){
+      var t=trucks.find(function(x){return x.num.trim().toLowerCase()===String(p.num).trim().toLowerCase();});
+      if(!t){ unresolved.push(p.num); return; }
+      if(o.assigns.some(function(a){return a.truck===t.id;})){ dup++; return; }
+      var seq=truckOrderCount(t.id)+1;
+      o.assigns.push({truck:t.id, ll:(typeof p.lds==='number'&&p.lds>0)?p.lds:'open', seq:seq, done:0});
+      if(t.status==='free')t.status='assigned';
+      added++;
+    });
+    if(o.finalized&&added)o.modified=true;
+    if(added)markDraft(o.id);
+    render();
+    var msg='📄 '+(o.disp||'orden')+': +'+added+' troca(s) de la hoja'+(dup?' · '+dup+' ya estaban':'')+(unresolved.length?' · '+unresolved.length+' no encontradas ('+unresolved.slice(0,3).join(', ')+')':'');
+    toast(msg, !added);
+    if(so._warn&&so._warn.length){ console.warn('Excel match — VERIFY:\n'+so._warn.join('\n')); alert('⚠ Revisa material/pickup en '+(o.disp||'la orden')+':\n\n'+so._warn.join('\n')); }
+  }catch(err){ console.error('readOrderFromSheet',err); toast('Read error: '+(err.message||err),true); }
 }
 const PL_GROUPS=[['ww','WW'],['rho','RHO'],['pow','POW'],['cac','CAC'],['agg','AGG'],['sub','SUB']];
 function renderPlanner(){
@@ -1721,9 +1758,9 @@ function setTruckQuery(v){truckQuery=v.trim().toLowerCase();const c=document.get
 function clearTruckQuery(){truckQuery='';const i=document.getElementById('truckSearch');if(i)i.value='';const c=document.getElementById('tsclr');if(c)c.style.display='none';renderTrucks();}
 
 function plannerDateISO(){
-  // dIdx 4 == today (2026-06-10). Derive YYYY-MM-DD for the active day.
-  const base=new Date(2026,5,10); // dIdx 4 == today = Jun 10
-  const d=new Date(base.getTime()+(dIdx-4)*86400000);
+  // dIdx 4 == today. Use the LIVE board day (from NewMile) when loaded, else the real local today.
+  const baseISO=window.__boardToday||__locTodayISO;
+  const d=new Date(baseISO+'T12:00:00'); d.setDate(d.getDate()+(dIdx-4));
   const p=n=>String(n).padStart(2,'0');
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
 }
