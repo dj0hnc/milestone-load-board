@@ -1568,6 +1568,7 @@ function renderPlanner(){
       <th class="fz c1">Disp #</th><th class="fz c2">Material</th><th>Dropoff</th><th>Ord</th><th>Rem</th>
       ${PL_GROUPS.map(g=>`<th class="grp">${g[1]}</th>`).join('')}
       <th>Trks</th><th>Lds</th><th>Tons</th>
+      <th class="totc" title="Auto-plan: cuántas trocas para ESTA orden (vacío = auto por tonelaje). 1, 40, lo que sea.">🎯trk</th>
       <th colspan="${maxPairs+1}" style="text-align:left;color:#8b96a5">type TRK # + LDS per truck — group counts auto-fill ▶</th>
     </tr></thead>`;
   let rows='';
@@ -1593,18 +1594,21 @@ function renderPlanner(){
       <td class="remc" style="color:${rem>0?'#fb923c':'#22c55e'}">${Math.round(rem)}</td>
       ${PL_GROUPS.map(g=>`<td class="tally ${g[0]}" data-g="${g[0]}">0</td>`).join('')}
       <td class="totc" data-tot="trks">0</td><td class="totc" data-tot="lds">0</td><td class="totc" data-tot="tons">0</td>
+      <td class="totc"><input class="lds" style="width:42px;text-align:center" value="${o.planTrucks||''}" placeholder="auto" inputmode="numeric" title="# de trocas para auto-plan (esta orden)" onclick="event.stopPropagation()" oninput="planSetTrucks('${oid}',this.value)"></td>
       ${pcells}</tr>`;
   });
   let foot=`<tfoot><tr>
     <td class="seqc"></td><td class="fz c1">TOTAL</td><td class="fz c2"></td><td></td><td></td><td></td>
     ${PL_GROUPS.map(g=>`<td class="tally ${g[0]}" data-gt="${g[0]}">0</td>`).join('')}
     <td class="totc" data-gt="trks">0</td><td class="totc" data-gt="lds">0</td><td class="totc" data-gt="tons">0</td>
+    <td class="totc"></td>
     <td colspan="${maxPairs+1}"></td></tr></tfoot>`;
   document.getElementById('plTableWrap').innerHTML=`<datalist id="plTruckList">${trucks.map(t=>`<option value="${t.num}">`).join('')}</datalist>
     <table class="pl-grid">${head}<tbody>${rows}</tbody>${foot}</table>`;
   oids.forEach(oid=>planRecalc(oid)); planRecalcTotals();
   renderPlanDetail();
 }
+function planSetTrucks(oid,v){ var o=O(oid); if(o){ o.planTrucks=Math.max(0,parseInt(v,10)||0); } }   // per-order auto-plan truck target (0/blank = auto)
 function planEdit(oid,i,field,val){
   if(!planDraft[oid]) planDraft[oid]=[];
   while(planDraft[oid].length<=i) planDraft[oid].push({num:'',lds:''});
@@ -2254,7 +2258,7 @@ setView('board');
       var oids=Array.from(selectedOrders).filter(function(o){return O(o);});
       if(!oids.length){
         // uncovered OR visually-empty (no chips and no NewMile coverage) → plan them
-        orders.forEach(function(o){ if(o.unit!=='hour' && !o.completed && (loadsToCover(o)>0 || (o.assigns.length===0 && !(o.nm>0)))) selectedOrders.add(o.id); });
+        orders.forEach(function(o){ if(o.unit!=='hour' && !o.completed && (loadsToCover(o)>0 || (o.assigns.length===0 && !(o.nm>0)) || o.planTrucks>0)) selectedOrders.add(o.id); });
         oids=Array.from(selectedOrders).filter(function(o){return O(o);});
       }
       if(!oids.length){
@@ -2279,15 +2283,17 @@ setView('board');
       var assigned=0, ordersTouched=0, dhSum=0, dhN=0, newSuggest={};
       oids.forEach(function(oid){
         var o=O(oid); if(!o || o.unit==='hour' || o.completed) return;
+        var forced = o.planTrucks>0;   // dispatcher set an exact truck count for THIS order (🎯trk)
         // visually-empty (no chips, no NewMile coverage) → plan its full need (≥1 even if no target);
-        // otherwise just cover the remaining loads.
+        // otherwise just cover the remaining loads. A forced count overrides coverage entirely.
         var need=(o.assigns.length===0 && !(o.nm>0)) ? Math.max(loadsNeeded(o)||0, o.minTrucks||0, 1) : loadsToCover(o);
-        if(need<=0) return;          // already covered (incl. existing NewMile trucks)
+        if(!forced && need<=0) return;          // already covered (incl. existing NewMile trucks)
         planDraft[oid]=planDraft[oid]||[];
         var cur=planDraft[oid].filter(function(p){return (p.num||'').trim();}).length;
         var perTruck=planOpts.ldsTarget>0?planOpts.ldsTarget
-                    :Math.max(1, Math.min(6, Math.round(need/Math.max(1,(o.minTrucks||Math.ceil(need/4))))));
-        var target=Math.max(o.minTrucks||0, Math.ceil(need/perTruck)); target=Math.min(target,20);
+                    :Math.max(1, Math.min(6, Math.round((need||1)/Math.max(1,(o.minTrucks||Math.ceil((need||1)/4))))));
+        var target = forced ? o.planTrucks : Math.max(o.minTrucks||0, Math.ceil(need/perTruck));
+        target=Math.min(target,99);   // was 20 — big orders can need 40+ trucks
         var toAdd=Math.max(0, target-cur); var rem=need; var did=0;
         newSuggest[oid]={};
         for(var k=0;k<toAdd && pool.length;k++){
@@ -2295,11 +2301,11 @@ setView('board');
           if(!pick) break;
           var t=pool.splice(pick.i,1)[0];
           if(pick.d!=null){ dhSum+=pick.d; dhN++; }
-          var lds=Math.max(1, Math.min(perTruck, rem||perTruck));
+          var lds = forced ? (planOpts.ldsTarget>0?planOpts.ldsTarget:1) : Math.max(1, Math.min(perTruck, rem||perTruck));
           planDraft[oid].push({num:t.num, lds:lds});
           newSuggest[oid][t.num]=1;
           rem-=lds; assigned++; did++;
-          if(rem<=0 && did>=(o.minTrucks||1)) break;
+          if(!forced && rem<=0 && did>=(o.minTrucks||1)) break;   // auto mode stops at coverage; forced fills the exact count
         }
         if(did) ordersTouched++;
       });
