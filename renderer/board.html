@@ -789,9 +789,9 @@ function renderOrders(){
         <div class="cnum rem ${ltc?'':'zero'}"><div class="n">${ltc}</div><div class="t">Loads to add</div></div></div>
         <div class="subcount"><span class="oloads">${(nmT||asg)}${o.planned>(nmT||asg)?'/'+o.planned:''} trucks · NewMile${asg<nmT&&asg>0?` · ${asg} w/ detail`:''}</span>${(realLoads||dLoads)?`<span class="oloads" style="margin-left:auto">loads in <b>${realLoads||dLoads}</b></span>`:''}</div>`;
     }
-    const chips=o.assigns.map((a,i)=>{const t=T(a.truck);const ns=t.status==='noshow';
-      return `<span class="atruck ${t.prio?'star':''} ${ns?'noshow':''}" onclick="editAssign(event,'${o.id}',${i})" title="Tap to edit limit/sequence">
-        <span class="seq s${a.seq}">${a.seq}</span><span class="an">${t.num}</span>
+    const chips=o.assigns.map((a,i)=>{const t=T(a.truck);const ns=t.status==='noshow';const own=(t.owner||'');
+      return `<span class="atruck ${t.prio?'star':''} ${ns?'noshow':''}" onclick="editAssign(event,'${o.id}',${i})" title="${own.replace(/"/g,'&quot;')} — esta es la troca exacta que se manda a NewMile · tap para editar">
+        <span class="seq s${a.seq}">${a.seq}</span><span class="an">${t.num}</span>${own?`<small style="color:#8b96a5;font-weight:600;font-size:10px;margin-left:4px">${own.length>14?own.slice(0,13)+'…':own}</small>`:''}
         <span class="prog ${progClass(a)}">${progText(a)}</span>
         ${a.rate?`<span title="${a.rate==='contracted'?'Forced contracted rate':'Forced order default rate'}" style="font-size:9px;font-weight:800;padding:0 4px;border-radius:5px;margin-left:3px;background:${a.rate==='contracted'?'#caa23f':'#5a95f9'};color:#06121f">${a.rate==='contracted'?'$C':'$D'}</span>`:''}
         <span class="x" onclick="unassign(event,'${o.id}',${i})">✕</span></span>`;}).join('');
@@ -1129,7 +1129,10 @@ window.__getPendingSync=function(){
     const present={};
     const assignments=o.assigns.map(a=>{const t=T(a.truck);if(!t)return null;
       present[t.num.trim().toUpperCase()]=1;
-      return { truck:t.num, loads:(typeof a.ll==='number'?a.ll:null), sequence:a.seq||1, rate:(a.rate||'') };}).filter(Boolean);
+      // send the EXACT NewMile truck id the dispatcher picked (t.id = 't'+id) so duplicate numbers
+      // (several "2025" across owners) link to the RIGHT truck instead of being re-resolved by number.
+      var tid=parseInt(String(t.id).replace(/^t/,''),10);
+      return { truck:t.num, truck_id:(isNaN(tid)?undefined:tid), loads:(typeof a.ll==='number'?a.ll:null), sequence:a.seq||1, rate:(a.rate||'') };}).filter(Boolean);
     return { order_id:parseInt((''+o.id).replace(/^o/,''),10), disp:o.disp, material:o.mat,
       assignments, removed:__removedFor(o,present), finalize:window.__finalizeQueue.has(oid) };
   }).filter(o=>o.assignments.length||o.removed.length);
