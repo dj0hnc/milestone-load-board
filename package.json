@@ -1,7 +1,7 @@
 {
   "name": "milestone-load-board",
   "productName": "Milestone Load Board",
-  "version": "2.2.2",
+  "version": "2.3.0",
   "description": "Milestone Supply - Texas dispatch load board with a built-in NewMile MCP client: in-app OAuth login, live pull, and confirmed push. Portable single-exe.",
   "author": "Milestone Supply - Texas",
   "license": "UNLICENSED",
@@ -13,6 +13,9 @@
     "dist-mac": "electron-builder --mac --universal",
     "dir": "electron-builder --dir"
   },
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  },
   "devDependencies": {
     "electron": "^30.5.1",
     "electron-builder": "^24.13.3"
@@ -20,15 +23,40 @@
   "build": {
     "appId": "com.milestonesupply.loadboard",
     "productName": "MilestoneLoadBoard",
-    "files": ["main.js", "mcp-client.js", "preload.js", "renderer/**/*", "newmile.config.json", "assets/**/*"],
-    "win": { "target": ["portable"], "signAndEditExecutable": false },
-    "portable": { "artifactName": "MilestoneLoadBoard-${version}-portable.exe" },
+    "files": [
+      "main.js",
+      "mcp-client.js",
+      "preload.js",
+      "sheet.js",
+      "planimport.js",
+      "renderer/**/*",
+      "newmile.config.json",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "MilestoneLoadBoard-${version}-portable.exe"
+    },
     "mac": {
-      "target": [{ "target": "dmg", "arch": ["universal"] }],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
       "category": "public.app-category.business",
       "identity": null
     },
-    "dmg": { "artifactName": "MilestoneLoadBoard-${version}.dmg" },
+    "dmg": {
+      "artifactName": "MilestoneLoadBoard-${version}.dmg"
+    },
     "compression": "maximum"
   }
 }

@@ -433,6 +433,7 @@ input{font-family:inherit}
       <div class="pl-results" id="plResults"></div>
     </div>
     <div class="pl-actions">
+      <button class="pl-btn go" onclick="readPlanIntoPlanner()" title="Read the day's TX Order Sheet from OneDrive and fill the selected orders">📥 Read Excel plan</button>
       <button class="pl-btn go" onclick="commitPlanner()">✓ Assign to board</button>
       <button class="pl-btn" onclick="exportPlan()" title="Download plan_YYYY-MM-DD.json for the Cowork push">⬇ Export plan</button>
       <button class="pl-btn" onclick="clearPlanner()">Clear typed</button>
@@ -1418,6 +1419,74 @@ function openPlanner(){
 function closePlanner(){plannerOpen=false;document.getElementById('planner').classList.remove('show');var t=document.getElementById('tabBoard'),p=document.getElementById('tabPlanner');if(t)t.classList.add('on');if(p)p.classList.remove('on');currentView='board';}
 function togglePlannerMin(){const p=document.getElementById('planner');const m=p.classList.toggle('min');document.getElementById('plMinBtn').textContent=m?'▴':'▾';}
 function clearPlanner(){ [...selectedOrders].forEach(oid=>planDraft[oid]=[]); renderPlanner(); }
+
+/* 📥 Read the day's TX Order Sheet from OneDrive and fill the planner — same smart matching as
+   mobile (keywords across name/ref/customer/material/drop/pickup + Disp#/PO# + material tie-break).
+   Reads ONLY the day's tab (never flattens). Fills selected orders (or all open if none selected). */
+function _pnorm(s){ return String(s||'').toUpperCase().replace(/[^A-Z0-9 ]/g,' ').replace(/\s+/g,' ').trim(); }
+var _PSTOP=new Set(['THE','AND','FOR','TX','CO','LLC','INC','JOB','JOBS','PROJECT','ONSITE','WORK','NTX','STX','LOAD','LOADS','QUIKRETE','READY','MIX','READYMIX','REDIMIX','STONE','ROCK','GRAVEL','CONCRETE','PLANT','MATERIAL','MATERIALS','LMSTN','LIMESTONE']);
+function _ptoks(s){ return _pnorm(s).split(' ').filter(function(w){return w.length>2&&!_PSTOP.has(w);}); }
+function _pMatSig(s){ var t=' '+_pnorm(s)+' '; var sig=new Set();
+  (t.match(/\d+ ?\/ ?\d+/g)||[]).forEach(function(x){sig.add(x.replace(/\s/g,''));});
+  (t.match(/\bASTM ?\d+\b/g)||[]).forEach(function(x){sig.add(x.replace(/\s/g,''));});
+  (t.match(/\b\d{1,3}\b/g)||[]).forEach(function(x){sig.add(x);});
+  if(/\bSAND\b/.test(t))sig.add('SAND'); if(/PEA GRAVEL|\bPG\b/.test(t))sig.add('PG'); if(/FLEX ?BASE|\bBASE\b/.test(t))sig.add('BASE');
+  return sig;
+}
+function matchSheetOrder(o, list){
+  var oFull=_pnorm((o.disp||'')+' '+(o.cust||'')+' '+(o.mat||'')+' '+(o.drop||'')+' '+(o.pickup||''));
+  var oset=new Set(_ptoks(oFull)); var oCodes=new Set(oFull.match(/[A-Z0-9]{3,}/g)||[]);
+  var oMat=_pMatSig((o.disp||'')+' '+(o.mat||''));
+  var od=String(o.disp||'').trim(), oid=String(o.id||'').replace(/^o/,'');
+  var best=null, score=0;
+  (list||[]).forEach(function(so){
+    var sc=0, sd=String(so.disp||'').trim(), sdN=_pnorm(sd);
+    if(sd&&(sd===od||sd===oid))sc+=100;
+    else if(sdN&&sdN.length>=3&&(oCodes.has(sdN)||oFull.indexOf(sdN)>=0))sc+=60;
+    var stoks=_ptoks((so.customer||'')+' '+(so.material||'')+' '+(so.pickup||''));
+    var shared=stoks.filter(function(t){return oset.has(t);});
+    sc+=shared.length*8; sc+=shared.filter(function(t){return t.length>=5;}).length*9;
+    var sMat=_pMatSig(so.material);
+    if(oMat.size&&sMat.size){ var m=[...oMat].filter(function(x){return sMat.has(x);}).length; if(m)sc+=m*10; }
+    if(sc>score){score=sc;best=so;}
+  });
+  if(!best||score<12) return null;
+  var warn=[]; var bMat=_pMatSig(best.material);
+  if(oMat.size&&bMat.size&&![...oMat].some(function(x){return bMat.has(x);})) warn.push('material: "'+(o.mat||'?')+'" vs "'+(best.material||'?')+'"');
+  var oPick=new Set(_ptoks((o.pickup||'')+' '+(o.disp||''))); var bPick=_ptoks(best.pickup||'');
+  if(bPick.length&&oPick.size&&!bPick.some(function(t){return oPick.has(t);})) warn.push('pickup: "'+(o.pickup||'?')+'" vs "'+(best.pickup||'?')+'"');
+  return Object.assign({}, best, {_score:score, _warn:warn});
+}
+async function readPlanIntoPlanner(){
+  try{
+    var dayEl=document.getElementById('day'); var day=(dayEl&&dayEl.value)||new Date().toISOString().slice(0,10);
+    toast('Reading the day’s order sheet…');
+    var r=await window.newmile.readPlan(day);
+    if(!r||r.error){ toast('Plan: '+((r&&r.error)||'failed')+(r&&r.candidates?' · found: '+r.candidates.slice(0,3).join(', '):''),true); return; }
+    if(!r.orders){ toast('That file isn’t a daily order sheet',true); return; }
+    var targets=(selectedOrders&&selectedOrders.size)?[...selectedOrders]:(window.orders||[]).filter(function(o){return !o.completed;}).map(function(o){return o.id;});
+    if(!targets.length){ toast('No orders for that day to fill',true); return; }
+    var usedKeys=new Set(), filled=0, trucksN=0, warned=[], noMatch=[];
+    var rowKey=function(x){return (x.customer||'')+'|'+(x.material||'')+'|'+(x.disp||'');};
+    targets.forEach(function(oid){
+      var o=O(oid); if(!o) return;
+      var so=matchSheetOrder(o, r.orders.filter(function(x){return !usedKeys.has(rowKey(x));}));
+      if(!so){ noMatch.push(o.disp||oid); return; }
+      usedKeys.add(rowKey(so));
+      var tr=(so.trucks||[]).filter(function(t){return (t.num||'').trim();});
+      if(!tr.length) return;
+      planDraft[oid]=tr.map(function(t){return {num:t.num, lds:(typeof t.lds==='number'&&t.lds>0)?t.lds:''};});
+      if(selectedOrders&&!selectedOrders.has(oid)) selectedOrders.add(oid);
+      filled++; trucksN+=tr.length;
+      if(so._warn&&so._warn.length) warned.push(o.disp+': '+so._warn.join(' | '));
+    });
+    renderPlanner();
+    var msg='📥 '+filled+' order(s) · '+trucksN+' truck(s) from '+(r.file||'the sheet')+(r.tab?' (tab '+r.tab+')':'');
+    if(warned.length) msg+=' · ⚠ '+warned.length+' to verify';
+    toast(msg, !filled);
+    if(warned.length){ console.warn('Plan match — VERIFY material/pickup:\n'+warned.join('\n')); alert('⚠ Revisa material/pickup en:\n\n'+warned.join('\n')); }
+  }catch(e){ console.error('readPlanIntoPlanner',e); toast('Read error: '+e.message,true); }
+}
 const PL_GROUPS=[['ww','WW'],['rho','RHO'],['pow','POW'],['cac','CAC'],['agg','AGG'],['sub','SUB']];
 function renderPlanner(){
   if(!plannerOpen) return;

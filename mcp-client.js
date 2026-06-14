@@ -737,8 +737,12 @@ class NewMileClient {
   //   - truck ON the order, loads changed → update load_limit only
   //   - truck ON the order, unchanged     → never touched
   // Returns { created:[ids], updated:[{truck,from,to}], skipped:[{truck,reason}], unresolved:[truck], confirmed:Bool }
-  async pushOrderBatch(orderId, assignments, useOrderDefault, removed) {
-    const out = { order_id: orderId, created: [], updated: [], skipped: [], unresolved: [], confirmed: false, reordered: [], removed: [] };
+  // finalize: when TRUE (default, preserves desktop behaviour) created assignments are confirmed
+  // (draft -> pending; triggers the driver auto-offer). When FALSE the assignments are left in
+  // DRAFT so the dispatcher can review and finalize them later — nothing is offered to drivers.
+  async pushOrderBatch(orderId, assignments, useOrderDefault, removed, finalize) {
+    const doFinalize = (finalize === undefined) ? true : !!finalize;
+    const out = { order_id: orderId, created: [], updated: [], skipped: [], unresolved: [], confirmed: false, draft: [], reordered: [], removed: [], finalize: doFinalize };
 
     // 1) live state — what's already on the order
     let existing = [];
@@ -769,7 +773,8 @@ class NewMileClient {
         }
         continue;
       }
-      const tid = await this.resolveTruckId(num);
+      // honor an explicit truck_id (the dispatcher picked among same-numbered trucks); else resolve
+      const tid = (a.truck_id != null ? a.truck_id : await this.resolveTruckId(num));
       if (!tid) { out.unresolved.push(num); continue; }
       toCreate.push({ truck: num, truck_id: tid, loads: a.loads, sequence: a.sequence || 1 });
     }
@@ -842,13 +847,18 @@ class NewMileClient {
     // map created ids back to trucks (by order) for reorder
     toCreate.forEach((t, i) => { t.assignment_id = createdRows[i] ? createdRows[i].id : out.created[i]; });
 
-    // 4) confirm (this IS the finalize — draft -> pending; triggers auto-offer flow)
-    if (out.created.length) {
+    // 4) confirm — ONLY when finalizing. confirm_assignments is the finalize (draft -> pending)
+    // and triggers the driver auto-offer. When syncing as draft we deliberately skip it so the
+    // dispatcher reviews first; the created rows stay in draft and finalizeOrder() confirms later.
+    if (out.created.length && doFinalize) {
       await this.callTool('call_utility', {
         utility_name: 'confirm_assignments',
         args: { order_assignment_ids: out.created }
       });
       out.confirmed = true;
+    } else if (out.created.length) {
+      out.draft = out.created.slice();   // synced as draft — awaiting finalize
+      this.log('order ' + orderId + ': synced ' + out.created.length + ' assignment(s) as DRAFT (not finalized)');
     }
 
     // 5) seq-2 (blue) trucks -> reorder so the new assignment sits at the intended ordinal. Best-effort.
@@ -866,6 +876,30 @@ class NewMileClient {
       } catch (e) { this.log('reorder for ' + t.truck + ' skipped: ' + e.message); }
     }
 
+    return out;
+  }
+
+  // Finalize an order that was synced as DRAFT: confirm every draft assignment on it
+  // (draft -> pending; triggers the driver auto-offer). Idempotent — already-pending rows are
+  // left alone. Returns { order_id, confirmed:[ids], already:n, none:Bool }.
+  async finalizeOrder(orderId) {
+    const out = { order_id: orderId, confirmed: [], already: 0, none: false };
+    let rows = [];
+    try {
+      const ex = await this.orderAssignments(orderId);
+      rows = (ex && (ex.order_assignments || ex.results || ex.rows)) || [];
+    } catch (e) { out.error = 'could not read assignments: ' + e.message; return out; }
+    // NewMile's lifecycle field is `assignment_status` (enum: draft, pending, active,
+    // order_assignment_completed, ...). Only 'draft' rows are unfinalized. (verified 2026-06-13)
+    const statusOf = (r) => String(r.assignment_status || r.status || r.state || '').toLowerCase();
+    const draftIds = rows.filter(r => statusOf(r) === 'draft').map(r => r.id).filter(Boolean);
+    out.already = rows.length - draftIds.length;
+    if (!draftIds.length) { out.none = true; return out; }   // nothing in draft to finalize
+    try {
+      await this.callTool('call_utility', { utility_name: 'confirm_assignments', args: { order_assignment_ids: draftIds } });
+      out.confirmed = draftIds;
+      this.log('finalized order ' + orderId + ': confirmed ' + draftIds.length + ' draft assignment(s)');
+    } catch (e) { out.error = 'confirm failed: ' + e.message; }
     return out;
   }
 }

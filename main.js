@@ -482,6 +482,22 @@ ipcMain.handle('nm:ocr', async (_e, { image }) => {
 });
 
 /*
+ * 📥 Read the monthly dispatch order-sheet straight off the OneDrive-synced folder on THIS PC
+ * (no Microsoft login needed — the file is local). Auto-scans OneDrive + self-heals to the right
+ * file (the one that has the requested day's tab). Returns {orders, pairs, file, tab} for matching.
+ */
+ipcMain.handle('nm:scanPlan', async () => { try { return require('./planimport').scan('Lease Dispatch'); } catch (e) { return { error: e.message || String(e) }; } });
+ipcMain.handle('nm:readPlan', async (_e, { dateISO } = {}) => {
+  try {
+    const s = loadSettings() || {};
+    return require('./planimport').readPlan(dateISO, { dir: s.planImportDir || undefined, file: s.planImportFile || undefined, prefix: s.planPrefix || 'Lease Dispatch' });
+  } catch (e) {
+    if (/Cannot find module 'xlsx/.test(String(e.message))) return { error: 'Excel reader not bundled in this build' };
+    return { error: e.message || String(e) };
+  }
+});
+
+/*
  * Quoter route engine (main process = no CORS): geocode via Census then Nominatim,
  * road miles + minutes via the public OSRM router. In-memory cache per session.
  */

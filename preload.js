@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('newmile', {
   hos: () => ipcRenderer.invoke('nm:hos'),
   calc: (name, args) => ipcRenderer.invoke('nm:calc', { name, args }),
   ocr: (image) => ipcRenderer.invoke('nm:ocr', { image }),
+  scanPlan: () => ipcRenderer.invoke('nm:scanPlan'),
+  readPlan: (dateISO) => ipcRenderer.invoke('nm:readPlan', { dateISO }),
   projectTrucks: (p) => ipcRenderer.invoke('nm:projectTrucks', p),
   zoom: (factor) => ipcRenderer.invoke('nm:zoom', factor),
   sendDriverMsg: (p) => ipcRenderer.invoke('nm:sendDriverMsg', p),
