@@ -324,6 +324,14 @@ async function checkForUpdate() {
     if (win && !win.isDestroyed()) win.webContents.send('nm:update', _updateInfo);
   } catch (e) { pushLog('updater check failed: ' + e.message); }
 }
+// manual "look for update now" — tap the version label. Returns the staged update (if any) so
+// the UI can say "up to date" vs "update available" right away instead of waiting for the timer.
+ipcMain.handle('nm:checkUpdate', async () => {
+  const gh = (appCfg && appCfg.github) || {};
+  if (!gh.token || !gh.owner || !gh.repo) return { error: 'no-config', current: app.getVersion() };
+  await checkForUpdate();
+  return _updateInfo ? { update: _updateInfo } : { upToDate: true, current: app.getVersion() };
+});
 ipcMain.handle('nm:downloadUpdate', async () => {
   try {
     if (!_updateInfo || !_updateInfo.assetId) return { error: 'No update staged' };

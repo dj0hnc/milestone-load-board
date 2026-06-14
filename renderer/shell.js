@@ -212,6 +212,8 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   $('#day').addEventListener('change',()=>{ dayManual=true; });
   try{ const cfg=await window.newmile.config(); groupsCfg=(cfg&&cfg.groups)||null; }catch(e){}
   try{ const v=await window.newmile.version(); if(v)$('#appVer').textContent='Edición '+v; }catch(e){}   // calendar label, not the raw count
+  // tap the version → force a "look for update now" (otherwise it only checks at launch + every 4h)
+  try{ const av=$('#appVer'); if(av&&!av._wired){ av._wired=1; av.style.cursor='pointer'; av.title='Click para buscar actualización'; av.onclick=async()=>{ toast('Buscando actualización…'); try{ const r=await window.newmile.checkUpdate(); if(r&&r.update){ toast('🆕 Hay una versión nueva — usa ⬇ Actualizar'); } else if(r&&r.upToDate){ toast('✓ Ya tienes la última versión'); } else if(r&&r.error==='no-config'){ toast('Este build no trae el auto-updater — baja el .exe nuevo una vez del repo',true); } else { toast('No se pudo verificar ahora',true); } }catch(e){ toast('Update check falló: '+(e.message||e),true); } }; } }catch(e){}
   try{ const z=parseFloat(localStorage.getItem('mab_zoom')||'1'); if(z!==1) window.newmile.zoom(z); }catch(e){}
   setStatus(await window.newmile.status());
 
@@ -445,19 +447,22 @@ function clearPendingSync(ids){ try{ board().__clearPendingSync && board().__cle
 async function autoSync(){
   const pend=getPendingSync();
   if(!pend.length) return 0;
-  $('#stat').textContent='Writing '+pend.length+' finalized order(s) to NewMile…';
-  let done=0; const doneIds=[];
+  // o.finalize = the dispatcher chose to finalize this one; everything else syncs as DRAFT.
+  // The auto-sync NEVER finalizes on its own — drafts stay drafts until the dispatcher clicks Finalize.
+  const draftN=pend.filter(o=>!o.finalize).length, finN=pend.length-draftN;
+  $('#stat').textContent='Syncing '+draftN+' draft'+(finN?' + '+finN+' finalize':'')+' → NewMile…';
+  let done=0, fin=0; const doneIds=[];
   for(const o of pend){
     try{
       const useDefault=isOrderDefault(o);
       const asg=o.assignments.filter(a=>!/ATX Bluewing/i.test(a.truck));
-      const r=await window.newmile.pushOrder({orderId:o.order_id, assignments:asg, useOrderDefault:useDefault, removed:(o.removed||[])});
-      done++; doneIds.push(o.order_id);
-      appendLog('auto-sync '+o.order_id+' ('+(o.disp||'')+'): +'+(r.created||[]).length+' new · ~'+(r.updated||[]).length+' updated · −'+(r.removed||[]).length+' removed · ='+(r.skipped||[]).length+' untouched');
+      const r=await window.newmile.pushOrder({orderId:o.order_id, assignments:asg, useOrderDefault:useDefault, removed:(o.removed||[]), finalize:!!o.finalize});
+      done++; if(o.finalize)fin++; doneIds.push(o.order_id);
+      appendLog('auto-sync '+o.order_id+' ('+(o.disp||'')+') '+(o.finalize?'[FINALIZE]':'[draft]')+': +'+(r.created||[]).length+' new · ~'+(r.updated||[]).length+' updated · −'+(r.removed||[]).length+' removed · ='+(r.skipped||[]).length+' untouched');
     }catch(e){ toast('Auto-sync order '+o.order_id+' failed: '+(e.message||e)); appendLog('auto-sync '+o.order_id+' FAILED: '+(e.message||e)); }
   }
   clearPendingSync(doneIds);
-  if(done) toast('✓ Auto-synced '+done+' finalized order(s) to NewMile');
+  if(done) toast('✓ Synced '+(done-fin)+' draft'+(fin?' · finalized '+fin:'')+' to NewMile');
   return done;
 }
 

@@ -1010,6 +1010,7 @@ function applySelectedToOrder(oid,ll){
     if(o.finalized)o.modified=true;
     added++;
   });
+  if(added)markDraft(oid);
   render();
   toast(added?`Added ${added} to ${o.disp} (auto-seq)`:'Already on this order',!added);
 }
@@ -1057,39 +1058,44 @@ function confirmAssign(){
     o.assigns.push({truck:modalCtx.truckId,ll:modalLL,seq:modalSeq,done:0,rate:modalRate});
     const t=T(modalCtx.truckId);if(t.status==='free')t.status='assigned';
     if(o.finalized)o.modified=true;
-    closeModal();render();
+    markDraft(o.id);closeModal();render();
   } else if(modalCtx.mode==='bulk'){
     lastLL=modalLL;const oid=modalCtx.orderId;closeModal();applySelectedToOrder(oid,modalLL); // selection stays sticky for the next order
   } else if(modalCtx.mode==='edit'){
     o.assigns[modalCtx.idx].ll=modalLL;o.assigns[modalCtx.idx].seq=modalSeq;o.assigns[modalCtx.idx].rate=modalRate;
     if(o.finalized)o.modified=true;
-    closeModal();render();
+    markDraft(o.id);closeModal();render();
   } else if(modalCtx.mode==='multiOrder'){
     lastLL=modalLL;const ll=modalLL;const tids=modalCtx.truckIds;let added=0,skipped=0;
     [...selectedOrders].forEach(oid=>{const od=O(oid);if(!od){skipped++;return;}
-      tids.forEach(id=>{if(od.assigns.some(a=>a.truck===id))return;const seq=truckOrderCount(id)+1;od.assigns.push({truck:id,ll,seq,done:0,rate:modalRate});const t=T(id);if(t.status==='free')t.status='assigned';if(od.finalized)od.modified=true;added++;});});
+      tids.forEach(id=>{if(od.assigns.some(a=>a.truck===id))return;const seq=truckOrderCount(id)+1;od.assigns.push({truck:id,ll,seq,done:0,rate:modalRate});const t=T(id);if(t.status==='free')t.status='assigned';if(od.finalized)od.modified=true;added++;});markDraft(oid);});
     selected.clear();activeTruck=null;
     closeModal();render();
     toast(added?`Added ${added} assignment(s) across ${selectedOrders.size-skipped} order(s)`:'Those trucks were already on the selected orders',!added);
   }
 }
 function editAssign(e,oid,i){e.stopPropagation();openModal({mode:'edit',orderId:oid,idx:i});}
-function unassign(e,oid,i){e.stopPropagation();const o=O(oid);const tid=o.assigns[i].truck;o.assigns.splice(i,1);if(truckOrderCount(tid)===0){const t=T(tid);if(t.status==='assigned')t.status='free';}if(o.finalized)o.modified=true;render();}
+function unassign(e,oid,i){e.stopPropagation();const o=O(oid);const tid=o.assigns[i].truck;o.assigns.splice(i,1);if(truckOrderCount(tid)===0){const t=T(tid);if(t.status==='assigned')t.status='free';}if(o.finalized)o.modified=true;markDraft(oid);render();}
 function flashPending(oid){const el=$('#ord-'+oid);el.style.boxShadow='0 0 0 2px var(--orange)';setTimeout(()=>el.style.boxShadow='',650);}
 
 /* FINALIZE — queues the order for the NewMile sync (next refresh or Push button).
    NOTE: NewMile orders normally live in `pending` status — that is NOT a blocker.
    (The old "Pending CS" gate was demo-only logic and was removed.) */
-window.__pendingSync=window.__pendingSync||new Set();
+window.__pendingSync=window.__pendingSync||new Set();      // DRAFT auto-sync queue (edits) — pushed as draft, never finalized on its own
+window.__finalizeQueue=window.__finalizeQueue||new Set();  // orders the dispatcher chose to FINALIZE → pushed with confirm
+// mark an order to auto-sync as DRAFT (called whenever its assignments change locally). The
+// timer/refresh pushes these as draft so the dispatcher's plan is SAVED to NewMile and never
+// wiped by the next re-pull — but it stays a draft (no driver offer) until Finalize.
+function markDraft(oid){ if(oid)window.__pendingSync.add(oid); }
 function finalizeOrder(e,oid){
   e.stopPropagation();const o=O(oid);
   if(!o.assigns.length){toast('No trucks to finalize',true);return;}
   o.finalized=true;o.modified=false;
-  window.__pendingSync.add(oid);
+  window.__finalizeQueue.add(oid);window.__pendingSync.delete(oid);
   const short=!isCovered(o);
   render();
-  if(!short&&showShortOnly){ toast(`${o.disp} queued ✓ — covered, so it left the "needing loads" view (filter ▸ is on)`); }
-  else toast(`${o.disp} queued → writes to NewMile on next sync/push`+(short?` (still ${remainingQty(o)} ${unitAbbr(o)} short)`:''),short);
+  if(!short&&showShortOnly){ toast(`${o.disp} → Finalizing in NewMile (offers go out)`); }
+  else toast(`${o.disp} → Finalizing in NewMile — offers go to drivers`+(short?` (still ${remainingQty(o)} ${unitAbbr(o)} short)`:''),short);
 }
 function finalizeAllReady(){
   let n=0,skipped=0;
@@ -1098,10 +1104,10 @@ function finalizeAllReady(){
     if(o.completed)return;
     if(!isCovered(o)){skipped++;return;} // "ready" = tonnage/loads covered; short ones finalize individually
     if(orderState(o)==='finalized'&&!o.modified)return;
-    o.finalized=true;o.modified=false;window.__pendingSync.add(o.id);n++;
+    o.finalized=true;o.modified=false;window.__finalizeQueue.add(o.id);window.__pendingSync.delete(o.id);n++;
   });
   render();
-  toast(n?`Queued ${n} order${n>1?'s':''} for NewMile sync${skipped?` · ${skipped} short skipped`:''}`:'Nothing new to finalize',!n);
+  toast(n?`Finalizing ${n} order${n>1?'s':''} → NewMile${skipped?` · ${skipped} short skipped`:''}`:'Nothing new to finalize',!n);
 }
 /* trucks NewMile still has on the order but the dispatcher took OFF here.
    Uses the pristine nmAssigns snapshot (local edits never touch it). Only trucks
@@ -1116,17 +1122,18 @@ function __removedFor(o,presentNums){
 }
 /* hooks the shell uses to sync finalized changes to NewMile */
 window.__getPendingSync=function(){
-  return Array.from(window.__pendingSync).filter(oid=>O(oid)).map(oid=>{
+  const oids=Array.from(new Set([...window.__pendingSync, ...window.__finalizeQueue]));
+  return oids.filter(oid=>O(oid)).map(oid=>{
     const o=O(oid);
     const present={};
     const assignments=o.assigns.map(a=>{const t=T(a.truck);if(!t)return null;
       present[t.num.trim().toUpperCase()]=1;
       return { truck:t.num, loads:(typeof a.ll==='number'?a.ll:null), sequence:a.seq||1, rate:(a.rate||'') };}).filter(Boolean);
     return { order_id:parseInt((''+o.id).replace(/^o/,''),10), disp:o.disp, material:o.mat,
-      assignments, removed:__removedFor(o,present) };
+      assignments, removed:__removedFor(o,present), finalize:window.__finalizeQueue.has(oid) };
   }).filter(o=>o.assignments.length||o.removed.length);
 };
-window.__clearPendingSync=function(ids){ (ids||[]).forEach(id=>window.__pendingSync.delete('o'+id)); if(!ids)window.__pendingSync.clear(); };
+window.__clearPendingSync=function(ids){ (ids||[]).forEach(id=>{ window.__pendingSync.delete('o'+id); window.__finalizeQueue.delete('o'+id); }); if(!ids){ window.__pendingSync.clear(); window.__finalizeQueue.clear(); } };
 
 /* TONY REPORT — grouped by fleet + sub tag-equivalent (NewMile tags aren't exposed via
    the MCP, so subs are classified by owner rules — see newmile.config.json "groups").

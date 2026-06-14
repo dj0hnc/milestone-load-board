@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('newmile', {
   readPlan: (dateISO) => ipcRenderer.invoke('nm:readPlan', { dateISO }),
   projectTrucks: (p) => ipcRenderer.invoke('nm:projectTrucks', p),
   rotationHistory: (date, days) => ipcRenderer.invoke('nm:rotationHistory', { date, days }),
+  checkUpdate: () => ipcRenderer.invoke('nm:checkUpdate'),
   zoom: (factor) => ipcRenderer.invoke('nm:zoom', factor),
   sendDriverMsg: (p) => ipcRenderer.invoke('nm:sendDriverMsg', p),
   deleteAssignments: (ids) => ipcRenderer.invoke('nm:deleteAssignments', ids),
