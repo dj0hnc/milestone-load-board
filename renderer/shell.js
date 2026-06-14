@@ -305,6 +305,22 @@ window.addEventListener('DOMContentLoaded', async ()=>{
       return;
     }
     if(e.data.type==='zoom'){ appZoom(e.data.dir); return; }
+    // Excel/plan + rotation bridges — the board iframe has no window.newmile, so it asks the shell.
+    if(e.data.type==='readPlan' && e.data.reqId){
+      try{ const res=await window.newmile.readPlan(e.data.dateISO); board().__nmResult && board().__nmResult(e.data.reqId,res); }
+      catch(err){ board().__nmResult && board().__nmResult(e.data.reqId,{error:String(err&&err.message||err)}); }
+      return;
+    }
+    if(e.data.type==='pickPlanFile' && e.data.reqId){
+      try{ const res=await window.newmile.pickPlanFile(e.data.dateISO); board().__nmResult && board().__nmResult(e.data.reqId,res); }
+      catch(err){ board().__nmResult && board().__nmResult(e.data.reqId,{error:String(err&&err.message||err)}); }
+      return;
+    }
+    if(e.data.type==='rotationHistory' && e.data.reqId){
+      try{ const res=await window.newmile.rotationHistory(e.data.date,e.data.days); board().__nmResult && board().__nmResult(e.data.reqId,res); }
+      catch(err){ board().__nmResult && board().__nmResult(e.data.reqId,{error:String(err&&err.message||err)}); }
+      return;
+    }
     if(e.data.type==='projtrucks' && e.data.reqId){
       try{
         const res=await window.newmile.projectTrucks({projectId:e.data.projectId,excludeOrderId:e.data.excludeOrderId});

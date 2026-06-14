@@ -1482,7 +1482,7 @@ async function readPlanIntoPlanner(){
   try{
     var dayEl=document.getElementById('day'); var day=(dayEl&&dayEl.value)||new Date().toISOString().slice(0,10);
     toast('Reading the day’s order sheet…');
-    var r=await window.newmile.readPlan(day);
+    var r=await window.__nmBridge('readPlan',{dateISO:day});
     if(!r||r.error){ toast('Plan: '+((r&&r.error)||'failed')+(r&&r.candidates?' · found: '+r.candidates.slice(0,3).join(', '):''),true); return; }
     if(!r.orders){ toast('That file isn’t a daily order sheet',true); return; }
     var targets=(selectedOrders&&selectedOrders.size)?[...selectedOrders]:(window.orders||[]).filter(function(o){return !o.completed;}).map(function(o){return o.id;});
@@ -1516,12 +1516,12 @@ async function readOrderFromSheet(e,oid){
     var o=O(oid); if(!o){toast('Order not found',true);return;}
     var dayEl=document.getElementById('day'); var day=(dayEl&&dayEl.value)||window.__boardToday||__locTodayISO;
     toast('Leyendo el plan de '+(o.disp||'la orden')+'…');
-    var r=await window.newmile.readPlan(day);
+    var r=await window.__nmBridge('readPlan',{dateISO:day});
     // OneDrive auto-find failed (file not synced on this PC, or no tab for the day) → let the
     // dispatcher PICK the Excel by hand. Same matching, just a manual source.
     if(!r || r.error || !r.orders){
       toast('No hallé la hoja en OneDrive ('+((r&&r.error)?r.error:'sin archivo')+') — escoge el archivo…');
-      var pick=await window.newmile.pickPlanFile(day);
+      var pick=await window.__nmBridge('pickPlanFile',{dateISO:day},120000);
       if(!pick || pick.canceled) return;
       if(pick.error){ toast('Excel: '+pick.error,true); return; }
       if(pick.orderSheet && pick.orders){ r={orders:pick.orders, file:pick.file}; }
@@ -2194,11 +2194,11 @@ setView('board');
   function rotDaysBetween(a,b){ return Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/86400000); }
   window.__rotDays=30;
   window.loadRotation=async function(days){
-    if(!(window.newmile&&window.newmile.rotationHistory)){ toast&&toast('Rotation needs the live app',true); return; }
+    if(!window.__nmBridge){ toast&&toast('Rotation needs the live app',true); return; }
     var ref=window.__boardToday||new Date().toISOString().slice(0,10);
     var WIN=days||window.__rotDays||30; window.__rotDays=WIN;
     toast&&toast('📆 Jalando '+WIN+' días de historial…');
-    var res; try{ res=await window.newmile.rotationHistory(ref,WIN); }catch(e){ toast&&toast('Rotation pull failed: '+(e.message||e),true); return; }
+    var res=await window.__nmBridge('rotationHistory',{date:ref,days:WIN},120000);
     var rows=(res&&res.rows)||[]; if(res&&res.error){ toast&&toast('Rotation: '+res.error,true); return; }
     var lw=rotBuildLastWorked(rows); var idx={};
     // matched (worked in the window) → real daysIdle. NEVER seen → daysIdle=null + idleBeyond:
@@ -3260,6 +3260,14 @@ setView('board');
   }
   /* 🎯 HOS + 💰 NewMile-calc bridges (same pattern as route) */
   var _hosReqs={}, _hosSeq=0, _calcReqs={}, _calcSeq=0;
+  // generic shell bridge (on window so BOTH script blocks can use it) — for readPlan / pickPlanFile
+  // / rotationHistory, since the board iframe has no window.newmile.
+  var _nmReqs={}, _nmSeq=0;
+  window.__nmResult=function(id,res){ var p=_nmReqs[id]; if(p){ delete _nmReqs[id]; p(res); } };
+  window.__nmBridge=function(type,payload,ms){ return new Promise(function(resolve){ var id='nb'+(++_nmSeq); _nmReqs[id]=resolve;
+    var msg=Object.assign({type:type,reqId:id},payload||{});
+    try{ parent.postMessage(msg,'*'); }catch(e){ resolve({error:'bridge unavailable'}); }
+    setTimeout(function(){ if(_nmReqs[id]){ delete _nmReqs[id]; resolve({error:'timeout'}); } }, ms||25000); }); };
   window.__hosResult=function(id,res){ var p=_hosReqs[id]; if(p){ delete _hosReqs[id]; p(res); } };
   window.__calcResult=function(id,res){ var p=_calcReqs[id]; if(p){ delete _calcReqs[id]; p(res); } };
   function bridgeHos(){ return new Promise(function(resolve){ var id='hq'+(++_hosSeq); _hosReqs[id]=resolve;
