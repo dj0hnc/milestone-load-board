@@ -520,6 +520,10 @@ input{font-family:inherit}
       <div class="ml" id="seqLabel">Sequence — order this truck runs its jobs</div>
       <div class="opts" id="seqOpts"></div>
     </div>
+    <div class="mfield" id="rateField">
+      <div class="ml">Rate — usually leave on Auto; force it only when this order needs it</div>
+      <div class="opts" id="rateOpts"></div>
+    </div>
     <div class="mbtns">
       <button class="cancel" onclick="closeModal()">Cancel</button>
       <button class="ok" id="okBtn" onclick="confirmAssign()">Assign</button>
@@ -566,7 +570,7 @@ let selected=new Set();
 let activeTruck=null;
 let lastLL='open';            // remembered load limit (prefill only) — default ∞ Open: the dispatcher sets limits, never the tool
 let modalCtx=null;            // {mode, truckId, orderId, idx}
-let modalLL=2, modalSeq=1, modalSeqMax=1;
+let modalLL=2, modalSeq=1, modalSeqMax=1, modalRate='';   // modalRate: ''=Auto, 'contracted', 'order_default'
 
 const $=s=>document.querySelector(s);
 const T=id=>trucks.find(t=>t.id===id);
@@ -788,6 +792,7 @@ function renderOrders(){
       return `<span class="atruck ${t.prio?'star':''} ${ns?'noshow':''}" onclick="editAssign(event,'${o.id}',${i})" title="Tap to edit limit/sequence">
         <span class="seq s${a.seq}">${a.seq}</span><span class="an">${t.num}</span>
         <span class="prog ${progClass(a)}">${progText(a)}</span>
+        ${a.rate?`<span title="${a.rate==='contracted'?'Forced contracted rate':'Forced order default rate'}" style="font-size:9px;font-weight:800;padding:0 4px;border-radius:5px;margin-left:3px;background:${a.rate==='contracted'?'#caa23f':'#5a95f9'};color:#06121f">${a.rate==='contracted'?'$C':'$D'}</span>`:''}
         <span class="x" onclick="unassign(event,'${o.id}',${i})">✕</span></span>`;}).join('');
     // footer state + finalize button
     let footer='';
@@ -1000,7 +1005,7 @@ function applySelectedToOrder(oid,ll){
   [...selected].forEach(id=>{
     if(o.assigns.some(a=>a.truck===id))return; // skip dup
     const seq=truckOrderCount(id)+1;
-    o.assigns.push({truck:id,ll,seq,done:0});
+    o.assigns.push({truck:id,ll,seq,done:0,rate:modalRate});
     const t=T(id);if(t.status==='free')t.status='assigned';
     if(o.finalized)o.modified=true;
     added++;
@@ -1013,14 +1018,14 @@ function applySelectedToOrder(oid,ll){
 function openModal(ctx){
   const o=ctx.orderId?O(ctx.orderId):null;
   if(ctx.mode==='single'&&o&&o.assigns.some(a=>a.truck===ctx.truckId)){const t=T(ctx.truckId);toast(`${t.num} is already on ${o.disp} — tap its chip to edit`,true);return;}
-  modalCtx=ctx;modalLL=lastLL;
+  modalCtx=ctx;modalLL=lastLL;modalRate='';
   let title='',sub='';
   if(ctx.mode==='single'){const t=T(ctx.truckId);const cnt=truckOrderCount(ctx.truckId);modalSeqMax=cnt+1;modalSeq=cnt+1;title=`Assign ${t.num}`;sub=`To <b>${o.disp} — ${o.mat}</b><br>${o.cust}`;$('#okBtn').textContent='Assign';}
   else if(ctx.mode==='bulk'){modalLL=lastLL;modalSeqMax=1;title=`Assign ${selected.size} trucks → ${o.disp}`;sub=`Load limit for <b>${o.disp} — ${o.mat}</b> — each order can differ. Trucks auto-sequence.`;$('#okBtn').textContent='Assign to this order';}
   else if(ctx.mode==='multiOrder'){modalLL=lastLL;modalSeqMax=1;title=`Assign ${ctx.truckIds.length} truck(s) → ${selectedOrders.size} orders`;sub=`One load limit applied to <b>all ${selectedOrders.size} selected orders</b>. Trucks auto-sequence per order.`;$('#okBtn').textContent='Assign to all selected';}
-  else if(ctx.mode==='edit'){const a=o.assigns[ctx.idx];const t=T(a.truck);modalLL=(a.ll==null?'open':a.ll);modalSeqMax=Math.max(2,truckOrderCount(a.truck));modalSeq=a.seq;title=`Edit ${t.num}`;sub=`On <b>${o.disp} — ${o.mat}</b>`;$('#okBtn').textContent='Save';}
+  else if(ctx.mode==='edit'){const a=o.assigns[ctx.idx];const t=T(a.truck);modalLL=(a.ll==null?'open':a.ll);modalSeqMax=Math.max(2,truckOrderCount(a.truck));modalSeq=a.seq;modalRate=(a.rate||'');title=`Edit ${t.num}`;sub=`On <b>${o.disp} — ${o.mat}</b>`;$('#okBtn').textContent='Save';}
   $('#mTitle').textContent=title;$('#mSub').innerHTML=sub;
-  renderLLOpts();renderSeqOpts();
+  renderLLOpts();renderSeqOpts();renderRateOpts();
   $('#scrim').classList.add('show');
 }
 function renderLLOpts(){
@@ -1040,24 +1045,29 @@ function pickLL(n){modalLL=n;renderLLOpts();}
 function pickCustom(v){if(v&&+v>0){modalLL=+v;renderLLOpts();}}
 function pickSpecial(sp){modalLL=sp;renderLLOpts();}
 function pickSeq(n){modalSeq=n;renderSeqOpts();}
+function renderRateOpts(){
+  const opts=[['','⚙ Auto','Contracted rate; auto-falls back to order default when the truck has no contract'],['contracted','📄 Contracted','Force the contracted rate for this truck'],['order_default','＄ Default','Force the order default rate for this truck']];
+  $('#rateOpts').innerHTML=opts.map(o=>`<div class="opt ${modalRate===o[0]?'on':''}" onclick="pickRate('${o[0]}')" title="${o[2]}">${o[1]}</div>`).join('');
+}
+function pickRate(v){modalRate=v;renderRateOpts();}
 function closeModal(){$('#scrim').classList.remove('show');modalCtx=null;}
 function confirmAssign(){
   if(!modalCtx)return;const o=O(modalCtx.orderId);
   if(modalCtx.mode==='single'){
-    o.assigns.push({truck:modalCtx.truckId,ll:modalLL,seq:modalSeq,done:0});
+    o.assigns.push({truck:modalCtx.truckId,ll:modalLL,seq:modalSeq,done:0,rate:modalRate});
     const t=T(modalCtx.truckId);if(t.status==='free')t.status='assigned';
     if(o.finalized)o.modified=true;
     closeModal();render();
   } else if(modalCtx.mode==='bulk'){
     lastLL=modalLL;const oid=modalCtx.orderId;closeModal();applySelectedToOrder(oid,modalLL); // selection stays sticky for the next order
   } else if(modalCtx.mode==='edit'){
-    o.assigns[modalCtx.idx].ll=modalLL;o.assigns[modalCtx.idx].seq=modalSeq;
+    o.assigns[modalCtx.idx].ll=modalLL;o.assigns[modalCtx.idx].seq=modalSeq;o.assigns[modalCtx.idx].rate=modalRate;
     if(o.finalized)o.modified=true;
     closeModal();render();
   } else if(modalCtx.mode==='multiOrder'){
     lastLL=modalLL;const ll=modalLL;const tids=modalCtx.truckIds;let added=0,skipped=0;
     [...selectedOrders].forEach(oid=>{const od=O(oid);if(!od){skipped++;return;}
-      tids.forEach(id=>{if(od.assigns.some(a=>a.truck===id))return;const seq=truckOrderCount(id)+1;od.assigns.push({truck:id,ll,seq,done:0});const t=T(id);if(t.status==='free')t.status='assigned';if(od.finalized)od.modified=true;added++;});});
+      tids.forEach(id=>{if(od.assigns.some(a=>a.truck===id))return;const seq=truckOrderCount(id)+1;od.assigns.push({truck:id,ll,seq,done:0,rate:modalRate});const t=T(id);if(t.status==='free')t.status='assigned';if(od.finalized)od.modified=true;added++;});});
     selected.clear();activeTruck=null;
     closeModal();render();
     toast(added?`Added ${added} assignment(s) across ${selectedOrders.size-skipped} order(s)`:'Those trucks were already on the selected orders',!added);
@@ -1111,7 +1121,7 @@ window.__getPendingSync=function(){
     const present={};
     const assignments=o.assigns.map(a=>{const t=T(a.truck);if(!t)return null;
       present[t.num.trim().toUpperCase()]=1;
-      return { truck:t.num, loads:(typeof a.ll==='number'?a.ll:null), sequence:a.seq||1 };}).filter(Boolean);
+      return { truck:t.num, loads:(typeof a.ll==='number'?a.ll:null), sequence:a.seq||1, rate:(a.rate||'') };}).filter(Boolean);
     return { order_id:parseInt((''+o.id).replace(/^o/,''),10), disp:o.disp, material:o.mat,
       assignments, removed:__removedFor(o,present) };
   }).filter(o=>o.assignments.length||o.removed.length);

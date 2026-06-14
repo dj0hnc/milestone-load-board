@@ -810,7 +810,8 @@ class NewMileClient {
       // honor an explicit truck_id (the dispatcher picked among same-numbered trucks); else resolve
       const tid = (a.truck_id != null ? a.truck_id : await this.resolveTruckId(num));
       if (!tid) { out.unresolved.push(num); continue; }
-      toCreate.push({ truck: num, truck_id: tid, loads: a.loads, sequence: a.sequence || 1 });
+      // a.rate: '' = auto (contracted + auto-fallback), 'contracted' / 'order_default' = forced by dispatcher
+      toCreate.push({ truck: num, truck_id: tid, loads: a.loads, sequence: a.sequence || 1, rateForce: (a.rate || '') });
     }
 
     // 2b) removals — trucks the dispatcher took OFF the order on the board/planner.
@@ -842,7 +843,13 @@ class NewMileClient {
     // subhauler contract with the order's hauler fall back to order_default — exactly what the
     // NewMile UI does (e.g. Indus tri-axles, EYK/Watercrest). useOrderDefault forces the whole
     // order to order_default from the start.
-    toCreate.forEach(t => { t.rate = useOrderDefault ? ORDER_DEFAULT : CONTRACTED; });
+    // per-truck: a forced rate (dispatcher picked it on the chip) wins; otherwise follow the
+    // order-level default, otherwise contracted (with the auto-fallback below for auto trucks).
+    toCreate.forEach(t => {
+      t.rate = (t.rateForce === 'order_default') ? ORDER_DEFAULT
+             : (t.rateForce === 'contracted') ? CONTRACTED
+             : (useOrderDefault ? ORDER_DEFAULT : CONTRACTED);
+    });
     const buildObjs = () => toCreate.map(t => {
       const o = Object.assign({ order_id: orderId, truck_id: t.truck_id }, t.rate);
       if (typeof t.loads === 'number' && t.loads > 0) o.load_limit = t.loads;   // omit when "open"
@@ -856,17 +863,23 @@ class NewMileClient {
     // owner+hauler) the WHOLE batch fails and errors[].index/truck_id say which. Flip only the
     // rejected trucks to order_default and retry once — trucks that DO have a contract keep
     // contracted_rate.
-    if (res && res.error && !useOrderDefault) {
+    // only AUTO trucks (no forced rate) currently on contracted_rate participate in the flip —
+    // a dispatcher who explicitly forced 'contracted' keeps it (the real error is surfaced instead).
+    if (res && res.error) {
       const errs = res.errors || [];
       const badIdx = new Set(errs.map(e => e.index).filter(i => typeof i === 'number'));
       const badIds = new Set(errs.map(e => e.truck_id).filter(Boolean));
+      const autoContracted = toCreate.filter(t => !t.rateForce && t.rate === CONTRACTED);
       let flipped = 0;
       toCreate.forEach((t, i) => {
+        if (t.rateForce || t.rate !== CONTRACTED) return;
         if (badIdx.has(i) || badIds.has(t.truck_id)) { t.rate = ORDER_DEFAULT; flipped++; }
       });
-      if (!flipped) toCreate.forEach(t => { t.rate = ORDER_DEFAULT; });   // couldn't pinpoint — flip all
-      this.log('push: contracted_rate rejected for ' + (flipped || toCreate.length) + ' truck(s) — retrying those with order_default');
-      res = await tryCreate();
+      if (!flipped && autoContracted.length) { autoContracted.forEach(t => { t.rate = ORDER_DEFAULT; }); flipped = autoContracted.length; }   // couldn't pinpoint — flip all auto trucks
+      if (flipped) {
+        this.log('push: contracted_rate rejected — retrying ' + flipped + ' auto truck(s) with order_default');
+        res = await tryCreate();
+      }
     }
     if (res && res.error) {
       const msg = (res.errors && res.errors[0] && res.errors[0].error) || res.error;
