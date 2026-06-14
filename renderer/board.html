@@ -603,7 +603,7 @@ function renderFilters(){
 }
 function setFleet(k){filters.fleet=k;renderFilters();renderTrucks();}
 function setTerm(k){filters.terminal=k;renderFilters();renderTrucks();}
-function setState(grp,val){filters[grp]=filters[grp]===val?'all':val;renderFilters();renderTrucks();}
+function setState(grp,val){filters[grp]=filters[grp]===val?'all':val;if(grp==='avail')filters.rotActive=false;renderFilters();renderTrucks();}
 function toggleSort(){sortIdle=!sortIdle;$('#sortBtn').textContent=sortIdle?'⇅ Sort: idle':'⇅ Sort: number';renderTrucks();}
 
 /* ORDER SEARCH */
@@ -2124,10 +2124,12 @@ setView('board');
     };
   }
   function rotDaysBetween(a,b){ return Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/86400000); }
-  window.loadRotation=async function(){
+  window.__rotDays=30;
+  window.loadRotation=async function(days){
     if(!(window.newmile&&window.newmile.rotationHistory)){ toast&&toast('Rotation needs the live app',true); return; }
-    var ref=window.__boardToday||new Date().toISOString().slice(0,10), WIN=14;
-    toast&&toast('📆 Pulling '+WIN+'-day work history…');
+    var ref=window.__boardToday||new Date().toISOString().slice(0,10);
+    var WIN=days||window.__rotDays||30; window.__rotDays=WIN;
+    toast&&toast('📆 Jalando '+WIN+' días de historial…');
     var res; try{ res=await window.newmile.rotationHistory(ref,WIN); }catch(e){ toast&&toast('Rotation pull failed: '+(e.message||e),true); return; }
     var rows=(res&&res.rows)||[]; if(res&&res.error){ toast&&toast('Rotation: '+res.error,true); return; }
     var lw=rotBuildLastWorked(rows); var idx={};
@@ -2140,11 +2142,13 @@ setView('board');
     });
     window.__rotById=idx;            // survive the next refresh
     sortIdle=true; var sb=$('#sortBtn'); if(sb)sb.textContent='⇅ Sort: idle';
+    filters.rotActive=true;          // rotation MODE: show only ACTIVE trucks (worked in the window), hide dormant subs
     try{ renderTrucks(); enhRenderFilters&&enhRenderFilters(); }catch(e){}
     var active=trucks.filter(function(t){return t.daysIdle!=null;}).length;
     var nIdle=trucks.filter(function(t){return t.daysIdle!=null && t.daysIdle>=3;}).length;
-    toast&&toast('📆 Rotación · '+rows.length+' tickets · '+active+' trocas con trabajo reciente ('+nIdle+' ≥3d sin trabajar) — el resto sin actividad va al final');
+    toast&&toast('📆 Rotación '+WIN+'d · '+active+' activas que no han trabajado ('+nIdle+' ≥3d) — '+ (trucks.length-active) +' dormidas ocultas');
   };
+  window.clearRotation=function(){ filters.rotActive=false; renderTrucks(); enhRenderFilters&&enhRenderFilters(); };
   /* pool of assignable trucks honoring exclusions + planOpts filters */
   function planPool(){
     var used=usedNums();
@@ -2455,6 +2459,7 @@ setView('board');
     if(filters.avail==='rolling' && t.status!=='rolling') return false;
     if(filters.avail==='lastload' && (t.status!=='rolling' || enhTruckState(t).k!=='lastload')) return false;   // en su última carga (NewMile)
     if(filters.avail==='dropoff'  && (t.status!=='rolling' || enhTruckState(t).k!=='dropoff'))  return false;   // driving to dropoff (NewMile)
+    if(filters.rotActive && t.daysIdle==null) return false;   // rotación: solo ACTIVAS (con trabajo reciente); oculta dormidas
     if(filters.worked==='off' && t.workedYest!==false) return false;
     if(filters.worked==='yes' && t.workedYest!==true) return false;
     if(filters.sam && filters.sam!=='all'){
@@ -2488,7 +2493,8 @@ setView('board');
         +'<div class="ef-sec"><span class="ef-lbl">🔄 Rotation</span>'
         +'<button class="fchip rest '+(filters.worked==='off'?'on':'')+'" onclick="setState(\'worked\',\'off\')">💤 Rested — next up</button>'
         +'<button class="fchip wyon '+(filters.worked==='yes'?'on':'')+'" onclick="setState(\'worked\',\'yes\')">⚡ Ran yesterday</button>'
-        +'<button class="fchip" onclick="loadRotation()" title="Pull the last 14 days of NewMile load tickets → rank trucks by days since they last worked (fair multi-day rotation). No Samsara needed.">📆 Días sin trabajar</button>'
+        +'<button class="fchip '+(filters.rotActive?'on':'')+'" onclick="'+(filters.rotActive?'clearRotation()':'loadRotation()')+'" title="Jala el historial de tickets NewMile y muestra SOLO trocas activas que no han trabajado (rotación justa). Oculta las dormidas. Sin Samsara.">📆 No han trabajado</button>'
+        +(filters.rotActive?[14,30,60].map(function(d){return '<button class="fchip '+(window.__rotDays===d?'on':'')+'" onclick="loadRotation('+d+')" title="ACTIVA = trabajó en los últimos '+d+' días">'+d+'d</button>';}).join(''):'')
         +'</div>'
         +(hasGps?(
          '<div class="ef-sec"><span class="ef-lbl">🛰 Samsara</span>'
@@ -2537,6 +2543,7 @@ setView('board');
     if(filters.avail!=='all')n++;
     if(filters.worked!=='all')n++;
     if(filters.sam&&filters.sam!=='all')n++;
+    if(filters.rotActive)n++;
     return n;
   }
   function updateFilterBtn(){

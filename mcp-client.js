@@ -629,21 +629,23 @@ class NewMileClient {
   // toISO) so the board can rank trucks by days-since-last-worked. LAZY by design — callers
   // invoke this only when opening the rotation view, NOT on every refresh (the window can run
   // many pages). Returns raw {truck_number, fleet, order_date} rows + the resolved window.
-  async rotationHistory(toISO, days = 14) {
+  async rotationHistory(toISO, days = 30) {
     const to = this._priorWorkingDay(toISO);                 // last completed working day
     const from = this._shiftISO(to, -(Math.max(1, days) - 1));
     let rows = [];
+    // cap high enough that realistic windows (≤~60d ≈ 11k rows for a big org) pull COMPLETE —
+    // a truncated pull would give stale last-worked dates and mislabel active trucks as idle.
     try {
       const first = await this.loadTicketsRange(from, to, 1);
       const tp = (first && (first.total_pages || first.pages)) || 1;
       rows = (first && (first.rows || first.results)) || [];
-      for (let pg = 2; pg <= tp && pg <= 25; pg++) {
+      for (let pg = 2; pg <= tp && pg <= 70; pg++) {
         const more = await this.loadTicketsRange(from, to, pg);
         rows = rows.concat((more && (more.rows || more.results)) || []);
       }
     } catch (e) { this.log('rotationHistory pull failed: ' + e.message); }
-    this.log('rotationHistory ' + from + '..' + to + ' → ' + rows.length + ' ticket rows');
-    return { from, to, rows };
+    this.log('rotationHistory ' + from + '..' + to + ' (' + days + 'd) → ' + rows.length + ' ticket rows');
+    return { from, to, days, rows };
   }
 
   // ---------- ⟲ crew from project history ----------
