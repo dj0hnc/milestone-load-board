@@ -436,6 +436,16 @@ class NewMileClient {
       page_size: 100, page
     });
   }
+  // multi-day window WITH the date column → lets the board compute "days since last worked".
+  // order_date is the verified date field (returns MM/DD/YY).
+  loadTicketsRange(fromISO, toISO, page = 1) {
+    return this.callTool('query_report', {
+      report_name: 'load_tickets',
+      filters: { order_date_from: fromISO, order_date_to: toISO },
+      columns: ['truck_number', 'fleet', 'order_date'],
+      page_size: 200, page
+    });
+  }
   orderAssignments(orderId) {
     return this.callTool('list_resources', {
       resource_type: 'order_assignment',
@@ -612,6 +622,28 @@ class NewMileClient {
 
     this.log('refreshAll done: ' + oy.length + '/' + ot.length + '/' + otm.length + ' orders · ' + trucks.length + ' trucks · ' + tickets.length + ' tickets · ' + asgCount + ' live assignments');
     return { date: dateISO, priorDay: prior, orders: { y: oy, t: ot, tm: otm }, assignments, trucks, tickets, pickupCoords, dropCoords, orderNotes, orderMeta };
+  }
+
+  // ---------- multi-day rotation ("días sin trabajar") ----------
+  // Pull a window of load tickets (default 14 working/calendar days back from the day BEFORE
+  // toISO) so the board can rank trucks by days-since-last-worked. LAZY by design — callers
+  // invoke this only when opening the rotation view, NOT on every refresh (the window can run
+  // many pages). Returns raw {truck_number, fleet, order_date} rows + the resolved window.
+  async rotationHistory(toISO, days = 14) {
+    const to = this._priorWorkingDay(toISO);                 // last completed working day
+    const from = this._shiftISO(to, -(Math.max(1, days) - 1));
+    let rows = [];
+    try {
+      const first = await this.loadTicketsRange(from, to, 1);
+      const tp = (first && (first.total_pages || first.pages)) || 1;
+      rows = (first && (first.rows || first.results)) || [];
+      for (let pg = 2; pg <= tp && pg <= 25; pg++) {
+        const more = await this.loadTicketsRange(from, to, pg);
+        rows = rows.concat((more && (more.rows || more.results)) || []);
+      }
+    } catch (e) { this.log('rotationHistory pull failed: ' + e.message); }
+    this.log('rotationHistory ' + from + '..' + to + ' → ' + rows.length + ' ticket rows');
+    return { from, to, rows };
   }
 
   // ---------- ⟲ crew from project history ----------

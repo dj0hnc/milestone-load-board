@@ -187,6 +187,7 @@ ipcMain.handle('nm:orderAssignments', (_e, orderId) => client.orderAssignments(o
 ipcMain.handle('nm:directory', () => client.pullDirectory());
 ipcMain.handle('nm:setOnCall', (_e, list) => client.setOnCall(list));
 ipcMain.handle('nm:projectTrucks', (_e, p) => client.projectTrucks(p.projectId, p.excludeOrderId));
+ipcMain.handle('nm:rotationHistory', (_e, p = {}) => client.rotationHistory(p.date, p.days || 14));
 ipcMain.handle('nm:zoom', (_e, factor) => {
   try { if (win && !win.isDestroyed()) win.webContents.setZoomFactor(Math.min(2, Math.max(0.5, factor))); return { ok: true }; }
   catch (e) { return { error: e.message }; }

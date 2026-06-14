@@ -499,12 +499,23 @@ async function refreshDay(){
         });
       }
     }catch(e){ appendLog('samsara position attach skipped: '+(e.message||e)); }
-    // live "rolling": any of TODAY's assignments with an active load_status or loads done
+    // live "rolling": any of TODAY's assignments with an active load_status or loads done.
+    // Also keep the live LOAD details (status string + done/limit + which order) so the board
+    // can tell "última carga" / "driving to dropoff" apart — same states as the mobile app.
     const rollingNums=new Set();
+    const liveLoad={};   // truckNum(lower) -> {load, done, limit, oid}
     (all.orders.t||[]).forEach(o=>{ (asg[o.id]||[]).forEach(r=>{
-      if(r.load_status || (r.load_count||0)>0) rollingNums.add((r.truck_number||'').trim().toLowerCase());
+      const k=(r.truck_number||'').trim().toLowerCase(); if(!k) return;
+      if(r.load_status || (r.load_count||0)>0){
+        rollingNums.add(k);
+        // a row carrying an actual load_status string wins over one that's merely "has loads done"
+        if(r.load_status || !liveLoad[k]) liveLoad[k]={ load:String(r.load_status||'').toLowerCase(), done:(r.load_count||0), limit:(r.load_limit==null?null:r.load_limit), oid:o.id };
+      }
     });});
-    payload.trucks.forEach(t=>{ if(rollingNums.has(t.num.trim().toLowerCase())) t.status='rolling'; });
+    payload.trucks.forEach(t=>{ const k=t.num.trim().toLowerCase();
+      if(rollingNums.has(k)) t.status='rolling';
+      const lv=liveLoad[k]; if(lv){ t.loadStatus=lv.load; t.loadDone=lv.done; t.loadLimit=lv.limit; t.loadOid=lv.oid; }
+    });
     board().__applyLiveData(payload);
     try{ board().__priorDay=all.priorDay; board().render&&board().render(); }catch(e){}
     try{ await samsaraMoveCheck(payload, date); }catch(e){ appendLog('samsara check skipped: '+(e.message||e)); }
