@@ -717,7 +717,7 @@ function truckCard(t,used){
     <div class="towner">${t.driver?`<b class="tdrv">${t.driver}</b> · `:''}${t.owner}${t.terminal?` <span class="termtag">📍 ${t.terminal}</span>`:''}</div>
     <div class="tmeta"><span class="chip ${statusClass[st]}">${statusLabel[st]}</span>
       ${t.workedYest!=null?`<span class="wy ${t.workedYest?'ran':'no'}" title="${t.workedYest?'Ran Tue Jun 9 — rotate work to a rested truck for fairness':'Did NOT run yesterday — good pick for fair rotation'}">${t.workedYest?'⚡ ran yest':'💤 rested'}</span>`:'<span class="wy no" title="work history loads live from NewMile">idle · live</span>'}
-      <span class="idledays">${t.daysIdle!=null?('<b>'+t.daysIdle+'d'+(t.idleBeyond?'+':'')+'</b> sin trabajar'):(t.loads7d!=null?(t.loads7d+'/7d'):'<span title="tap 📆 Días sin trabajar to load multi-day rotation">idle · live</span>')}</span></div>
+      <span class="idledays">${t.daysIdle!=null?('<b>'+t.daysIdle+'d</b> sin trabajar'):(t.idleBeyond?'<span title="Sin actividad en los últimos 14 días — probablemente sub fuera de rotación">sin actividad 14d+</span>':(t.loads7d!=null?(t.loads7d+'/7d'):'<span title="tap 📆 Días sin trabajar to load multi-day rotation">idle · live</span>'))}</span></div>
   </div>`;
 }
 function renderTrucks(){
@@ -2087,13 +2087,19 @@ setView('board');
   function distTo(o,t){ if(o.pickupLat==null||t.lat==null) return null; return enhHavMi(o.pickupLat,o.pickupLng,t.lat,t.lon); }
   /* Live state of a truck from NewMile (NO Samsara needed) — same 4 states as the mobile app.
      Subhaulers sin GPS pero que usan bien NewMile (load_status/loads) caen aquí igual. */
-  function enhTruckState(t){
-    var used=assignedSet();
-    if(t.status!=='rolling') return used.has(t.id) ? {k:'assigned',ic:'📌',lbl:'assigned'} : {k:'free',ic:'🟢',lbl:'free'};
-    var ls=String(t.loadStatus||'');
-    if(ls.indexOf('drop')>=0) return {k:'dropoff',ic:'📦',lbl:'driving to dropoff'};
-    if(t.loadLimit!=null && t.loadDone!=null && t.loadDone>=t.loadLimit-1) return {k:'lastload',ic:'🏁',lbl:'última carga '+t.loadDone+'/'+t.loadLimit};
-    return {k:'working',ic:'🚚',lbl:ls?ls.replace(/_/g,' '):'working'};
+  // rolling states need NO assignedSet (cheap) — check them first so the hot paths (counts,
+  // passFilter over the whole roster) never build assignedSet for the ~1k parked trucks.
+  // assignedSet (free vs assigned label) only matters for non-rolling trucks; pass `used` in
+  // loops to compute it once.
+  function enhTruckState(t,used){
+    if(t.status==='rolling'){
+      var ls=String(t.loadStatus||'');
+      if(ls.indexOf('drop')>=0) return {k:'dropoff',ic:'📦',lbl:'driving to dropoff'};
+      if(t.loadLimit!=null && t.loadDone!=null && t.loadDone>=t.loadLimit-1) return {k:'lastload',ic:'🏁',lbl:'última carga '+t.loadDone+'/'+t.loadLimit};
+      return {k:'working',ic:'🚚',lbl:ls?ls.replace(/_/g,' '):'working'};
+    }
+    var u=used||assignedSet();
+    return u.has(t.id) ? {k:'assigned',ic:'📌',lbl:'assigned'} : {k:'free',ic:'🟢',lbl:'free'};
   }
   /* 🔄 Multi-day rotation — "días sin trabajar". Pulls a 14-day load-ticket window LAZILY
      (only on demand, never on refresh) and stamps t.daysIdle/lastWorked onto each truck.
@@ -2125,15 +2131,19 @@ setView('board');
     var res; try{ res=await window.newmile.rotationHistory(ref,WIN); }catch(e){ toast&&toast('Rotation pull failed: '+(e.message||e),true); return; }
     var rows=(res&&res.rows)||[]; if(res&&res.error){ toast&&toast('Rotation: '+res.error,true); return; }
     var lw=rotBuildLastWorked(rows); var idx={};
+    // matched (worked in the window) → real daysIdle. NEVER seen → daysIdle=null + idleBeyond:
+    // those are mostly dormant subs (most of the roster), so they SINK to the bottom of the
+    // idle sort instead of flooding the top — the real rotation candidates surface first.
     trucks.forEach(function(t){ var d=lw(t.num,t.fleet); t.lastWorked=d||null;
-      if(d){ t.daysIdle=Math.max(0,rotDaysBetween(d,ref)); t.idleBeyond=false; } else { t.daysIdle=WIN; t.idleBeyond=true; }
+      if(d){ t.daysIdle=Math.max(0,rotDaysBetween(d,ref)); t.idleBeyond=false; } else { t.daysIdle=null; t.idleBeyond=true; }
       idx[(t.num||'').trim().toUpperCase()]={daysIdle:t.daysIdle,lastWorked:t.lastWorked,idleBeyond:t.idleBeyond};
     });
     window.__rotById=idx;            // survive the next refresh
     sortIdle=true; var sb=$('#sortBtn'); if(sb)sb.textContent='⇅ Sort: idle';
     try{ renderTrucks(); enhRenderFilters&&enhRenderFilters(); }catch(e){}
-    var nIdle=trucks.filter(function(t){return t.daysIdle>=3;}).length;
-    toast&&toast('📆 Días sin trabajar listo · '+rows.length+' tickets · '+nIdle+' troca(s) ≥3d sin trabajar');
+    var active=trucks.filter(function(t){return t.daysIdle!=null;}).length;
+    var nIdle=trucks.filter(function(t){return t.daysIdle!=null && t.daysIdle>=3;}).length;
+    toast&&toast('📆 Rotación · '+rows.length+' tickets · '+active+' trocas con trabajo reciente ('+nIdle+' ≥3d sin trabajar) — el resto sin actividad va al final');
   };
   /* pool of assignable trucks honoring exclusions + planOpts filters */
   function planPool(){
@@ -2443,8 +2453,8 @@ setView('board');
     if(filters.avail==='free' && (used.has(t.id)||t.status==='rolling')) return false;
     if(filters.avail==='assigned' && !used.has(t.id)) return false;
     if(filters.avail==='rolling' && t.status!=='rolling') return false;
-    if(filters.avail==='lastload' && enhTruckState(t).k!=='lastload') return false;   // en su última carga (NewMile)
-    if(filters.avail==='dropoff'  && enhTruckState(t).k!=='dropoff')  return false;   // driving to dropoff (NewMile)
+    if(filters.avail==='lastload' && (t.status!=='rolling' || enhTruckState(t).k!=='lastload')) return false;   // en su última carga (NewMile)
+    if(filters.avail==='dropoff'  && (t.status!=='rolling' || enhTruckState(t).k!=='dropoff'))  return false;   // driving to dropoff (NewMile)
     if(filters.worked==='off' && t.workedYest!==false) return false;
     if(filters.worked==='yes' && t.workedYest!==true) return false;
     if(filters.sam && filters.sam!=='all'){
@@ -2463,8 +2473,8 @@ setView('board');
         f.innerHTML='<div class="ef-sec"><span class="ef-lbl">🚛 Fleet</span><button class="fchip '+(filters.fleet==='all'?'on':'')+'" onclick="setFleet(\'all\')">All</button>'+gchips+'</div>';
       }
       var rolling=trucks.filter(function(t){return t.status==='rolling';}).length;
-      var lastN=trucks.filter(function(t){return enhTruckState(t).k==='lastload';}).length;
-      var dropN=trucks.filter(function(t){return enhTruckState(t).k==='dropoff';}).length;
+      var lastN=trucks.filter(function(t){return t.status==='rolling' && enhTruckState(t).k==='lastload';}).length;
+      var dropN=trucks.filter(function(t){return t.status==='rolling' && enhTruckState(t).k==='dropoff';}).length;
       var hasGps=trucks.some(function(t){return t.lat!=null;});
       var st=$id('stateFilters');
       if(st) st.innerHTML=
@@ -3195,10 +3205,11 @@ setView('board');
     if(scr)scr.classList.add('show');
     var hos={}; try{ hos=await bridgeHos()||{}; }catch(err){}
     var onOrder={}; (o.assigns||[]).forEach(function(a){var t=T(a.truck); if(t)onOrder[(t.num||'').toLowerCase()]=1;});
+    var _usedSet=assignedSet();   // compute once, reused by enhTruckState per candidate
     var cands=trucks.filter(function(t){ return (t.onCall||t.status==='rolling'||t.status==='assigned') && !onOrder[(t.num||'').toLowerCase()]; }).map(function(t){
       var d=distTo(o,t);
       var h=hos[(t.driver||'').toLowerCase()];
-      var sstate=enhTruckState(t);
+      var sstate=enhTruckState(t,_usedSet);
       // soon-free rank: free first, then trucks en última carga / a descarga (about to free up), then other rolling
       var rank=(sstate.k==='free')?2:((sstate.k==='lastload'||sstate.k==='dropoff')?1:0);
       return {t:t,d:d,drv:(h&&h.driveMin!=null)?h.driveMin:null,rested:t.workedYest===false,free:t.status!=='rolling',state:sstate,rank:rank};

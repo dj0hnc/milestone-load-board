@@ -37,15 +37,17 @@ function buildLastWorked(rows) {
   };
 }
 function daysBetween(aISO, bISO) { return Math.round((new Date(bISO + 'T12:00:00') - new Date(aISO + 'T12:00:00')) / 86400000); }
-// Stamp t.lastWorked / t.daysIdle / t.idleBeyond onto each truck. Trucks never seen in the
-// window get daysIdle = windowDays and idleBeyond=true (shown as "Nd+").
+// Stamp t.lastWorked / t.daysIdle / t.idleBeyond onto each truck. Trucks that DID work in the
+// window get a real daysIdle; trucks NEVER seen get daysIdle=null + idleBeyond=true — those are
+// mostly dormant subs (often most of the roster), so callers sink them to the bottom of the
+// idle ranking instead of letting them flood the top. (windowDays kept for signature compat.)
 function applyRotation(rows, trucks, todayISO, windowDays) {
   const lw = buildLastWorked(rows);
   (trucks || []).forEach(function (t) {
     const d = lw(t.num, t.fleet);
     t.lastWorked = d || null;
     if (d) { t.daysIdle = Math.max(0, daysBetween(d, todayISO)); t.idleBeyond = false; }
-    else { t.daysIdle = windowDays; t.idleBeyond = true; }
+    else { t.daysIdle = null; t.idleBeyond = true; }
   });
   return trucks;
 }
