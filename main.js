@@ -508,6 +508,34 @@ ipcMain.handle('nm:readPlan', async (_e, { dateISO } = {}) => {
     return { error: e.message || String(e) };
   }
 });
+// Fallback when the OneDrive auto-find fails (file not synced on THIS PC, or no tab for the day):
+// let the dispatcher pick the .xlsx/.csv by hand, parse it, and return per-order rows to match.
+ipcMain.handle('nm:pickPlanFile', async (_e, { dateISO } = {}) => {
+  try {
+    const { dialog } = require('electron');
+    const res = await dialog.showOpenDialog(win, {
+      title: 'Selecciona la hoja de Excel del día',
+      properties: ['openFile'],
+      filters: [{ name: 'Excel / CSV', extensions: ['xlsx', 'xls', 'csv'] }]
+    });
+    if (res.canceled || !(res.filePaths && res.filePaths.length)) return { canceled: true };
+    const buf = fs.readFileSync(res.filePaths[0]);
+    const name = path.basename(res.filePaths[0]);
+    const sheet = require('./sheet');
+    if (dateISO) {
+      try {
+        const op = sheet.parsePlan(buf, dateISO);
+        if (op && op.format === 'order-sheet' && !op.error && (op.orders || []).length) return { orderSheet: true, orders: op.orders, tab: op.tab, file: name };
+        if (op && op.error) { /* not the day's tab → fall back to generic */ }
+      } catch (e) {}
+    }
+    const pb = sheet.parseBuffer(buf);
+    return { pairs: (pb && pb.pairs) || [], file: name };
+  } catch (e) {
+    if (/Cannot find module 'xlsx/.test(String(e.message))) return { error: 'Excel reader not bundled in this build' };
+    return { error: e.message || String(e) };
+  }
+});
 
 /*
  * Quoter route engine (main process = no CORS): geocode via Census then Nominatim,

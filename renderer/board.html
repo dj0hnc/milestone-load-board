@@ -1517,12 +1517,26 @@ async function readOrderFromSheet(e,oid){
     var dayEl=document.getElementById('day'); var day=(dayEl&&dayEl.value)||window.__boardToday||__locTodayISO;
     toast('Leyendo el plan de '+(o.disp||'la orden')+'…');
     var r=await window.newmile.readPlan(day);
-    if(!r||r.error){ toast('Plan: '+((r&&r.error)||'falló'),true); return; }
-    if(!r.orders){ toast('Ese archivo no es la hoja de órdenes del día',true); return; }
-    var so=matchSheetOrder(o, r.orders);
-    if(!so){ toast('No encontré '+(o.disp||'esta orden')+' en la hoja',true); return; }
-    var tr=(so.trucks||[]).filter(function(t){return (t.num||'').trim();});
-    if(!tr.length){ toast((o.disp||'orden')+': sin trocas en la hoja',true); return; }
+    // OneDrive auto-find failed (file not synced on this PC, or no tab for the day) → let the
+    // dispatcher PICK the Excel by hand. Same matching, just a manual source.
+    if(!r || r.error || !r.orders){
+      toast('No hallé la hoja en OneDrive ('+((r&&r.error)?r.error:'sin archivo')+') — escoge el archivo…');
+      var pick=await window.newmile.pickPlanFile(day);
+      if(!pick || pick.canceled) return;
+      if(pick.error){ toast('Excel: '+pick.error,true); return; }
+      if(pick.orderSheet && pick.orders){ r={orders:pick.orders, file:pick.file}; }
+      else if(pick.pairs){ r={pairsOnly:pick.pairs, file:pick.file}; }
+      else { toast('No pude leer ese archivo',true); return; }
+    }
+    var so=null, tr=[];
+    if(r.orders){
+      so=matchSheetOrder(o, r.orders);
+      if(!so){ toast('No encontré '+(o.disp||'esta orden')+' en la hoja',true); return; }
+      tr=(so.trucks||[]).filter(function(t){return (t.num||'').trim();});
+    } else if(r.pairsOnly){
+      tr=r.pairsOnly.filter(function(p){return (p.num||'').trim();});   // lista simple (no hoja por orden)
+    }
+    if(!tr.length){ toast((o.disp||'orden')+': sin trocas en '+(r.file||'la hoja'),true); return; }
     var added=0, dup=0, unresolved=[];
     tr.forEach(function(p){
       var t=trucks.find(function(x){return x.num.trim().toLowerCase()===String(p.num).trim().toLowerCase();});
@@ -1536,9 +1550,9 @@ async function readOrderFromSheet(e,oid){
     if(o.finalized&&added)o.modified=true;
     if(added)markDraft(o.id);
     render();
-    var msg='📄 '+(o.disp||'orden')+': +'+added+' troca(s) de la hoja'+(dup?' · '+dup+' ya estaban':'')+(unresolved.length?' · '+unresolved.length+' no encontradas ('+unresolved.slice(0,3).join(', ')+')':'');
+    var msg='📄 '+(o.disp||'orden')+': +'+added+' troca(s) de '+(r.file||'la hoja')+(dup?' · '+dup+' ya estaban':'')+(unresolved.length?' · '+unresolved.length+' no encontradas ('+unresolved.slice(0,3).join(', ')+')':'');
     toast(msg, !added);
-    if(so._warn&&so._warn.length){ console.warn('Excel match — VERIFY:\n'+so._warn.join('\n')); alert('⚠ Revisa material/pickup en '+(o.disp||'la orden')+':\n\n'+so._warn.join('\n')); }
+    if(so&&so._warn&&so._warn.length){ console.warn('Excel match — VERIFY:\n'+so._warn.join('\n')); alert('⚠ Revisa material/pickup en '+(o.disp||'la orden')+':\n\n'+so._warn.join('\n')); }
   }catch(err){ console.error('readOrderFromSheet',err); toast('Read error: '+(err.message||err),true); }
 }
 const PL_GROUPS=[['ww','WW'],['rho','RHO'],['pow','POW'],['cac','CAC'],['agg','AGG'],['sub','SUB']];

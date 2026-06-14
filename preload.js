@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('newmile', {
   ocr: (image) => ipcRenderer.invoke('nm:ocr', { image }),
   scanPlan: () => ipcRenderer.invoke('nm:scanPlan'),
   readPlan: (dateISO) => ipcRenderer.invoke('nm:readPlan', { dateISO }),
+  pickPlanFile: (dateISO) => ipcRenderer.invoke('nm:pickPlanFile', { dateISO }),
   projectTrucks: (p) => ipcRenderer.invoke('nm:projectTrucks', p),
   rotationHistory: (date, days) => ipcRenderer.invoke('nm:rotationHistory', { date, days }),
   checkUpdate: () => ipcRenderer.invoke('nm:checkUpdate'),
