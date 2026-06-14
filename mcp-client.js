@@ -750,7 +750,6 @@ class NewMileClient {
     existing.forEach(a => { existingByNum[this._normNum(a.truck_number)] = a; });
 
     // 2) diff: updates for existing trucks, creates for new ones
-    const rate = this._rateBlock(useOrderDefault);
     const toCreate = [];        // {truck, truck_id, loads, sequence}
     for (const a of assignments) {
       const num = (a.truck || '').trim();
@@ -793,15 +792,50 @@ class NewMileClient {
 
     // 3) bulk_create_assignments (utility). List order = ordinal, so create seq-1 before seq-2.
     toCreate.sort((x, y) => (x.sequence - y.sequence));
-    const objs = toCreate.map(t => {
-      const o = Object.assign({ order_id: orderId, truck_id: t.truck_id }, rate);
+    const CONTRACTED = {
+      rate_source: 'contracted_rate',
+      driver_pay_rate_source: 'custom',
+      driver_pay_rate: 0,
+      driver_pay_rate_measurement_unit_id: 1   // 1 = Ton
+    };
+    const ORDER_DEFAULT = { rate_source: 'order_default' };
+    // Standing rule (Juan): contracted_rate for ALL trucks; only trucks whose owner has no
+    // subhauler contract with the order's hauler fall back to order_default — exactly what the
+    // NewMile UI does (e.g. Indus tri-axles, EYK/Watercrest). useOrderDefault forces the whole
+    // order to order_default from the start.
+    toCreate.forEach(t => { t.rate = useOrderDefault ? ORDER_DEFAULT : CONTRACTED; });
+    const buildObjs = () => toCreate.map(t => {
+      const o = Object.assign({ order_id: orderId, truck_id: t.truck_id }, t.rate);
       if (typeof t.loads === 'number' && t.loads > 0) o.load_limit = t.loads;   // omit when "open"
       return o;
     });
-    const res = await this.callTool('call_utility', {
-      utility_name: 'bulk_create_assignments',
-      args: { assignments: objs }
+    const tryCreate = () => this.callTool('call_utility', {
+      utility_name: 'bulk_create_assignments', args: { assignments: buildObjs() }
     });
+    let res = await tryCreate();
+    // bulk_create is atomic: if ANY truck's contracted_rate is rejected (no contract for that
+    // owner+hauler) the WHOLE batch fails and errors[].index/truck_id say which. Flip only the
+    // rejected trucks to order_default and retry once — trucks that DO have a contract keep
+    // contracted_rate.
+    if (res && res.error && !useOrderDefault) {
+      const errs = res.errors || [];
+      const badIdx = new Set(errs.map(e => e.index).filter(i => typeof i === 'number'));
+      const badIds = new Set(errs.map(e => e.truck_id).filter(Boolean));
+      let flipped = 0;
+      toCreate.forEach((t, i) => {
+        if (badIdx.has(i) || badIds.has(t.truck_id)) { t.rate = ORDER_DEFAULT; flipped++; }
+      });
+      if (!flipped) toCreate.forEach(t => { t.rate = ORDER_DEFAULT; });   // couldn't pinpoint — flip all
+      this.log('push: contracted_rate rejected for ' + (flipped || toCreate.length) + ' truck(s) — retrying those with order_default');
+      res = await tryCreate();
+    }
+    if (res && res.error) {
+      const msg = (res.errors && res.errors[0] && res.errors[0].error) || res.error;
+      out.error = msg;
+      toCreate.forEach(t => out.skipped.push({ truck: t.truck, reason: msg }));
+      this.log('push FAILED order ' + orderId + ': ' + msg);
+      return out;   // surface the real reason instead of silently creating nothing
+    }
     const createdRows = (res && (res.assignments || res.created || res.results)) || [];
     const createdIds = createdRows.map(a => a.id).filter(Boolean);
     out.created = createdIds.length ? createdIds : (Array.isArray(res) ? res.map(a => a.id).filter(Boolean) : []);
