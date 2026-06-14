@@ -147,7 +147,10 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 // ---------- IPC ----------
 ipcMain.handle('nm:status', () => client.status());
 ipcMain.handle('nm:config', () => appCfg);
-ipcMain.handle('nm:version', () => app.getVersion());
+// What the UI SHOWS = friendly calendar label (displayVersion). The real semver
+// (app.getVersion / package.json "version") stays the hidden, ever-increasing count that the
+// auto-updater + our git history use — nobody "counts versions", but nothing is lost.
+ipcMain.handle('nm:version', () => { try { return require('./package.json').displayVersion || app.getVersion(); } catch (e) { return app.getVersion(); } });
 ipcMain.handle('nm:logs', () => recentLogs.slice(-120));
 ipcMain.handle('nm:connect', async () => { await client.connect(); return client.status(); });
 ipcMain.handle('nm:resume', () => client.resume());   // silent only — never opens sign-in

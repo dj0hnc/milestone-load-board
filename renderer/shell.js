@@ -30,16 +30,17 @@ window.newmile.onLog((line)=>appendLog(line));
 /* ---------- auto-updater banner ---------- */
 window.newmile.onUpdate((u)=>{
   const b=$('#btnUpdate'); if(!b||!u) return;
-  b.textContent='⬇ Update v'+u.version;
-  b.title='You have v'+u.current+'. Click to download '+(u.assetName||'the new version')+' to your Downloads folder.';
+  // hide the raw semver from users — show a clean "update available" instead
+  b.textContent='⬇ Actualizar';
+  b.title='Hay una versión más nueva. Click para bajar '+(u.assetName||'el nuevo archivo')+' a tu carpeta de Descargas.';
   b.style.display='';
   b.onclick=async ()=>{
-    b.disabled=true; b.textContent='⬇ Downloading…';
+    b.disabled=true; b.textContent='⬇ Bajando…';
     const r=await window.newmile.downloadUpdate();
-    if(r&&r.ok){ b.textContent='✓ In Downloads'; toast('Update downloaded — close the app and run the new file.'); }
-    else { b.disabled=false; b.textContent='⬇ Update v'+u.version; toast('Download failed: '+((r&&r.error)||'unknown')); }
+    if(r&&r.ok){ b.textContent='✓ En Descargas'; toast('Actualización descargada — cierra la app y abre el archivo nuevo.'); }
+    else { b.disabled=false; b.textContent='⬇ Actualizar'; toast('Bajada falló: '+((r&&r.error)||'desconocido')); }
   };
-  toast('🆕 Version '+u.version+' is available — click ⬇ Update when ready.');
+  toast('🆕 Hay una nueva versión disponible — click ⬇ Actualizar cuando quieras.');
 });
 
 /* ---------- diagnostics drawer ---------- */
@@ -210,7 +211,7 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   $('#day').value=localISO();
   $('#day').addEventListener('change',()=>{ dayManual=true; });
   try{ const cfg=await window.newmile.config(); groupsCfg=(cfg&&cfg.groups)||null; }catch(e){}
-  try{ const v=await window.newmile.version(); if(v)$('#appVer').textContent='v'+v; }catch(e){}
+  try{ const v=await window.newmile.version(); if(v)$('#appVer').textContent='Edición '+v; }catch(e){}   // calendar label, not the raw count
   try{ const z=parseFloat(localStorage.getItem('mab_zoom')||'1'); if(z!==1) window.newmile.zoom(z); }catch(e){}
   setStatus(await window.newmile.status());
 
