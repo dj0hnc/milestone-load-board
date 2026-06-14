@@ -717,6 +717,7 @@ function truckCard(t,used){
     <div class="row1"><span class="callbubble ${t.onCall?'':'off'}" title="${t.onCall?'On call':'Off call'}"></span>
       <span class="tnum">${t.num}</span>
       ${oc?`<span class="onct" title="On ${oc} order(s) — can still add another">on ${oc}</span>`:''}
+      ${t.lat!=null?`<span class="parkpin" onclick="truckParkingNearby(event,'${t.id}')" title="Dónde está parqueada — tap para ver las órdenes/plantas más cercanas de hoy y asignar" style="cursor:pointer;margin-left:4px">📍</span>`:''}
       <span class="star ${t.prio?'on':''}" onclick="togglePrio(event,'${t.id}')" title="Priority truck">★</span></div>
     <div class="towner">${t.driver?`<b class="tdrv">${t.driver}</b> · `:''}${t.owner}${t.terminal?` <span class="termtag">📍 ${t.terminal}</span>`:''}</div>
     <div class="tmeta"><span class="chip ${statusClass[st]}">${statusLabel[st]}</span>
@@ -2527,6 +2528,7 @@ setView('board');
     if(filters.avail==='rolling' && t.status!=='rolling') return false;
     if(filters.avail==='lastload' && (t.status!=='rolling' || enhTruckState(t).k!=='lastload')) return false;   // en su última carga (NewMile)
     if(filters.avail==='dropoff'  && (t.status!=='rolling' || enhTruckState(t).k!=='dropoff'))  return false;   // driving to dropoff (NewMile)
+    if(filters.avail==='unassigned' && (used.has(t.id) || !t.onCall)) return false;   // on-call trucks NOT on any order today — "¿se me olvidó asignar a alguien?"
     if(filters.rotActive && t.daysIdle==null) return false;   // rotación: solo ACTIVAS (con trabajo reciente); oculta dormidas
     if(filters.worked==='off' && t.workedYest!==false) return false;
     if(filters.worked==='yes' && t.workedYest!==true) return false;
@@ -2548,6 +2550,8 @@ setView('board');
       var rolling=trucks.filter(function(t){return t.status==='rolling';}).length;
       var lastN=trucks.filter(function(t){return t.status==='rolling' && enhTruckState(t).k==='lastload';}).length;
       var dropN=trucks.filter(function(t){return t.status==='rolling' && enhTruckState(t).k==='dropoff';}).length;
+      var _usedNow=assignedSet();
+      var unN=trucks.filter(function(t){return t.onCall && !_usedNow.has(t.id);}).length;   // on-call sin orden hoy
       var hasGps=trucks.some(function(t){return t.lat!=null;});
       var st=$id('stateFilters');
       if(st) st.innerHTML=
@@ -2557,6 +2561,7 @@ setView('board');
         +'<button class="fchip wyon '+(filters.avail==='rolling'?'on':'')+'" onclick="setState(\'avail\',\'rolling\')" title="Hauling right now per NewMile load status">🚛 Rolling'+(rolling?(' ('+rolling+')'):'')+'</button>'
         +'<button class="fchip '+(filters.avail==='lastload'?'on':'')+'" onclick="setState(\'avail\',\'lastload\')" title="En su última carga (NewMile) — a punto de liberarse. No necesita Samsara.">🏁 Última carga'+(lastN?(' ('+lastN+')'):'')+'</button>'
         +'<button class="fchip '+(filters.avail==='dropoff'?'on':'')+'" onclick="setState(\'avail\',\'dropoff\')" title="Driving to dropoff (NewMile). No necesita Samsara.">📦 A descarga'+(dropN?(' ('+dropN+')'):'')+'</button>'
+        +'<button class="fchip rest '+(filters.avail==='unassigned'?'on':'')+'" onclick="setState(\'avail\',\'unassigned\')" title="Trocas en on-call que NO están en ninguna orden de hoy — ¿se te olvidó asignar a alguien? Combínalo con el filtro de flota.">🚨 Sin asignar'+(unN?(' ('+unN+')'):'')+'</button>'
         +'</div>'
         +'<div class="ef-sec"><span class="ef-lbl">🔄 Rotation</span>'
         +'<button class="fchip rest '+(filters.worked==='off'?'on':'')+'" onclick="setState(\'worked\',\'off\')">💤 Rested — next up</button>'
@@ -3304,6 +3309,29 @@ setView('board');
     }).join('');
   };
   window.nearbyAdd=function(oid,tid){ var s=document.getElementById('repScrim'); if(s)s.classList.remove('show'); if(typeof openModal==='function') openModal({mode:'single',truckId:tid,orderId:oid}); };
+  /* 📍 INVERSE of Nearby: from a truck's parking spot (Samsara), show today's orders/plants
+     sorted by distance to it, tap to assign. The 📍 pin on each truck card opens this. */
+  window.truckParkingNearby=function(e,tid){
+    if(e&&e.stopPropagation)e.stopPropagation();
+    var t=T(tid); if(!t){ toast&&toast('Truck not found',true); return; }
+    if(t.lat==null){ toast&&toast('Sin GPS para '+(t.num||''),true); return; }
+    var scr=document.getElementById('repScrim'), body=document.getElementById('repBody'), title=document.getElementById('repTitle');
+    if(title)title.textContent='📍 '+(t.num||'')+' — plantas/órdenes más cercanas';
+    var cands=(orders||[]).filter(function(o){ return !o.completed && o.pickupLat!=null; })
+      .map(function(o){ return { o:o, mi:enhHavMi(t.lat,t.lon,o.pickupLat,o.pickupLng) }; })
+      .sort(function(a,b){ return a.mi-b.mi; });
+    var maps='https://www.google.com/maps/search/?api=1&query='+t.lat+','+t.lon;
+    var onOrder={}; (orders||[]).forEach(function(o){ (o.assigns||[]).forEach(function(a){ if(a.truck===t.id) onOrder[o.id]=1; }); });
+    var head='<div style="padding:6px 4px;color:#8b96a5;font-size:12px">📍 Parqueada <a href="'+maps+'" target="_blank" style="color:#5a95f9">aquí (Google Maps)</a>'+(t.mph!=null?' · '+Math.round(t.mph)+' mph':'')+' — órdenes de HOY por cercanía. Tap para asignar.</div>';
+    if(body)body.innerHTML=head+(cands.length?cands.slice(0,40).map(function(c){
+      var on=onOrder[c.o.id]?' <span style="color:#22c55e;font-size:11px">✓ ya en esta</span>':'';
+      return '<div onclick="parkAssign(\''+tid+'\',\''+c.o.id+'\')" style="display:flex;justify-content:space-between;gap:10px;padding:10px 6px;border-bottom:1px solid #1f283d;cursor:pointer">'
+        +'<span><b>'+(c.o.disp||'')+'</b> <span style="color:#8b96a5">'+(c.o.mat||'')+'</span>'+on+'<br><span style="color:#8b96a5;font-size:11px">'+(c.o.pickup||'')+'</span></span>'
+        +'<span style="color:#aeb7c0;font-size:12px;white-space:nowrap">📍 ~'+Math.round(c.mi)+' mi ＋</span></div>';
+    }).join(''):'<div style="padding:14px;color:#8b96a5">No hay órdenes con ubicación para hoy.</div>');
+    if(scr)scr.classList.add('show');
+  };
+  window.parkAssign=function(tid,oid){ var s=document.getElementById('repScrim'); if(s)s.classList.remove('show'); if(typeof openModal==='function') openModal({mode:'single',truckId:tid,orderId:oid}); };
   window.qDoRoute=async function(){
     var f=$q('qFrom').value.trim(), t=$q('qTo').value.trim();
     if(!f||!t){ toast('Type pickup and dropoff first',true); return; }
