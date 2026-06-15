@@ -3,6 +3,7 @@ const { app, BrowserWindow, ipcMain, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { NewMileClient } = require('./mcp-client');
+const fuel = require('./fuel');
 
 let win, client;
 const recentLogs = [];
@@ -84,6 +85,29 @@ function authorizeInApp(authUrl, redirectUri) {
 }
 
 let appCfg = null;
+// ---- GLOBAL / PRICE admin gate (separate from the 0605 Settings code) ----
+// 9185 unlocks ALL price/order actions (create/reorder, qty/flex edit, FSC apply/programs) for the
+// session + the Webmaster panel. Entered ONCE. The exe ENFORCES this — UI cannot bypass it.
+let priceAdmin = false;
+function globalAdminCode() { return (appCfg && appCfg.admin && appCfg.admin.globalCode) || '9185'; }
+function maskKey(s) { s = String(s || ''); return s ? '••••' + s.slice(-4) : '—'; }
+// reveal=true shows the FULL key (webmaster opted in with re-confirmation). Only honored while
+// the global admin is unlocked. Otherwise everything is masked to last-4.
+function webmasterStatus(reveal) {
+  const show = (s) => (reveal && priceAdmin) ? (String(s || '') || '—') : maskKey(s);
+  const sam = ((appCfg && appCfg.samsara && appCfg.samsara.tokens) || []).filter(t => t && (t.name || t.token));
+  const gh = (appCfg && appCfg.github) || {};
+  let nm = null; try { nm = client && client.status ? client.status() : null; } catch (e) {}
+  const tok = (client && client.tokens) || null;
+  return {
+    priceAdmin, revealed: !!(reveal && priceAdmin),
+    newmile: { connected: !!(nm && nm.connected), user: nm && nm.user, org: nm && nm.org, token: show(tok && tok.access_token), expires_at: tok && tok.expires_at || null },
+    samsara: sam.map(t => ({ fleet: t.name || '(unnamed)', key: show(t.token) })),
+    eia: { key: show((appCfg && appCfg.fuel && appCfg.fuel.eiaKey) || 'xSmnRXYvvybIc82acMIqwNa1dc9KZNFOHF8hU1Mq') },
+    github: { repo: (gh.owner ? gh.owner + '/' + gh.repo : '—'), token: show(gh.token) },
+    version: (function () { try { return require('./package.json').version; } catch (e) { return ''; } })()
+  };
+}
 
 /*
  * Per-user APP SETTINGS (userData/app-settings.json) — lets every market paste its OWN
@@ -137,6 +161,27 @@ app.whenReady().then(() => {
     onStatus: (st) => { if (win && !win.isDestroyed()) win.webContents.send('nm:status', st); },
     onLog: pushLog
   });
+  // ⛽ Fuel Surcharge engine: configure storage + EIA key, refresh the diesel index on launch
+  // (if stale) and every Monday-ish window. Key/admin from newmile.config.json `fuel`, with
+  // the provisioned defaults as fallback.
+  try {
+    const fcfg = (cfg && cfg.fuel) || {};
+    fuel.configure({
+      dataDir: path.join(app.getPath('userData'), 'fuel-data'),
+      eiaKey: fcfg.eiaKey || 'xSmnRXYvvybIc82acMIqwNa1dc9KZNFOHF8hU1Mq',
+      adminCode: fcfg.adminCode || (appCfg.admin && appCfg.admin.code) || '0605'
+    });
+    const fuelTick = async () => {
+      try {
+        const latest = fuel.latestDiesel();
+        const stale = !latest || ((Date.now() - new Date((latest.week_date || '1970-01-01') + 'T00:00:00Z')) > 8 * 24 * 3600 * 1000);
+        const d = new Date(); const cstHour = (d.getUTCHours() + 18) % 24;   // UTC-6
+        if (stale || (d.getUTCDay() === 1 && cstHour >= 6 && cstHour < 9)) { const r = await fuel.refreshDieselIndex(); pushLog('fuel index: ' + (r.added ? 'updated ' + (r.latest && r.latest.week_date) : 'up to date') + (r.error ? ' · ' + r.error : '')); }
+      } catch (e) { pushLog('fuel tick: ' + e.message); }
+    };
+    setTimeout(fuelTick, 25 * 1000);
+    setInterval(fuelTick, 60 * 60 * 1000);
+  } catch (e) { pushLog('fuel configure failed: ' + e.message); }
   createWindow();
   setTimeout(checkForUpdate, 30 * 1000);                 // first check shortly after launch
   setInterval(checkForUpdate, 4 * 60 * 60 * 1000);       // then every 4 hours
@@ -196,8 +241,61 @@ ipcMain.handle('nm:zoom', (_e, factor) => {
   catch (e) { return { error: e.message }; }
 });
 ipcMain.handle('nm:deleteAssignments', (_e, ids) => client.deleteAssignments(ids));
-ipcMain.handle('nm:pushOrder', (_e, { orderId, assignments, useOrderDefault, removed }) =>
-  client.pushOrderBatch(orderId, assignments, useOrderDefault, removed));
+ipcMain.handle('nm:pushOrder', (_e, { orderId, assignments, useOrderDefault, removed, finalize }) =>
+  client.pushOrderBatch(orderId, assignments, useOrderDefault, removed, finalize));
+ipcMain.handle('nm:reconcileSeq', (_e, intentByTruck) => client.reconcileSequences(intentByTruck));
+ipcMain.handle('nm:updateOrderQty', (_e, { orderId, quantity, flex }) => {
+  if (!priceAdmin) return { error: 'Requiere admin global (código 9185) — desbloquéalo en el tab 💲 FSC.' };
+  return client.updateOrderQuantity(orderId, quantity, flex);
+});
+
+// ⛽ Fuel Surcharge — one channel, routed by op. Read/program ops are local; orders/apply use the client.
+ipcMain.handle('nm:fuel', async (_e, { op, args }) => {
+  args = args || {};
+  try {
+    if (op === 'unlock') { if (String(args.code || '') === String(globalAdminCode())) { priceAdmin = true; return { ok: true, level: 'global' }; } return { ok: false, error: 'Código incorrecto' }; }
+    if (op === 'status') return webmasterStatus(!!args.reveal);
+    if (op === 'lock') { priceAdmin = false; return { ok: true }; }
+    // WRITE / price ops require the global admin unlock (enforced here, not just in the UI)
+    if (['apply', 'reorder', 'saveProgram', 'deleteProgram'].indexOf(op) >= 0 && !priceAdmin) return { error: 'Requiere admin global (código 9185) — desbloquéalo en el tab 💲 FSC.' };
+    if (op === 'latest') return { latest: fuel.latestDiesel(), programs: Object.keys(fuel.allPrograms()).length };
+    if (op === 'history') return { history: fuel.dieselHistory() };
+    if (op === 'refresh') return await fuel.refreshDieselIndex();
+    if (op === 'calculate') return fuel.calculateFuelSurcharge(args.customer, args.baseRate, args.quantity, args.diesel);
+    if (op === 'programs') return { programs: fuel.allPrograms() };
+    if (op === 'getProgram') return { program: fuel.getProgram(args.customer) };
+    if (op === 'saveProgram') return { saved: fuel.saveProgram(args.customer, args.program) };
+    if (op === 'deleteProgram') { fuel.deleteProgram(args.customer); return { ok: true }; }
+    if (op === 'orders') {
+      const q = String(args.q || '').trim().toLowerCase(), toks = q ? q.split(/\s+/).filter(Boolean) : [];
+      const rows = await client.searchOrdersWindow(args.from, args.to);
+      let pre = rows;
+      if (toks.length) pre = rows.filter(o => toks.every(t => ((o.reference_number || '') + ' ' + (o.project_name || '') + ' ' + (o.material_name || '') + ' ' + (o.vendor_location || '') + ' ' + (o.delivery_location || '')).toLowerCase().indexOf(t) >= 0));
+      const full = await client.getOrdersFull(pre.slice(0, 120).map(o => o.id));
+      const uId = (u) => ({ ton: 1, yard: 2, load: 3, hour: 4 }[String(u || '').toLowerCase()] || 1);
+      let orders = full.filter(Boolean).map(o => {
+        const baseRate = Number(o.truck_pay_rate) || 0, qty = Number(o.quantity_requested) || 0, unit = o.quantity_measurement_unit || 'Ton';
+        const calc = fuel.calculateFuelSurcharge(o.customer_name, baseRate, qty);
+        const cur = (o.payable_fees || []).find(f => f.fee_type_id === 2);
+        return { orderId: o.id, ref: (o.reference_number || '').trim(), customer: o.customer_name || '', project: o.project_name || '', po: o.purchase_order_id || null, baseRate, qty, unit, unitId: uId(unit), currentFsc: cur ? Number(cur.rate) : 0, suggestFsc: calc.perUnitFsc, pct: calc.surchargePercent, hasProgram: calc.hasProgram, payableFees: o.payable_fees || [] };
+      });
+      if (toks.length) orders = orders.filter(o => toks.every(t => (o.ref + ' ' + o.customer + ' ' + o.project + ' #' + (o.po || '')).toLowerCase().indexOf(t) >= 0));
+      return { from: args.from, to: args.to, count: orders.length, total: rows.length, diesel: fuel.latestDiesel(), orders };
+    }
+    if (op === 'apply') {
+      if (String(args.adminCode || '') !== String(fuel.adminCode())) return { error: 'Código admin incorrecto — los cambios de precio requieren el código.' };
+      const items = Array.isArray(args.items) ? args.items : []; const results = [];
+      for (const it of items) {
+        const fees = fuel.mergeFsc(it.payableFees, it.newFscRate, it.unitId);
+        const r = await client.updateOrderFees(it.orderId, fees, undefined);
+        results.push({ orderId: it.orderId, ref: it.ref, ok: !r.error, error: r.error || null });
+      }
+      return { applied: results.filter(r => r.ok).length, total: items.length, results };
+    }
+    if (op === 'reorder') return await client.reorderOrder(args.orderId, { quantity: args.quantity, dateISO: args.dateISO });
+    return { error: 'unknown fuel op: ' + op };
+  } catch (e) { return { error: e.message || String(e) }; }
+});
 
 /*
  * Samsara GPS snapshot (Phase 2b move-check). Vehicle names in Samsara match the
@@ -266,29 +364,54 @@ ipcMain.handle('nm:camera', async (_e, name) => {
     if (!tok) return { error: 'No Samsara token for this fleet' };
 
     const at = new Date(Date.now() - 20000).toISOString();   // a moment ago — freshest frame
-    const r1 = await fetch('https://api.samsara.com/cameras/media/retrieval', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vehicleId: ent.id, startTime: at, endTime: at, inputs: ['dashcamRoadFacing'], mediaType: 'image' })
-    });
-    if (!r1.ok) return { error: 'Samsara HTTP ' + r1.status + ': ' + (await r1.text()).slice(0, 140) };
-    const j1 = await r1.json();
-    const rid = j1 && j1.data && j1.data.retrievalId;
-    if (!rid) return { error: 'Samsara did not return a retrieval id' };
-    pushLog('camera: snapshot requested for ' + name);
-
-    for (let i = 0; i < 18; i++) {                            // poll up to ~90s
-      await new Promise(r => setTimeout(r, 5000));
-      const r2 = await fetch('https://api.samsara.com/cameras/media/retrieval?retrievalId=' + encodeURIComponent(rid), {
-        headers: { Authorization: 'Bearer ' + tok }
-      });
-      if (!r2.ok) continue;
-      const j2 = await r2.json();
-      const media = (j2.data && j2.data.media) || [];
-      const ok = media.find(m => m.status === 'available' && m.urlInfo && m.urlInfo.url);
-      if (ok) { pushLog('camera: snapshot ready for ' + name); return { url: ok.urlInfo.url }; }
-      if (media.length && media.every(m => m.status === 'failed')) return { error: 'Camera reported failure — truck probably shut off' };
+    // Two cameras: road-facing (Frontal) + driver-facing cabin (Cabina). Request each as its own
+    // retrieval so a missing/disabled cabin cam doesn't hold up the road shot.
+    const CAMS = [
+      { input: 'dashcamRoadFacing', label: 'Frontal' },
+      { input: 'dashcamDriverFacing', label: 'Cabina' }
+    ];
+    const jobs = [];
+    for (const cam of CAMS) {
+      try {
+        const r1 = await fetch('https://api.samsara.com/cameras/media/retrieval', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ vehicleId: ent.id, startTime: at, endTime: at, inputs: [cam.input], mediaType: 'image' })
+        });
+        if (!r1.ok) { jobs.push({ label: cam.label, err: 'HTTP ' + r1.status }); continue; }
+        const j1 = await r1.json();
+        const rid = j1 && j1.data && j1.data.retrievalId;
+        if (!rid) { jobs.push({ label: cam.label, err: 'no retrieval id' }); continue; }
+        jobs.push({ label: cam.label, rid, url: null, done: false });
+      } catch (e) { jobs.push({ label: cam.label, err: e.message || String(e) }); }
     }
+    if (!jobs.some(j => j.rid)) return { error: 'Samsara did not accept the snapshot request (' + jobs.map(j => j.label + ': ' + (j.err || '?')).join(', ') + ')' };
+    pushLog('camera: snapshot requested for ' + name + ' (' + jobs.filter(j => j.rid).map(j => j.label).join(' + ') + ')');
+
+    for (let i = 0; i < 18; i++) {                            // poll up to ~90s, return shots as they land
+      await new Promise(r => setTimeout(r, 5000));
+      for (const job of jobs) {
+        if (!job.rid || job.done) continue;
+        const r2 = await fetch('https://api.samsara.com/cameras/media/retrieval?retrievalId=' + encodeURIComponent(job.rid), {
+          headers: { Authorization: 'Bearer ' + tok }
+        });
+        if (!r2.ok) continue;
+        const j2 = await r2.json();
+        const media = (j2.data && j2.data.media) || [];
+        const ok = media.find(m => m.status === 'available' && m.urlInfo && m.urlInfo.url);
+        if (ok) { job.url = ok.urlInfo.url; job.done = true; }
+        else if (media.length && media.every(m => m.status === 'failed')) { job.err = 'no upload (truck off?)'; job.done = true; }
+      }
+      // stop early once every requested camera has resolved one way or another
+      if (jobs.filter(j => j.rid).every(j => j.done)) break;
+    }
+    const shots = jobs.filter(j => j.url).map(j => ({ label: j.label, url: j.url }));
+    if (shots.length) {
+      pushLog('camera: ' + shots.length + ' shot(s) ready for ' + name);
+      return { shots, url: shots[0].url };   // url kept for back-compat with older UI
+    }
+    const failed = jobs.filter(j => j.err && /off|fail/i.test(j.err)).length;
+    if (failed) return { error: 'Camera reported no upload — truck is probably shut off.' };
     return { error: 'Timed out (~90s). The camera uploads on demand — try again while the truck is running.' };
   } catch (e) { return { error: e.message || String(e) }; }
 });
@@ -308,37 +431,47 @@ let _updateInfo = null;
 async function checkForUpdate() {
   try {
     const gh = (appCfg && appCfg.github) || {};
-    if (!gh.token || !gh.owner || !gh.repo) { return; }
-    const r = await fetch(`https://api.github.com/repos/${gh.owner}/${gh.repo}/releases/latest`, {
-      headers: { Authorization: 'Bearer ' + gh.token, Accept: 'application/vnd.github+json', 'User-Agent': 'MilestoneLoadBoard' }
-    });
-    if (!r.ok) { pushLog('updater: HTTP ' + r.status); return; }
+    if (!gh.owner || !gh.repo) { return; }                 // owner/repo ship in the config; token only needed if the repo is PRIVATE
+    const hdr = { Accept: 'application/vnd.github+json', 'User-Agent': 'MilestoneLoadBoard' };
+    if (gh.token) hdr.Authorization = 'Bearer ' + gh.token; // public releases → no token; private → PAT
+    const r = await fetch(`https://api.github.com/repos/${gh.owner}/${gh.repo}/releases/latest`, { headers: hdr });
+    if (!r.ok) {
+      pushLog('updater: HTTP ' + r.status + (gh.token ? '' : ' (no token — private repo needs a PAT, or make releases public)'));
+      // 404/403 with no token almost always = private repo; tell the UI so it can guide the user
+      return { status: 'http', code: r.status, needsToken: (!gh.token && (r.status === 404 || r.status === 403)) };
+    }
     const j = await r.json();
     const latest = (j.tag_name || '').replace(/^v/, '');
     const cur = app.getVersion();
-    if (!latest || !semverNewer(latest, cur)) { pushLog('updater: up to date (v' + cur + ')'); return; }
+    if (!latest || !semverNewer(latest, cur)) { pushLog('updater: up to date (v' + cur + ')'); return { status: 'uptodate', current: cur }; }
     const isMac = process.platform === 'darwin';
     const asset = (j.assets || []).find(a => isMac ? /\.dmg$/i.test(a.name) : /\.exe$/i.test(a.name));
     _updateInfo = { version: latest, current: cur, assetId: asset && asset.id, assetName: asset && asset.name, notes: j.body || '' };
     pushLog('updater: v' + latest + ' available (current v' + cur + ')');
     if (win && !win.isDestroyed()) win.webContents.send('nm:update', _updateInfo);
-  } catch (e) { pushLog('updater check failed: ' + e.message); }
+    return { status: 'update', update: _updateInfo };
+  } catch (e) { pushLog('updater check failed: ' + e.message); return { status: 'error', error: e.message || String(e) }; }
 }
-// manual "look for update now" — tap the version label. Returns the staged update (if any) so
-// the UI can say "up to date" vs "update available" right away instead of waiting for the timer.
+// manual "look for update now" — the ⬇ button in Settings (and the version label). Returns a precise
+// status so the UI can say up-to-date / update available / private-needs-token / not configured.
 ipcMain.handle('nm:checkUpdate', async () => {
   const gh = (appCfg && appCfg.github) || {};
-  if (!gh.token || !gh.owner || !gh.repo) return { error: 'no-config', current: app.getVersion() };
-  await checkForUpdate();
+  if (!gh.owner || !gh.repo) return { error: 'no-config', current: app.getVersion() };
+  const r = await checkForUpdate();
+  if (r && r.status === 'update') return { update: r.update };
+  if (r && r.status === 'uptodate') return { upToDate: true, current: app.getVersion() };
+  if (r && r.status === 'http') return { error: r.needsToken ? 'needs-token' : ('http-' + r.code), current: app.getVersion() };
+  if (r && r.status === 'error') return { error: r.error, current: app.getVersion() };
   return _updateInfo ? { update: _updateInfo } : { upToDate: true, current: app.getVersion() };
 });
 ipcMain.handle('nm:downloadUpdate', async () => {
   try {
     if (!_updateInfo || !_updateInfo.assetId) return { error: 'No update staged' };
     const gh = appCfg.github;
+    const dhdr = { Accept: 'application/octet-stream', 'User-Agent': 'MilestoneLoadBoard' };
+    if (gh.token) dhdr.Authorization = 'Bearer ' + gh.token;   // public release asset → no token needed
     const r = await fetch(`https://api.github.com/repos/${gh.owner}/${gh.repo}/releases/assets/${_updateInfo.assetId}`, {
-      headers: { Authorization: 'Bearer ' + gh.token, Accept: 'application/octet-stream', 'User-Agent': 'MilestoneLoadBoard' },
-      redirect: 'follow'
+      headers: dhdr, redirect: 'follow'
     });
     if (!r.ok) return { error: 'download HTTP ' + r.status };
     const buf = Buffer.from(await r.arrayBuffer());

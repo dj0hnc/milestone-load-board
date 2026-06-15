@@ -94,6 +94,8 @@ function sha256js(ascii){
   return result;
 }
 let adminUnlocked=false;
+let globalUnlocked=false;   // the webmaster's code (global admin) — unlocks prices/FSC/orders + the keys panel
+let wmReveal=false;
 function dtab(which){
   $('#dtabLog').classList.toggle('on',which==='log');
   $('#dtabAdmin').classList.toggle('on',which==='admin');
@@ -104,30 +106,64 @@ function dtab(which){
 $('#dtabLog').onclick=()=>dtab('log');
 $('#dtabAdmin').onclick=()=>dtab('admin');
 
+// ⬇ Updates section — always visible at the top of Settings (no admin code needed to CHECK).
+function updBlockHtml(){
+  return '<h4>⬇ Updates</h4>'
+    +'<div class="hint">Check GitHub for a newer version. If one is found you can download it, then run the new file.</div>'
+    +'<button class="ghost" id="updCheck" style="width:100%">🔄 Check for updates</button>'
+    +'<div id="updMsg" style="font-size:11.5px;margin-top:6px;color:var(--dim)"></div>'
+    +'<div style="border-bottom:1px solid var(--line);margin:12px 0"></div>';
+}
+function wireUpdBtn(){
+  const b=document.getElementById('updCheck'); if(!b||b._w) return; b._w=1;
+  b.onclick=async()=>{
+    const m=document.getElementById('updMsg'); m.style.color='var(--dim)'; m.textContent='Checking GitHub…'; b.disabled=true;
+    try{
+      const r=await window.newmile.checkUpdate();
+      if(r&&r.update){
+        m.style.color='var(--green)';
+        m.innerHTML='🆕 v'+r.update.version+' available (you have '+(r.update.current||'')+'). <a href="#" id="updDl">⬇ Download now</a>';
+        const dl=document.getElementById('updDl'); if(dl)dl.onclick=async(ev)=>{ ev.preventDefault(); m.style.color='var(--dim)'; m.textContent='Downloading…';
+          const d=await window.newmile.downloadUpdate();
+          m.style.color=(d&&d.ok)?'var(--green)':'var(--red)';
+          m.textContent=(d&&d.ok)?'✓ Downloaded — folder opened. Close this app and run the new .exe.':('Download failed: '+((d&&d.error)||'unknown')); };
+      } else if(r&&r.upToDate){ m.style.color='var(--green)'; m.textContent='✓ You have the latest version ('+(r.current||'')+').'; }
+      else if(r&&r.error==='no-config'){ m.style.color='#e0a04b'; m.textContent='This build has no updater repo configured — download the newest .exe manually once.'; }
+      else if(r&&r.error==='needs-token'){ m.style.color='#e0a04b'; m.textContent='Releases are private — paste a GitHub read-only token in Admin below, or ask the webmaster to make releases public.'; }
+      else { m.style.color='var(--red)'; m.textContent='Could not check now'+(r&&r.error?(' ('+r.error+')'):'')+'.'; }
+    }catch(e){ m.style.color='var(--red)'; m.textContent='Check failed: '+(e.message||e); }
+    finally{ b.disabled=false; }
+  };
+}
 async function renderAdmin(){
   const pane=$('#adminPane');
   if(!adminUnlocked){
-    pane.innerHTML='<h4>🔒 Admin access</h4>'
+    pane.innerHTML=updBlockHtml()+'<h4>🔒 Admin access</h4>'
       +'<div class="hint">Enter the admin code to manage this market\'s API keys and updater token.</div>'
       +'<input id="admCode" type="password" placeholder="Admin code" autocomplete="off">'
       +'<button class="warn" id="admUnlock" style="width:100%">Unlock</button>'
       +'<div id="admErr" style="color:var(--red);font-size:11px;margin-top:6px"></div>';
     const tryUnlock=async()=>{
+      const code=$('#admCode').value.trim();
+      // HIDDEN TRICK: the webmaster's global code unlocks EVERYTHING (prices/FSC/orders + keys panel).
+      // Any other valid code (0605) only opens Settings. Same field — nobody knows the trick exists.
+      try{ const g=await window.newmile.fuel('unlock',{code}); if(g&&g.ok){ adminUnlocked=true; globalUnlocked=true; try{ board().__fscTabVis&&board().__fscTabVis(); }catch(_e){} renderAdmin(); return; } }catch(_e){}
       try{
         const s=await window.newmile.getSettings();
         const want=s.adminHash||await sha256('0605');
-        if(await sha256($('#admCode').value.trim())===want){ adminUnlocked=true; renderAdmin(); }
+        if(await sha256(code)===want){ adminUnlocked=true; renderAdmin(); }
         else $('#admErr').textContent='Wrong code.';
       }catch(e){ $('#admErr').textContent='Unlock error: '+(e.message||e); }
     };
     $('#admUnlock').onclick=tryUnlock;
     $('#admCode').addEventListener('keydown',e=>{ if(e.key==='Enter')tryUnlock(); });
     setTimeout(()=>$('#admCode').focus(),50);
+    wireUpdBtn();
     return;
   }
   const s=await window.newmile.getSettings();
   const rows=(s.samsaraTokens&&s.samsaraTokens.length?s.samsaraTokens:[{name:'',token:''}]);
-  pane.innerHTML='<h4>🏷 Market</h4>'
+  pane.innerHTML=updBlockHtml()+'<h4>🏷 Market</h4>'
     +'<input id="admMarket" placeholder="e.g. Texas, Florida, Tampa HQ…" value="'+(s.market||'').replace(/"/g,'&quot;')+'">'
     +'<h4>🛰 Samsara API keys (this market\'s fleets)</h4>'
     +'<div class="hint">One row per Samsara org. Get keys at cloud.samsara.com → Settings → API Tokens (read-only + Media Retrieval). Keys saved here override the bundled ones — maps, dashcams, parking and driver messaging all run on YOUR fleet.'
@@ -142,7 +178,7 @@ async function renderAdmin(){
     +'<button class="warn" id="admSave" style="width:100%;margin-top:8px">💾 Save settings</button>'
     +'<div id="admMsg" style="font-size:11px;margin-top:6px"></div>';
   $('#admAddTok').onclick=()=>{ $('#admToks').insertAdjacentHTML('beforeend',admTokRow({name:'',token:''},Date.now())); wireTokRows(); };
-  wireTokRows();
+  wireTokRows(); wireUpdBtn();
   $('#admSave').onclick=async()=>{
     const toks=Array.from(document.querySelectorAll('#admToks .tokrow')).map(r=>({
       name:r.querySelector('.tname').value.trim(), token:r.querySelector('.ttok').value.trim()
@@ -155,6 +191,25 @@ async function renderAdmin(){
     $('#admMsg').textContent=res&&res.ok?'✓ Saved — new keys are live (refresh to repull Samsara data).':('Save failed: '+((res&&res.error)||'unknown'));
     if(res&&res.ok) toast('⚙ Settings saved — '+toks.filter(t=>t.token).length+' Samsara key(s) active');
   };
+  if(globalUnlocked){ pane.insertAdjacentHTML('beforeend','<div id="wmKeys" style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px"></div>'); renderWmKeys(); }
+}
+// 🔐 Webmaster keys panel — only rendered when the GLOBAL code was used. Shows accesses + API keys
+// (masked, with a reveal toggle) for the session. Lives INSIDE Settings (no separate visible entry).
+async function renderWmKeys(){
+  const box=document.getElementById('wmKeys'); if(!box) return;
+  let w={}; try{ w=await window.newmile.fuel('status',{reveal:wmReveal})||{}; }catch(e){}
+  const row=(k,v)=>'<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--line);font-size:12.5px"><span style="color:var(--dim)">'+k+'</span><b style="word-break:break-all;text-align:right">'+String(v==null?'—':v).replace(/</g,'&lt;')+'</b></div>';
+  box.innerHTML='<h4>🔐 Webmaster — accesses &amp; API keys</h4>'
+    +'<div class="hint">'+(wmReveal?'⚠ Showing FULL keys — don\'t share the screen.':'Keys masked (last 4).')+' Global admin is ACTIVE for this session.</div>'
+    +row('NewMile',(w.newmile&&w.newmile.connected)?('✓ '+(w.newmile.user||'')+(w.newmile.org?(' · '+w.newmile.org):'')):'no')
+    +row('NewMile token',(w.newmile&&w.newmile.token)||'—')
+    +((w.samsara||[]).map(s=>row('Samsara · '+s.fleet,s.key)).join(''))
+    +row('EIA (diesel)',(w.eia&&w.eia.key)||'—')
+    +row('GitHub updater',((w.github&&w.github.repo)||'—')+' · '+((w.github&&w.github.token)||'—'))
+    +'<button class="ghost" id="wmReveal" style="width:100%;margin-top:8px">'+(wmReveal?'🙈 Hide keys':'👁 Show full keys')+'</button>'
+    +'<button class="ghost" id="wmLock" style="width:100%;margin-top:4px">🔒 Lock global admin now</button>';
+  document.getElementById('wmReveal').onclick=()=>{ if(!wmReveal){ if(!confirm('Show the FULL API keys?\n\nMake sure nobody else sees the screen.'))return; wmReveal=true; } else wmReveal=false; renderWmKeys(); };
+  document.getElementById('wmLock').onclick=async()=>{ try{ await window.newmile.fuel('lock'); }catch(e){} globalUnlocked=false; wmReveal=false; try{ board().__fscTabVis&&board().__fscTabVis(); board().closeTab&&board().closeTab('fsc'); }catch(e){} renderAdmin(); toast('🔒 Global admin locked'); };
 }
 function admTokRow(t,i){
   return '<div class="tokrow">'
@@ -313,6 +368,16 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     }
     if(e.data.type==='pickPlanFile' && e.data.reqId){
       try{ const res=await window.newmile.pickPlanFile(e.data.dateISO); board().__nmResult && board().__nmResult(e.data.reqId,res); }
+      catch(err){ board().__nmResult && board().__nmResult(e.data.reqId,{error:String(err&&err.message||err)}); }
+      return;
+    }
+    if(e.data.type==='updateOrderQty' && e.data.reqId){
+      try{ const res=await window.newmile.updateOrderQty(e.data.orderId,e.data.quantity,e.data.flex); board().__nmResult && board().__nmResult(e.data.reqId,res); }
+      catch(err){ board().__nmResult && board().__nmResult(e.data.reqId,{error:String(err&&err.message||err)}); }
+      return;
+    }
+    if(e.data.type==='fuel' && e.data.reqId){
+      try{ const res=await window.newmile.fuel(e.data.op,e.data.args); board().__nmResult && board().__nmResult(e.data.reqId,res); }
       catch(err){ board().__nmResult && board().__nmResult(e.data.reqId,{error:String(err&&err.message||err)}); }
       return;
     }
@@ -478,6 +543,17 @@ async function autoSync(){
     }catch(e){ toast('Auto-sync order '+o.order_id+' failed: '+(e.message||e)); appendLog('auto-sync '+o.order_id+' FAILED: '+(e.message||e)); }
   }
   clearPendingSync(doneIds);
+  // end-of-sync: make NewMile's per-truck sequence match the board exactly (creates can't set
+  // ordinal, so this corrects any drift). Best-effort — never blocks or fails the sync.
+  if(done){
+    try{
+      const intent=(board().__getSeqIntent&&board().__getSeqIntent())||{};
+      if(Object.keys(intent).length){
+        const rc=await window.newmile.reconcileSeq(intent);
+        if(rc&&rc.reordered&&rc.reordered.length) appendLog('reconcile: fixed sequence for '+rc.reordered.length+' truck(s) → '+rc.reordered.join(', '));
+      }
+    }catch(e){ appendLog('reconcile skipped: '+(e.message||e)); }
+  }
   if(done) toast('✓ Synced '+(done-fin)+' draft'+(fin?' · finalized '+fin:'')+' to NewMile');
   return done;
 }
@@ -568,8 +644,15 @@ function mapAssigns(rows, numToId, unit){
   (rows||[]).forEach(r=>{
     const tid=numToId[(r.truck_number||'').trim().toLowerCase()];
     if(!tid) return;
-    if(unit==='hour'){ out.push({truck:tid, ll:'hourly', done:Math.round(num(r.hours_worked)), seq:r.ordinal||1, aid:r.id}); }
-    else { out.push({truck:tid, ll:(r.load_limit==null?'open':r.load_limit), done:r.load_count||0, seq:r.ordinal||1, aid:r.id}); }
+    // driver ON THIS assignment (an org can run several drivers) + whether NewMile still needs one
+    const driver=(r.driver_name||'').trim();
+    const noDriver=(String(r.assignment_status||'').toLowerCase()==='missing_driver')||!driver;
+    const base={driver:driver, driverId:r.driver_id||null, noDriver:noDriver,
+      pay:(r.truck_pay_rate!=null?num(r.truck_pay_rate):null), payUnit:(r.truck_pay_rate_measurement_unit||''), rateSrc:(r.rate_source||''),
+      // live assignment state for the chip status badge (mirrors mobile): load > offer > lifecycle
+      astatus:String(r.assignment_status||'').toLowerCase(), offer:String(r.offer_status||'').toLowerCase(), load:String(r.load_status||'').toLowerCase()};
+    if(unit==='hour'){ out.push(Object.assign({truck:tid, ll:'hourly', done:Math.round(num(r.hours_worked)), seq:r.ordinal||1, aid:r.id}, base)); }
+    else { out.push(Object.assign({truck:tid, ll:(r.load_limit==null?'open':r.load_limit), done:r.load_count||0, seq:r.ordinal||1, aid:r.id}, base)); }
   });
   return out;
 }
@@ -582,7 +665,12 @@ function mapOrder(o, asgRows, numToId, nmNotes){
     id:'o'+o.id, projectId:o.project_id||null, projectName:o.project_name||'',
     disp:(o.reference_number||'').trim(), cust:o.customer_name||o.material_name||'', mat:o.material_name||'',
     pickup:(o.vendor_location||'').trim(), drop:(o.delivery_location||'').trim(),
-    unit:unit, target:target,
+    unit:unit, target:target, flex:Math.round(num(o.quantity_flex_allowed)),
+    // LIVE pay + fuel surcharge from NewMile (order default truck pay; FSC = fee_type_id 2)
+    payRate:(o.truck_pay_rate!=null?num(o.truck_pay_rate):null), payUnit:(o.truck_pay_rate_measurement_unit||unit),
+    fsc:(()=>{const f=(o.payable_fees||[]).find(x=>x.fee_type_id===2);return f?{rate:num(f.rate),unit:f.measurement_unit||'',id:f.id}:null;})(),
+    fscRecv:(()=>{const f=(o.receivable_fees||[]).find(x=>x.fee_type_id===2);return f?{rate:num(f.rate),unit:f.measurement_unit||'',id:f.id}:null;})(),
+    payableFees:(o.payable_fees||[]), receivableFees:(o.receivable_fees||[]),
     status:statusOf(o.status), nmStatus:o.status, completed:completed, startHr:h, time:ampm(h),
     nm:nm, deliv:deliv, loadsDone:o.load_count||0,
     minTrucks:o.minimum_truck_count||0, planTrucks:o.planned_truck_count||0, priority:o.priority||'medium',
@@ -592,7 +680,8 @@ function mapOrder(o, asgRows, numToId, nmNotes){
     finalized:assigns.length>0, modified:false, assigns:assigns,
     // pristine NewMile snapshot — local edits never touch it; the push diff uses it
     // to know which trucks the dispatcher REMOVED (aid = order_assignment id)
-    nmAssigns:(asgRows||[]).map(r=>({aid:r.id, num:(r.truck_number||'').trim(), done:(unit==='hour'?0:(r.load_count||0))}))
+    nmAssigns:(asgRows||[]).map(r=>({aid:r.id, num:(r.truck_number||'').trim(), done:(unit==='hour'?0:(r.load_count||0)),
+      final:/^(pending|active|order_assignment_completed)$/.test(String(r.assignment_status||'').toLowerCase())}))
   };
 }
 const JUNK=/(DOWN|Camera|De-Leased|Train loads|Need)/i;

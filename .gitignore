@@ -4,3 +4,7 @@ dist-pkg/
 .board-backups/
 # the real config carries Samsara tokens — NEVER commit it (CI builds it from the template + secrets)
 newmile.config.json
+
+# local build/diagnostic junk
+_build.log
+_chk_board.js

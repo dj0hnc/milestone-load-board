@@ -492,11 +492,46 @@ class NewMileClient {
   }
   _geoNorm(s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim(); }
 
-  // Resolve coords for each order's pickup (vendor_location) AND dropoff
-  // (delivery_location): org_location names first, then the persistent cache, then
-  // NewMile's geocode_address utility (capped per refresh).
+  // A NewMile geocode result is TRUSTWORTHY only if it resolved BELOW state level (has a city,
+  // street, zip, or county). A bare {state, country} response is Google's "I only found the
+  // state" centroid — using it would drop the pin in the middle of TX and invent a bogus route.
+  // We reject those outright so the tool NEVER sends a truck to a guessed location.
+  _geoQualityOK(g) {
+    if (!g) return false;
+    const ac = g.address_components || g.components || {};
+    return !!(ac.city || ac.locality || ac.route || ac.street_number || ac.zip || ac.postal_code || ac.county);
+  }
+  // The location string often embeds the real place after "@" or "-"
+  // (e.g. "Del Zotto @ Gladewater", "Hiland Dairy - Little Rock",
+  //  "Winburn Milk Company @ 1101 Main St Sulphur Springs Tx"). Pull that tail out as a hint.
+  _locHint(raw) {
+    const s = String(raw || '').trim();
+    let m = s.split(/\s+@\s+|\s+-\s+|@/).map(x => x.trim()).filter(Boolean);
+    const tail = m.length > 1 ? m[m.length - 1] : '';
+    return (tail && tail.length >= 3 && tail.toLowerCase() !== s.toLowerCase()) ? tail : '';
+  }
+  // Geocode one address string via NewMile (Google-backed); returns {lat,lng,addr} only when the
+  // result passes the quality gate — otherwise null (caller treats as unresolved, never guesses).
+  async _geocodeTrusted(addr) {
+    if (!addr) return null;
+    try {
+      const g = await this.callTool('call_utility', { utility_name: 'geocode_address', args: { address: addr } });
+      if (!this._geoQualityOK(g)) return null;
+      const lat = Number(g.lat != null ? g.lat : g.latitude);
+      const lng = Number(g.lng != null ? g.lng : g.longitude);
+      if (!isFinite(lat) || !isFinite(lng)) return null;
+      return { lat, lng, addr: (g.formatted_address || '').trim() || null };
+    } catch (e) { return null; }
+  }
+
+  // Resolve coords for each order's pickup (vendor_location) AND dropoff (delivery_location).
+  // Order of trust: (1) the org's saved org_location book (real lat/lng + street address),
+  // (2) persistent cache, (3) NewMile geocode of the FULL string, (4) geocode of the embedded
+  // city/address hint. NEVER appends a fabricated ", TX" (locations cross state lines — Little
+  // Rock is AR) and NEVER accepts a state-centroid result. Unresolved names get NO coords so the
+  // UI shows "address not confirmed" instead of a wrong distance.
   async resolvePickupCoords(orders) {
-    const out = {};   // 'p'/'d' + order_id -> {lat, lng}
+    const out = {};   // 'p'/'d' + order_id -> {lat, lng, addr}
     const names = {}; // normalized location name -> {raw, ids:[key]}
     orders.forEach(o => {
       const p = this._geoNorm(o.vendor_location);
@@ -507,43 +542,45 @@ class NewMileClient {
     const keys = Object.keys(names);
     if (!keys.length) return out;
 
-    // 1) saved org locations (have lat/lng) — ALWAYS the signed-in user's own org
+    // 1) saved org locations (have lat/lng) — ALWAYS the signed-in user's own org. Most trusted.
     const locIdx = {};
     try {
       const orgId = this._myOrgId();
-      const r = await this.callTool('list_resources', { resource_type: 'org_location', filters: { org_id: orgId } });
+      const r = await this.callTool('list_resources', { resource_type: 'org_location', filters: { org_id: orgId, page_size: 500 } });
       ((r && (r.locations || r.results)) || []).forEach(l => {
         if (l.lat == null || l.lng == null) return;
-        // real street address from NewMile — Google links use it instead of just the name
         const addr = [l.address || l.address_1 || l.street_address || l.address_line_1 || '',
                       l.city || '', [l.state || '', l.zip || l.zip_code || ''].filter(Boolean).join(' ')]
                      .map(s => ('' + s).trim()).filter(Boolean).join(', ');
-        locIdx[this._geoNorm(l.name)] = { lat: l.lat, lng: l.lng, addr: addr || null };
+        locIdx[this._geoNorm(l.name)] = { lat: Number(l.lat), lng: Number(l.lng), addr: addr || null, src: 'org_location' };
       });
     } catch (e) { this.log('org_location pull skipped: ' + e.message); }
     const locKeys = Object.keys(locIdx);
 
     const cache = this._geoLoad();
-    let geocoded = 0, dirty = false;
+    let geocoded = 0, dirty = false, unresolved = 0;
     for (const k of keys) {
-      let hit = locIdx[k] || cache[k] || null;
+      // cache _v<2 = legacy entries geocoded the OLD (",TX"-forced, no quality gate) way — distrust
+      // and re-resolve them so previously-wrong pins get corrected.
+      const cached = (cache[k] && cache[k]._v >= 2) ? cache[k] : null;
+      let hit = locIdx[k] || cached || null;
       if (!hit) { // fuzzy: org location name contained in pickup name or vice versa
         const fk = locKeys.find(lk => lk.length > 6 && (k.includes(lk) || lk.includes(k)));
         if (fk) hit = locIdx[fk];
       }
-      if (!hit && geocoded < 15) { // geocode fallback, capped per refresh, cached forever
-        try {
-          const g = await this.callTool('call_utility', { utility_name: 'geocode_address', args: { address: names[k].raw + ', TX' } });
-          const lat = g && (g.lat != null ? g.lat : (g.latitude != null ? g.latitude : null));
-          const lng = g && (g.lng != null ? g.lng : (g.longitude != null ? g.longitude : null));
-          if (lat != null && lng != null) { hit = { lat, lng }; cache[k] = hit; dirty = true; }
-          geocoded++;
-        } catch (e) { geocoded++; }
+      if (!hit && geocoded < 25) {   // geocode fallback, capped per refresh, only quality hits cached
+        const raw = names[k].raw;
+        // (3) full string as-is — often carries the embedded street address
+        hit = await this._geocodeTrusted(raw); geocoded++;
+        // (4) fall back to the embedded city/address hint after "@" / "-"
+        if (!hit) { const h = this._locHint(raw); if (h) { hit = await this._geocodeTrusted(h); geocoded++; } }
+        if (hit) { cache[k] = Object.assign({ _v: 2 }, hit); dirty = true; }
+        else { unresolved++; this.log('location UNRESOLVED (no trusted coords): "' + raw + '"'); }
       }
       if (hit) names[k].ids.forEach(id => { out[id] = hit; });
     }
     if (dirty) this._geoSave();
-    this.log('location coords: ' + Object.keys(out).length + ' pickup/dropoff points resolved across ' + orders.length + ' orders (' + geocoded + ' geocoded this run)');
+    this.log('location coords: ' + Object.keys(out).length + ' resolved across ' + orders.length + ' orders (' + geocoded + ' geocode calls, ' + unresolved + ' left unresolved)');
     return out;
   }
 
@@ -597,8 +634,14 @@ class NewMileClient {
     const detailRows = await this._pool(noteTargets, 6, async (oid) =>
       this.callTool('get_resource', { resource_type: 'order', id: oid }));
     const orderNotes = {}, orderMeta = {};
+    // the LIST endpoint omits customer_name, truck_pay_rate, quantity_flex_allowed, payable_fees,
+    // receivable_fees — only the single get returns them. Merge them onto the today/tomorrow orders
+    // so the board shows LIVE pay / FSC / Flex / customer (verified: list rows lack these).
+    const _byId = {}; ot.concat(otm).forEach(o => { _byId[o.id] = o; });
+    const PRICE_KEYS = ['customer_name', 'truck_pay_rate', 'truck_pay_rate_measurement_unit', 'quantity_flex_allowed', 'quantity_measurement_unit', 'payable_fees', 'receivable_fees', 'purchase_order_id'];
     noteTargets.forEach((oid, i) => {
       const d = detailRows[i]; if (!d) return;
+      const ord = _byId[oid]; if (ord) PRICE_KEYS.forEach(k => { if (d[k] != null) ord[k] = d[k]; });
       if (d.project_id) orderMeta[oid] = { project_id: d.project_id };   // for ⟲ crew-from-project
       const n = [];
       if (d.pick_up_notes) n.push({ l: 'Pickup notes (drivers)', t: d.pick_up_notes });
@@ -784,15 +827,40 @@ class NewMileClient {
       const ex = await this.orderAssignments(orderId);
       existing = (ex && (ex.order_assignments || ex.results || ex.rows)) || [];
     } catch (e) { this.log('could not read existing assignments for ' + orderId + ': ' + e.message); }
-    const existingByNum = {};
-    existing.forEach(a => { existingByNum[this._normNum(a.truck_number)] = a; });
+    // index existing rows by their assignment id (aid) AND keep them list-addressable so we can
+    // bind each board chip to ONE specific NewMile row — never collapse two sequences of the
+    // same truck into one (the bug that duplicated / mis-sequenced loads).
+    const rowById = {};
+    existing.forEach(a => { if (a.id != null) rowById[a.id] = a; });
+    const matchedRowIds = new Set();
+    const _exTid = (r) => (r.truck_id != null ? r.truck_id : (r.truck && r.truck.id != null ? r.truck.id : null));
+    const sameTruck = (r, a) => {
+      if (a.truck_id != null && _exTid(r) != null) return Number(_exTid(r)) === Number(a.truck_id);
+      return this._normNum(r.truck_number) === this._normNum(a.truck);
+    };
 
-    // 2) diff: updates for existing trucks, creates for new ones
+    // PASS 1 — chips that carry an aid (came from NewMile) bind to that EXACT row. This pins
+    // each sequence to its own assignment, so seq-1 stays seq-1 and seq-2 stays seq-2.
+    for (const a of assignments) {
+      if (a.aid != null && rowById[a.aid] && !matchedRowIds.has(a.aid)) {
+        a._row = rowById[a.aid]; matchedRowIds.add(a.aid);
+      }
+    }
+    // PASS 2 — chips with no usable aid bind to an as-yet-unmatched existing row of the SAME
+    // truck (covers re-pushing a chip whose row now exists, so we never create a duplicate).
+    // Trucks with NO free existing row fall through to create (a genuinely new sequence).
+    for (const a of assignments) {
+      if (a._row || !(a.truck || '').trim()) continue;
+      const cand = existing.find(r => r.id != null && !matchedRowIds.has(r.id) && sameTruck(r, a));
+      if (cand) { a._row = cand; matchedRowIds.add(cand.id); }
+    }
+
+    // 2) diff: update bound rows (load_limit only — NEVER ordinal/sequence); create the rest.
     const toCreate = [];        // {truck, truck_id, loads, sequence}
     for (const a of assignments) {
       const num = (a.truck || '').trim();
       if (!num) continue;
-      const ex = existingByNum[this._normNum(num)];
+      const ex = a._row;
       if (ex) {
         const want = (typeof a.loads === 'number' && a.loads > 0) ? a.loads : null;
         const have = (ex.load_limit == null) ? null : ex.load_limit;
@@ -908,20 +976,13 @@ class NewMileClient {
       this.log('order ' + orderId + ': synced ' + out.created.length + ' assignment(s) as DRAFT (not finalized)');
     }
 
-    // 5) seq-2 (blue) trucks -> reorder so the new assignment sits at the intended ordinal. Best-effort.
-    const seq2 = toCreate.filter(t => (t.sequence || 1) > 1 && t.assignment_id);
-    for (const t of seq2) {
-      try {
-        const all = await this.callTool('list_resources', { resource_type: 'order_assignment', filters: { truck_id: t.truck_id, page_size: 100 } });
-        const rows = (all && (all.order_assignments || all.results || all.rows)) || [];
-        const others = rows.filter(r => r.id !== t.assignment_id).map(r => r.id);
-        const ordered = others.concat([t.assignment_id]);   // put the new (seq-2) assignment last
-        if (ordered.length > 1) {
-          await this.callTool('call_utility', { utility_name: 'reorder_assignments', args: { truck_id: t.truck_id, assignment_ids: ordered } });
-          out.reordered.push(t.truck);
-        }
-      } catch (e) { this.log('reorder for ' + t.truck + ' skipped: ' + e.message); }
-    }
+    // 5) sequences: DO NOT TOUCH. (Standing rule from Juan, 2026-06-14.)
+    // We used to call reorder_assignments to push a new "seq-2" assignment to the right ordinal,
+    // but that utility lists ALL of a truck's assignments across every order and rewrites their
+    // order — which shuffled live sequences (it moved a real seq-2 onto seq-1 on an order).
+    // bulk_create already appends each new assignment AFTER the truck's existing ones, so the
+    // natural creation order IS the correct sequence. We never reorder existing rows again.
+    out.reordered = [];
 
     return out;
   }
@@ -947,6 +1008,163 @@ class NewMileClient {
       out.confirmed = draftIds;
       this.log('finalized order ' + orderId + ': confirmed ' + draftIds.length + ' draft assignment(s)');
     } catch (e) { out.error = 'confirm failed: ' + e.message; }
+    return out;
+  }
+
+  // Edit an order's ordered quantity and/or Flex straight in NewMile. Both quantity_requested and
+  // quantity_flex_allowed are writeable (verified 2026-06-14). Applies immediately (not a draft).
+  async updateOrderQuantity(orderId, quantity, flex) {
+    const attrs = {};
+    if (quantity != null && isFinite(Number(quantity))) attrs.quantity_requested = Number(quantity);
+    if (flex != null && isFinite(Number(flex))) attrs.quantity_flex_allowed = Number(flex);
+    if (!Object.keys(attrs).length) return { error: 'nothing to update' };
+    try {
+      const r = await this.callTool('update_resource', { resource_type: 'order', id: orderId, attrs });
+      this.log('order ' + orderId + ' quantity_requested=' + attrs.quantity_requested + ' flex=' + attrs.quantity_flex_allowed);
+      return { ok: true, result: r };
+    } catch (e) { return { error: e.message || String(e) }; }
+  }
+
+  // Org-wide order search for the CS price editor: pull all orders in a date window (paged) and
+  // return the full rows (incl. payable_fees / truck_pay_rate) so the UI can filter by customer /
+  // project / PO client-side and preview FSC. Capped to keep it snappy.
+  async searchOrdersWindow(fromISO, toISO, cap) {
+    let rows = [], page = 1, totalPages = 1;
+    do {
+      const r = await this.callTool('list_resources', {
+        resource_type: 'order',
+        filters: { order_date_from: fromISO, order_date_to: toISO, page: page, page_size: 100 }
+      });
+      rows = rows.concat((r && (r.orders || r.results || r.rows)) || []);
+      totalPages = (r && (r.total_pages || r.pages)) || 1; page++;
+    } while (page <= totalPages && page <= 12 && rows.length < (cap || 800));
+    // list rows already carry truck_pay_rate, customer_name, project_name, reference_number,
+    // quantity_*, payable_fees/receivable_fees (verified live) — no per-order get needed.
+    return rows;
+  }
+
+  // Full order details for a set of ids (get_resource is the ONLY source of customer_name,
+  // truck_pay_rate, payable_fees, quantity_flex_allowed — the list endpoint omits them). Pooled.
+  async getOrdersFull(ids, limit) {
+    const list = (ids || []).slice(0, limit || 120);
+    const rows = await this._pool(list, 6, async (id) => {
+      const g = await this.callTool('get_resource', { resource_type: 'order', id });
+      return (g && (g.order || g.result || g)) || null;
+    });
+    return rows;
+  }
+
+  // Write fees onto an order (FSC etc.). Pass the COMPLETE payable/receivable arrays — NewMile
+  // REMOVES any existing fee not included. Each fee: {fee_type_id, rate, measurement_unit_id [, id]}.
+  async updateOrderFees(orderId, payableFees, receivableFees) {
+    const attrs = {};
+    if (Array.isArray(payableFees)) attrs.payable_fees = payableFees;
+    if (Array.isArray(receivableFees)) attrs.receivable_fees = receivableFees;
+    if (!Object.keys(attrs).length) return { error: 'no fees to update' };
+    try {
+      const r = await this.callTool('update_resource', { resource_type: 'order', id: orderId, attrs });
+      this.log('order ' + orderId + ' fees updated (' + (attrs.payable_fees ? attrs.payable_fees.length + ' payable' : '') + ')');
+      return { ok: true, result: r };
+    } catch (e) { return { error: e.message || String(e) }; }
+  }
+
+  // RE-ORDER (clone) an order: create a NEW order under the SAME purchase_order (which carries the
+  // customer / material / pickup / dropoff / project), copying rate + flex + FSC, changing ONLY the
+  // quantity and the needed date. customer/locations are NOT writeable at create — they come from
+  // the PO, so cloning under purchase_order_id preserves them. (verified 2026-06-15)
+  async reorderOrder(orderId, opts) {
+    opts = opts || {};
+    let o;
+    try { const g = await this.callTool('get_resource', { resource_type: 'order', id: orderId }); o = (g && (g.order || g.result || g)) || null; }
+    catch (e) { return { error: 'could not read the order: ' + e.message }; }
+    if (!o) return { error: 'order not found' };
+    if (o.purchase_order_id == null || o.hauler_id == null) return { error: 'esta orden no tiene PO/hauler — no se puede re-ordenar' };
+    // new date: keep the original time-of-day + tz, swap the calendar date
+    const swapDate = (orig, dISO) => {
+      if (!dISO) return orig || null;
+      const t = (orig && orig.indexOf('T') >= 0) ? orig.slice(orig.indexOf('T')) : 'T04:00:00-05:00';
+      return dISO + t;
+    };
+    const unitId = o.truck_pay_rate_measurement_unit_id || ({ ton: 1, yard: 2, load: 3, hour: 4 }[String(o.quantity_measurement_unit || 'ton').toLowerCase()] || 1);
+    const attrs = {
+      purchase_order_id: o.purchase_order_id, hauler_id: o.hauler_id,
+      quantity_requested: (opts.quantity != null && isFinite(Number(opts.quantity))) ? Number(opts.quantity) : Number(o.quantity_requested) || 0,
+      truck_pay_rate: o.truck_pay_rate, truck_pay_rate_measurement_unit_id: unitId,
+      start_date: swapDate(o.start_date, opts.dateISO), end_date: swapDate(o.end_date, opts.dateISO),
+      reference_number: o.reference_number, priority: o.priority || 'medium',
+      minimum_truck_count: o.minimum_truck_count || 0, maximum_truck_count: o.maximum_truck_count || 0, planned_truck_count: o.planned_truck_count || 0,
+      indefinite_quantity: !!o.indefinite_quantity, preload_eligible: !!o.preload_eligible
+    };
+    if (o.quantity_flex_allowed != null) attrs.quantity_flex_allowed = Number(o.quantity_flex_allowed);
+    let res;
+    try { res = await this.callTool('create_resource', { resource_type: 'order', attrs }); }
+    catch (e) { return { error: 'create failed: ' + e.message }; }
+    if (res && res.error) return { error: res.error };
+    const newId = res && (res.id || (res.order && res.order.id) || (res.result && res.result.id) || (res.data && res.data.id));
+    if (!newId) return { error: 'NewMile no devolvió el id de la orden nueva' };
+    // copy the FSC / fees (not writeable at create) onto the new order
+    const fees = (o.payable_fees || []).map(f => ({ fee_type_id: f.fee_type_id, rate: Number(f.rate), measurement_unit_id: f.measurement_unit_id }));
+    let feesCopied = false;
+    if (fees.length) { try { const fr = await this.updateOrderFees(newId, fees); feesCopied = !fr.error; } catch (e) {} }
+    this.log('reorder: cloned order ' + orderId + ' → ' + newId + ' (PO ' + o.purchase_order_id + ', qty ' + attrs.quantity_requested + ', date ' + (opts.dateISO || 'same') + ')');
+    return { ok: true, newId, ref: o.reference_number, customer: o.customer_name, feesCopied, fees: fees.length };
+  }
+
+  // ---------- end-of-sync sequence reconciliation ----------
+  // NewMile can't set `ordinal` at create — a freshly created assignment is just appended to the
+  // truck's queue, so its per-truck order can drift from what the dispatcher laid out in the tool.
+  // After a sync we make NewMile match the tool: for each truck, reorder ITS assignments so the
+  // ones the tool manages follow the tool's intended sequence. Assignments the tool doesn't know
+  // about (other days, in-progress, already hauled) are PINNED in their exact current slots — we
+  // only permute the managed ones among their own positions, and we always send the truck's
+  // COMPLETE id list. This is the safe replacement for the old blind "append it last" reorder.
+  //
+  // intentByTruck: { [truck_id]: { [order_id]: sequence } }  (sequence = the truck's intended
+  //   order position for that order; lower = earlier).
+  async reconcileSequences(intentByTruck) {
+    const out = { checked: 0, reordered: [], skipped: 0, failed: [] };
+    const entries = Object.entries(intentByTruck || {});
+    const movable = (r) => {
+      const st = String(r.assignment_status || r.status || r.state || '').toLowerCase();
+      const hauled = (r.load_count || 0) > 0;
+      return !hauled && (st === 'draft' || st === 'pending' || st === '');   // never shuffle active/completed/hauled rows
+    };
+    for (const [tidStr, orderSeq] of entries) {
+      const tid = Number(tidStr);
+      if (!tid || !orderSeq) continue;
+      // a truck that the tool only puts on ONE order can't have an order to fix
+      if (Object.keys(orderSeq).length < 2) { out.skipped++; continue; }
+      let rows = [];
+      try {
+        const all = await this.callTool('list_resources', { resource_type: 'order_assignment', filters: { truck_id: tid, page_size: 100 } });
+        rows = (all && (all.order_assignments || all.results || all.rows)) || [];
+      } catch (e) { out.failed.push({ truck_id: tid, reason: e.message }); continue; }
+      if (rows.length < 2) { out.skipped++; continue; }
+      const oidOf = (r) => (r.order_id != null ? r.order_id : (r.order && r.order.id));
+      const cur = rows.slice().sort((a, b) => ((a.ordinal || 0) - (b.ordinal || 0)));
+      // which rows does the tool manage AND is it safe to move?
+      const isManaged = (r) => (orderSeq[oidOf(r)] != null) && movable(r);
+      const managedIdx = [];
+      cur.forEach((r, i) => { if (isManaged(r)) managedIdx.push(i); });
+      if (managedIdx.length < 2) { out.skipped++; continue; }   // nothing to reorder
+      // desired order of just the managed rows: by intended sequence, tie-break by current ordinal
+      const managedSorted = managedIdx.map(i => cur[i]).sort((a, b) => {
+        const d = (orderSeq[oidOf(a)] - orderSeq[oidOf(b)]);
+        return d || ((a.ordinal || 0) - (b.ordinal || 0));
+      });
+      // pin everything else: rebuild the full list, dropping the managed rows back into their own slots in the desired order
+      const result = cur.slice();
+      managedIdx.forEach((slot, k) => { result[slot] = managedSorted[k]; });
+      const newIds = result.map(r => r.id);
+      const curIds = cur.map(r => r.id);
+      out.checked++;
+      if (newIds.join(',') === curIds.join(',')) { out.skipped++; continue; }   // already correct — no API call
+      try {
+        await this.callTool('call_utility', { utility_name: 'reorder_assignments', args: { truck_id: tid, assignment_ids: newIds } });
+        out.reordered.push(tid);
+        this.log('reconcile: truck ' + tid + ' resequenced to match the tool (' + curIds.join(',') + ' → ' + newIds.join(',') + ')');
+      } catch (e) { out.failed.push({ truck_id: tid, reason: e.message }); }
+    }
     return out;
   }
 }
