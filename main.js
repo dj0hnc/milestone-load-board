@@ -693,6 +693,8 @@ async function geocodeOne(q) {
   } catch (e) {}
   return null;
 }
+// geocode a free-text place (city, address) → {lat,lng} for the truck-rail "nearest to <city>" search
+ipcMain.handle('nm:geocode', async (_e, q) => { try { const g = await geocodeOne(String(q || '').trim()); return g ? { lat: g.lat, lng: g.lng, src: g.src } : null; } catch (e) { return null; } });
 ipcMain.handle('nm:route', async (_e, { from, to, fromCoords, toCoords }) => {
   try {
     const A = fromCoords || await geocodeOne(from);

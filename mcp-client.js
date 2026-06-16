@@ -823,9 +823,11 @@ class NewMileClient {
 
     // 1) live state — what's already on the order
     let existing = [];
+    let readOk = false;   // did we actually read NewMile's current rows? (gate the "deleted externally" rule)
     try {
       const ex = await this.orderAssignments(orderId);
       existing = (ex && (ex.order_assignments || ex.results || ex.rows)) || [];
+      readOk = true;
     } catch (e) { this.log('could not read existing assignments for ' + orderId + ': ' + e.message); }
     // index existing rows by their assignment id (aid) AND keep them list-addressable so we can
     // bind each board chip to ONE specific NewMile row — never collapse two sequences of the
@@ -873,6 +875,15 @@ class NewMileClient {
         } else {
           out.skipped.push({ truck: num, reason: 'already on order — unchanged' });
         }
+        continue;
+      }
+      // RESURRECTION GUARD: this chip carries an aid (it came from a real NewMile row) but matched
+      // NO existing row now → that assignment was DELETED in NewMile (by the dispatcher or anyone).
+      // Respect it — never recreate it. Only genuinely-new chips (added on the board, no aid) create.
+      // This is what stopped trucks reappearing on every sync and duplicating.
+      if (a.aid != null && readOk) {
+        out.skipped.push({ truck: num, reason: 'removed in NewMile — not recreated' });
+        this.log('order ' + orderId + ': ' + num + ' (aid ' + a.aid + ') gone in NewMile — NOT recreated');
         continue;
       }
       // honor an explicit truck_id (the dispatcher picked among same-numbered trucks); else resolve

@@ -101,6 +101,11 @@ input{font-family:inherit}
 .selectbtn.on{background:rgba(79,195,200,.14);border-color:var(--teal);color:var(--teal)}
 .bulkbar{background:rgba(79,195,200,.1);border:1px solid var(--teal);border-radius:8px;padding:8px 10px;margin:8px 11px;display:none;align-items:center;gap:8px;font-family:'Barlow Condensed';font-weight:600;font-size:12.5px;color:var(--teal);line-height:1.25}
 .bulkbar.show{display:flex}
+.cityhdr{font-family:'Barlow Condensed';font-weight:700;font-size:13px;color:var(--teal);background:rgba(79,195,200,.10);border:1px solid var(--teal);border-radius:8px;padding:7px 10px;margin:8px 11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cityhdr b{color:#fff}
+.cityhdr .cityclr{margin-left:auto;cursor:pointer;color:var(--muted);font-weight:700;font-size:11px}
+.cityhdr .cityclr:hover{color:var(--red)}
+.truck .distpin{font-family:'Barlow Condensed';font-weight:800;font-size:11px;color:var(--teal);background:rgba(79,195,200,.12);border-radius:6px;padding:1px 6px;margin-left:5px;white-space:nowrap}
 .bulkbar .done{margin-left:auto;background:var(--teal);color:var(--navy-3);font-weight:700;padding:4px 10px;border-radius:6px;font-size:12px;white-space:nowrap}
 .fleetgroup{padding:4px 0}
 .fleethdr{display:flex;align-items:center;gap:8px;padding:8px 13px 4px;font-family:'Barlow Condensed';font-weight:700;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--gold-soft)}
@@ -186,11 +191,22 @@ input{font-family:inherit}
 .dropzone{padding:9px 13px 11px;min-height:54px}
 .dz-empty{border:1.5px dashed #354159;border-radius:9px;padding:11px;text-align:center;color:var(--muted);font-family:'Barlow Condensed';font-size:13px;font-weight:600}
 .order.over .dz-empty{border-color:var(--teal);color:var(--teal)}
-.atruck{display:inline-flex;align-items:center;gap:6px;background:var(--navy-3);border:1px solid var(--line);border-radius:8px;padding:5px 6px 5px 8px;margin:3px 4px 3px 0;position:relative;cursor:pointer;transition:.12s}
+.atruck{display:inline-flex;align-items:center;gap:6px;background:var(--navy-3);border:1px solid var(--line);border-radius:8px;padding:5px 6px 5px 8px;margin:3px 4px 3px 0;position:relative;cursor:grab;transition:.12s}
+.atruck:active{cursor:grabbing}
+.atruck.dragging{opacity:.45}
 .atruck:hover{border-color:var(--gold)}
 .atruck .an{font-family:'Barlow Condensed';font-weight:800;font-size:15px}
-.seq{font-family:'Barlow Condensed';font-weight:800;font-size:10px;width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--navy-3);flex:none}
-.seq.s1{background:var(--gold-soft)}.seq.s2{background:var(--teal)}.seq.s3{background:var(--orange)}.seq.s4{background:var(--purple)}
+/* 🚚 sequence badge = a little truck, colored by sequence, with the seq # in the box.
+   body = the colored rounded box (holds the number), ::before = the cab (front, right),
+   ::after = the two wheels. Color changes per sequence (s1 gold · s2 teal · s3 orange · s4 purple…). */
+.seq{position:relative;font-family:'Barlow Condensed';font-weight:800;font-size:9.5px;line-height:1;
+  width:21px;height:13px;border-radius:2px;display:flex;align-items:center;justify-content:center;
+  color:#0c1320;flex:none;margin:0 6px 3px 0;background:var(--muted)}
+.seq::before{content:"";position:absolute;right:-4px;top:2px;width:5px;height:9px;border-radius:0 2px 2px 0;background:inherit}
+.seq::after{content:"";position:absolute;bottom:-2.5px;left:3px;width:3.5px;height:3.5px;border-radius:50%;
+  background:rgba(0,0,0,.55);box-shadow:8.5px 0 0 rgba(0,0,0,.55)}
+.seq.s1{background:var(--gold-soft)}.seq.s2{background:var(--teal)}.seq.s3{background:var(--orange)}
+.seq.s4{background:var(--purple)}.seq.s5{background:#4f9b6e}.seq.s6{background:#d77ab0}
 .prog{font-family:'Barlow Condensed';font-weight:700;font-size:12px;padding:1px 6px;border-radius:5px;background:var(--panel);color:var(--text)}
 .prog.done{color:var(--green)}.prog.open{color:var(--teal)}.prog.hr{color:var(--gold-soft)}
 .atruck .x{color:var(--muted);font-size:14px;line-height:1;padding:0 1px}
@@ -400,7 +416,9 @@ input{font-family:inherit}
   @media(max-width:880px){#plDetail{flex:0 0 230px}}
 
   /* ===== PLANNER v3: detail strip on top + resizable ===== */
-  #planner{height:48vh;max-height:88vh}
+  /* opens CONTENT-SIZED (only as tall as the plan needs) so it never eats the orders' space;
+     grows up to 88vh then scrolls internally, and the ⠿ handle still lets you drag it bigger. */
+  #planner{height:auto;max-height:88vh}
   .pl-body{flex-direction:column}
   #plDetail{flex:0 0 auto;max-height:58%;overflow:auto;border-left:none;border-bottom:2px solid #313d4a;background:#1a222c;padding:9px 12px;display:flex;flex-direction:column;gap:8px}
   #plDetail.plover{outline:2px dashed #5a95f9;outline-offset:-3px;background:#13203a}
@@ -482,7 +500,7 @@ input{font-family:inherit}
   <div class="col rail active" id="col-rail">
     <div class="colhead">
       <h2>🚛 Trucks <span class="tag" id="truckTag"></span></h2>
-      <div class="osearch"><span class="si">🔍</span><input id="truckSearch" placeholder="Search truck #, driver, owner…" oninput="setTruckQuery(this.value)"><button class="sclr" id="tsclr" onclick="clearTruckQuery()" style="display:none">✕</button></div>
+      <div class="osearch"><span class="si">🔍</span><input id="truckSearch" placeholder="Search — or paste a list: 1234 5678 KT-9…" title="Paste a whole list separated by spaces/commas — every matching truck shows, then tap ✓ Select all" oninput="setTruckQuery(this.value)"><button class="sclr" id="tsclr" onclick="clearTruckQuery()" style="display:none">✕</button></div>
       <div class="filters">
         <div class="frow" id="fleetFilters"></div>
         <div class="frow" id="stateFilters"></div>
@@ -686,9 +704,13 @@ function orderMatches(o){
   if(showSelectedOnly&&!selectedOrders.has(o.id))return false;
   if(showShortOnly&&loadsToCover(o)<=0)return false;
   if(!orderQuery)return true;
-  const truckStr=o.assigns.map(a=>{const t=T(a.truck);return t?t.num+' '+(t.driver||'')+' '+t.owner:'';}).join(' ');
-  const hay=[o.disp,o.mat,o.cust,o.pickup,o.drop,o.notes||'',truckStr].join(' ').toLowerCase();
-  return hay.includes(orderQuery);
+  // search EVERYTHING on the order: disp/ref, material, customer, pickup/drop (name + real address),
+  // project, time, the live NewMile notes, and every assigned truck's #, driver and owner.
+  const truckStr=o.assigns.map(a=>{const t=T(a.truck);return t?(t.num+' '+(t.driver||'')+' '+(t.owner||'')):'';}).join(' ');
+  const noteStr=(o.nmNotes||[]).map(n=>((n&&n.l||'')+' '+(n&&n.t||''))).join(' ');
+  const hay=[o.disp,o.mat,o.cust,o.pickup,o.drop,o.pickupAddr||'',o.dropAddr||'',o.projectName||'',o.time||'',o.notes||'',noteStr,truckStr].join(' ').toLowerCase();
+  // every typed word must appear (order-independent) → "lhoist stagecoach" or "kt-9 dirt" both work
+  return orderQuery.split(/[\s,;]+/).filter(Boolean).every(tok=>hay.includes(tok));
 }
 function toggleShort(){showShortOnly=!showShortOnly;if(showShortOnly&&window.innerWidth<=880)goCol('orders');render();}
 function setOrderQuery(v){orderQuery=v.trim().toLowerCase();$('#sclr').style.display=v?'block':'none';renderOrders();}
@@ -752,7 +774,7 @@ function renderRibbon(){
 }
 
 function passFilter(t){
-  if(truckQuery){const hay=(t.num+' '+(t.driver||'')+' '+(t.owner||'')).toLowerCase();if(!hay.includes(truckQuery))return false;}
+  if(truckQuery&&!cityMode){const hay=(t.num+' '+(t.driver||'')+' '+(t.owner||'')).toLowerCase();if(!truckQueryHit(hay))return false;}
   if(filters.fleet!=='all'&&t.fleet!==filters.fleet)return false;
   if(filters.terminal!=='all'&&t.terminal!==filters.terminal)return false;
   const used=assignedSet();
@@ -762,7 +784,7 @@ function passFilter(t){
   if(filters.worked==='yes'&&t.workedYest!==true)return false;    // ran yesterday
   return true;
 }
-function truckCard(t,used){
+function truckCard(t,used,distMi){
   const isUsed=used.has(t.id);
   const st=isUsed?(t.status==='free'?'assigned':t.status):t.status;
   const isSel=selected.has(t.id)||activeTruck===t.id;
@@ -771,6 +793,7 @@ function truckCard(t,used){
     onpointerdown="truckPointerDown(event,'${t.id}')" onclick="clickTruck(event,'${t.id}')">
     <div class="row1"><span class="callbubble ${t.onCall?'':'off'}" title="${t.onCall?'On call':'Off call'}"></span>
       <span class="tnum">${t.num}</span>
+      ${distMi!=null?`<span class="distpin" title="${t('Driving distance from','Distancia desde')} ${cityGeo?cityGeo.name:''} ${t('to its parking spot','a su parking')}">📍 ${Math.round(distMi)} mi</span>`:''}
       ${oc?`<span class="onct" title="On ${oc} order(s) — can still add another">on ${oc}</span>`:''}
       ${t.lat!=null?`<span class="parkpin" onclick="truckParkingNearby(event,'${t.id}')" title="Dónde está parqueada — tap para ver las órdenes/plantas más cercanas de hoy y asignar" style="cursor:pointer;margin-left:4px">📍</span>`:''}
       <span class="star ${t.prio?'on':''}" onclick="togglePrio(event,'${t.id}')" title="Priority truck">★</span></div>
@@ -780,8 +803,29 @@ function truckCard(t,used){
       <span class="idledays">${t.daysIdle!=null?('<b>'+t.daysIdle+'d</b> sin trabajar'):(t.idleBeyond?'<span title="Sin actividad en los últimos 14 días — probablemente sub fuera de rotación">sin actividad 14d+</span>':(t.loads7d!=null?(t.loads7d+'/7d'):'<span title="tap 📆 Días sin trabajar to load multi-day rotation">idle · live</span>'))}</span></div>
   </div>`;
 }
+// trucks currently shown given the active filters/search (city mode = nearest-by-parking, no-GPS excluded)
+function shownTrucks(){
+  let list=trucks.filter(passFilter);
+  if(cityMode&&cityGeo){
+    list=list.filter(t=>t.lat!=null&&t.lon!=null);
+    list.forEach(t=>{ t.__mi=gmMiles(cityGeo.lat,cityGeo.lng,t.lat,t.lon)*1.27; });
+    list.sort((a,b)=>a.__mi-b.__mi);
+  }
+  return list;
+}
 function renderTrucks(){
   const used=assignedSet();
+  // 📍 CITY PROXIMITY MODE — flat list sorted by distance from the typed city to each parking spot
+  if(cityMode&&cityGeo){
+    const near=shownTrucks();
+    $('#truckTag').textContent=near.length+(t(' near',' cerca'));
+    let h=`<div class="cityhdr">📍 ${t('Nearest to','Más cercanas a')} <b>${(cityGeo.name||'').replace(/</g,'&lt;')}</b> · ${near.length} ${t('with GPS','con GPS')} <span class="cityclr" onclick="clearTruckQuery()">✕ ${t('clear','quitar')}</span></div>`;
+    h+= near.length ? near.map(t2=>truckCard(t2,used,t2.__mi)).join('')
+                    : `<div class="empty-al">${t('No trucks with Samsara GPS to rank by distance.','Ninguna troca con GPS de Samsara para ordenar por distancia.')}</div>`;
+    $('#truckList').innerHTML=h;
+    renderBulkBar();
+    return;
+  }
   let list=trucks.filter(passFilter);
   list.sort((a,b)=> sortIdle ? ((b.prio-a.prio)||(b.daysIdle-a.daysIdle)) : a.num.localeCompare(b.num,undefined,{numeric:true}));
   $('#truckTag').textContent=trucks.filter(t=>!used.has(t.id)&&t.status!=='noshow').length+' free';
@@ -807,10 +851,25 @@ function renderTrucks(){
 }
 function renderBulkBar(){
   const b=$('#bulkbar');
+  const shownN=shownTrucks().length;
   if(selectMode&&selected.size){
     b.classList.add('show');
-    b.innerHTML=`<span><b style="color:#fff">${selected.size}</b> trucks selected — tap each order to set its load limit (auto-seq)</span><button class="done" onclick="doneSticky()">Done</button>`;
+    b.innerHTML=`<span><b style="color:#fff">${selected.size}</b> ${t('trucks selected — tap each order to set its load limit (auto-seq)','trocas seleccionadas — toca cada orden para su límite de cargas (auto-seq)')}</span>`
+      +`<button class="selectbtn" style="margin-left:auto" onclick="selectAllTrucks()" title="${t('Select every truck currently shown','Selecciona todas las trocas mostradas')}">✓ ${t('All','Todas')}${shownN?(' ('+shownN+')'):''}</button>`
+      +`<button class="done" onclick="doneSticky()">Done</button>`;
+  } else if(truckQuery && shownN){
+    // a search (or a pasted list) is active → one tap to grab them all
+    b.classList.add('show');
+    b.innerHTML=`<span><b style="color:#fff">${shownN}</b> ${t('match','coinciden')}${truckQueryTokens.length>1?(' · '+truckQueryTokens.length+' '+t('terms','términos')):''}</span>`
+      +`<button class="done" style="margin-left:auto" onclick="selectAllTrucks()">✓ ${t('Select all','Seleccionar todas')} (${shownN})</button>`;
   } else b.classList.remove('show');
+}
+// grab every truck currently shown (after filters/search) into multi-select, ready to assign to an order
+function selectAllTrucks(){
+  selectMode=true; const sb=$('#selBtn'); if(sb)sb.classList.add('on');
+  shownTrucks().forEach(t=>selected.add(t.id));
+  renderTrucks();
+  toast(selected.size+' '+t('trucks selected — tap an order to assign them all','trocas seleccionadas — toca una orden para asignarlas todas'));
 }
 
 function renderOrders(){
@@ -852,7 +911,7 @@ function renderOrders(){
         ? `<small class="nodrv" title="${t('NewMile has no driver on this order yet','NewMile no tiene chofer asignado en esta orden todavía')}">⚠ ${t('no driver','sin chofer')}</small>`
         : (drv?`<small class="drv" title="${t('Driver','Chofer')}: ${drv.replace(/"/g,'&quot;')}${own?' · '+own.replace(/"/g,'&quot;'):''}">👤 ${drv.length>16?drv.slice(0,15)+'…':drv}</small>`
               :(own?`<small style="color:#8b96a5;font-weight:600;font-size:10px;margin-left:4px">${own.length>14?own.slice(0,13)+'…':own}</small>`:''));
-      return `<span class="atruck ${tk.prio?'star':''} ${ns?'noshow':''} ${a.noDriver?'nodrvchip':''}" onclick="editAssign(event,'${o.id}',${i})" title="${(drv||own).replace(/"/g,'&quot;')}${drv&&own?' · '+own.replace(/"/g,'&quot;'):''} — ${t('exact truck sent to NewMile · tap to edit','troca exacta que se manda a NewMile · tap para editar')}">
+      return `<span class="atruck ${tk.prio?'star':''} ${ns?'noshow':''} ${a.noDriver?'nodrvchip':''}" draggable="true" ondragstart="chipDragStart(event,'${o.id}',${i})" ondragend="chipDragEnd(event)" onclick="editAssign(event,'${o.id}',${i})" title="${(drv||own).replace(/"/g,'&quot;')}${drv&&own?' · '+own.replace(/"/g,'&quot;'):''} — ${t('drag to another order to chain it (consecutive sequence) · tap to edit','arrástrala a otra orden para encadenarla (secuencia consecutiva) · tap para editar')}">
         <span class="seq s${a.seq}">${a.seq}</span><span class="an">${tk.num}</span>${sub}
         ${(()=>{const ss=chipStat(a);if(!ss)return '';const st=String(ss.t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');return `<span class="ststat ${ss.cls}" title="${t('Live NewMile status','Estado en vivo de NewMile')}: ${st}">${ss.ic} ${st}</span>`;})()}
         <span class="prog ${progClass(a)}">${progText(a)}</span>
@@ -872,7 +931,7 @@ function renderOrders(){
       <div class="ohead"><span class="obadge ob-verified">✓ En NewMile</span>
         <div class="odisp">${o.disp} · ${String(o.startHr).padStart(2,'0')}:00</div>
         <div class="omat">${o.mat}</div><div class="ocust">${o.cust}</div>
-        <div class="oroute"><span class="gm-pt" onclick="openPinMap(event,'${o.id}','pickup')" title="Open pickup pin in Google Maps">${o.pickup}</span> <span class="arr">→</span> <span class="gm-pt" onclick="openPinMap(event,'${o.id}','drop')" title="Open dropoff pin in Google Maps">${o.drop}</span> <button class="gmap" onclick="openRouteMap(event,'${o.id}')" title="Open the run point-to-point in Google Maps">🗺</button></div>
+        <div class="oroute"><span class="gm-pt ${o.pickupAddr?'hasaddr':(o.pickupLat!=null?'hascoord':'noaddr')}" onclick="openPinMap(event,'${o.id}','pickup')" title="${ptTitle(o,'pickup')}">${o.pickup}</span> <span class="arr">→</span> <span class="gm-pt ${o.dropAddr?'hasaddr':(o.dropLat!=null?'hascoord':'noaddr')}" onclick="openPinMap(event,'${o.id}','drop')" title="${ptTitle(o,'drop')}">${o.drop}</span> <button class="gmap" onclick="openRouteMap(event,'${o.id}')" title="Open the run point-to-point in Google Maps">🗺</button></div>
         <div class="osched">🕖 ${o.time||(String(o.startHr).padStart(2,'0')+':00')} ${estRouteHtml(o)}${(o.nmNotes&&o.nmNotes.length)?` <button class="gmap notei" onclick="openOrderNotes(event,'${o.id}')" title="This order has NewMile notes — tap to read">📝 ${o.nmNotes.length}</button>`:''}${o.projectId?` <button class="gmap crewi" onclick="pullCrew(event,'${o.id}')" title="Pull the trucks that recently ran this project → Planner">⟲ Crew</button>`:''} <button class="gmap nearbyi" onclick="findNearbyDesktop(event,'${o.id}')" title="Find trucks near the pickup that are free/finishing, with Samsara drive time left">🎯 Nearby</button> <button class="gmap readi" onclick="readOrderFromSheet(event,'${o.id}')" title="Read THIS order's trucks/loads from the day's Excel sheet (OneDrive) straight into the order">📄 Excel</button></div>
         ${payHtml(o)}
         ${o.notes?`<div class="onotes"><span class="nl">NM</span> ${o.notes}</div>`:''}</div>
@@ -1089,7 +1148,41 @@ function dragStart(e,id){if(selectMode){e.preventDefault();return;}e.dataTransfe
 function dragEnd(e){e.target.classList.remove('dragging');}
 function dragOver(e,oid){e.preventDefault();$('#ord-'+oid).classList.add('over');}
 function dragLeave(e,oid){$('#ord-'+oid).classList.remove('over');}
-function drop(e,oid){e.preventDefault();$('#ord-'+oid).classList.remove('over');const id=e.dataTransfer.getData('id');if(id)openModal({mode:'single',truckId:id,orderId:oid});}
+function drop(e,oid){
+  e.preventDefault();$('#ord-'+oid).classList.remove('over');
+  // (1) a truck CHIP dragged from another order → add it here with the next consecutive day sequence
+  let ct=_chipDrag?_chipDrag.truckId:'';
+  if(ct===''||ct==null){ try{ ct=e.dataTransfer.getData('chiptruck'); }catch(err){} }
+  if(ct!==''&&ct!=null){ const from=_chipDrag?_chipDrag.fromOid:null; _chipDrag=null; dropTruckOnOrder(ct,oid,from); return; }
+  // (2) a truck dragged from the roster rail → open the assign modal (existing behavior)
+  const id=e.dataTransfer.getData('id'); if(id)openModal({mode:'single',truckId:id,orderId:oid});
+}
+/* 🔗 Drag an ASSIGNED truck chip from one order onto another → it gets added there with the next
+   consecutive sequence (same truck runs this order, then that one). It STAYS on the source order;
+   the real NewMile ordinals are still resolved day-wide by start time at sync (reconcileSequences). */
+let _chipDrag=null;
+function chipDragStart(e,fromOid,idx){
+  try{ if(e.stopPropagation)e.stopPropagation(); const o=O(fromOid); const a=o&&o.assigns[idx]; if(!a)return;
+    _chipDrag={truckId:a.truck, fromOid:fromOid};
+    e.dataTransfer.effectAllowed='copy';
+    e.dataTransfer.setData('chiptruck', String(a.truck));
+    const tk=T(a.truck); if(tk) e.dataTransfer.setData('text/plain', tk.num);
+    if(e.currentTarget&&e.currentTarget.classList) e.currentTarget.classList.add('dragging');
+  }catch(err){}
+}
+function chipDragEnd(e){ _chipDrag=null; if(e.currentTarget&&e.currentTarget.classList)e.currentTarget.classList.remove('dragging'); document.querySelectorAll('.order.over').forEach(el=>el.classList.remove('over')); document.querySelectorAll('.atruck.dragging').forEach(el=>el.classList.remove('dragging')); }
+function dropTruckOnOrder(truckId,oid,fromOid){
+  const o=O(oid); if(!o){toast('Order not found',true);return;}
+  if(oid===fromOid) return;                                  // dropped back on its own order → nothing to do
+  const tk=T(truckId); const nm=tk?tk.num:truckId;
+  if(o.assigns.some(a=>a.truck===truckId)){ toast(nm+' '+t('is already on this order','ya está en esta orden')); return; }
+  const seq=truckOrderCount(truckId)+1;                      // consecutive across the day
+  o.assigns.push({truck:truckId, ll:'open', seq:seq, done:0});
+  if(tk&&tk.status==='free') tk.status='assigned';
+  if(o.finalized) o.modified=true;
+  markDraft(oid); render();
+  toast('🔗 '+nm+' → '+o.disp+' · '+t('sequence','secuencia')+' '+seq);
+}
 function togglePrio(e,id){e.stopPropagation();T(id).prio=!T(id).prio;render();}
 function toggleSelectMode(){selectMode=!selectMode;$('#selBtn').classList.toggle('on',selectMode);if(!selectMode){selected.clear();}activeTruck=null;renderTrucks();}
 function doneSticky(){selected.clear();renderTrucks();toast('Multi-assign done');}
@@ -1284,23 +1377,26 @@ window.__getSeqIntent=function(){
    AGGSHIP and Central Texas (CT) are COMBINED into one number per standing request. */
 /* ADAPTIVE report groups — derived from whatever fleets THIS market's roster has */
 function rptGroupOf(t){
-  // Reports collapse to exactly THREE buckets per Juan: CKJ (the owned fleet), CACTUS, and
-  // SUBHAULERS. AGGSHIP/Central Texas (AGGCT) and CKJ-affiliated subs (CKJ_SUB) all roll up
-  // into SUBHAULERS — he only wants those three fleet lines. (Filters keep their own granular
-  // chips via fltGroupOf — this normalization is report-only.)
+  // FOUR report buckets per Juan: CACTUS (fleet 5) · KT (the Kennemer/CKJ owned trucks, fleet 6 or
+  // KT-numbered) · CKJ (CKJ-affiliated subhaulers, owner "- CKJ") · SUBHAULERS (everything with no
+  // Cactus/CKJ fleet — AGGSHIP/Central Texas and all other subs). Report-only; filters keep their chips.
+  const num=String(t.num||'').trim().toUpperCase();
   const g=String(t.group||'').toUpperCase();
-  if(t.fleet==='ckj' || g==='KT' || g==='CKJ') return 'KT';
   if(t.fleet==='cactus' || g==='CE' || g==='CACTUS') return 'CE';
+  const isKtNum = num.indexOf('KT')>=0;                 // truck number carries "KT" → a KT truck
+  const isCkj = (t.fleet==='ckj' || g==='KT' || g==='CKJ' || g==='CKJ_SUB' || g==='CKJ SUB' || isKtNum);
+  if(isCkj) return isKtNum ? 'KT' : 'CKJ';              // CKJ fleet split by number: KT vs CKJ (non-KT)
   return 'SUB';
 }
-// user-facing label for a group KEY. Internal keys stay (KT = Kennemer fleet-6 key) but Juan's
-// fleet-6 IS the whole CKJ fleet, so show "CKJ" — "KT" alone reads as only the KT-numbered trucks.
-function grpLabel(g){ return g==='KT'?'CKJ':g==='CE'?'CACTUS':g==='SUB'?'SUBHAULERS':g; }
+// user-facing label. Report buckets: KT / CKJ / CACTUS / SUBHAULERS. Also tidies the filter chips
+// (which pass raw group names) — AGG+CT etc. stay as-is so the filter keeps its granularity.
+function grpLabel(g){ const u=String(g).toUpperCase();
+  return u==='KT'?'KT':(u==='CE'||u==='CACTUS')?'CACTUS':(u==='CKJ'||u==='CKJ_SUB'||u==='CKJ SUB')?'CKJ':(u==='SUB'||u==='SUBHAULERS')?'SUBHAULERS':g; }
 function rptGroups(){
   const c={}; trucks.forEach(t=>{const g=rptGroupOf(t);c[g]=(c[g]||0)+1;});
-  const k=Object.keys(c).sort((a,b)=>c[b]-c[a]);
-  const i=k.indexOf('SUB'); if(i>=0){k.splice(i,1);k.push('SUB');}
-  return k;
+  // stable order: CACTUS · KT · CKJ · SUBHAULERS (any unexpected key after, SUB always last)
+  const ORDER=['CE','KT','CKJ','SUB'];
+  return Object.keys(c).sort((a,b)=>{const ia=ORDER.indexOf(a),ib=ORDER.indexOf(b);return (ia<0?98:ia)-(ib<0?98:ib);});
 }
 function rptZero(){const o={};rptGroups().forEach(g=>o[g]=0);return o;}
 /* ===== interactive report plumbing — both AM & PM render clickable HTML now =====
@@ -1428,6 +1524,18 @@ function openAMReport(){
 /* ===== Google Maps links — open the run point-to-point in the system browser =====
    Prefers the REAL street address from NewMile's saved location; else exact coords;
    last resort the location name + ", TX". */
+// hover title for a pickup/drop chip: shows the REAL NewMile address when we have one (saved org
+// location or geocoded), else a clear flag — so it's obvious whether the Maps pin is exact or a name guess.
+function ptTitle(o,which){
+  const addr=which==='drop'?o.dropAddr:o.pickupAddr;
+  const lat =which==='drop'?o.dropLat :o.pickupLat;
+  const name=which==='drop'?o.drop    :o.pickup;
+  let s;
+  if(addr&&addr.trim()) s='📍 '+addr.trim()+' · '+t('tap to open this exact address in Maps','tap para abrir esta dirección exacta en Maps');
+  else if(lat!=null)    s='📍 '+(name||'')+' · '+t('exact coordinates (no street address saved in NewMile)','coordenadas exactas (sin dirección guardada en NewMile)');
+  else                  s='⚠ '+(name||'')+' · '+t('name only — no saved address/coords in NewMile, Maps will search the name','solo el nombre — sin dirección/coords en NewMile, Maps busca el nombre');
+  return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
 function _gmPoint(lat,lng,name,addr){
   if(addr&&addr.trim()) return encodeURIComponent(addr.trim());   // real NewMile address
   if(lat!=null) return lat+','+lng;
@@ -1637,13 +1745,11 @@ function planGroup(t){
   if(!t) return 'sub';
   if(t.fleet==='cactus') return 'cac';
   if(t.fleet==='ckj'){ return t.terminal==='Whitewright'?'ww':t.terminal==='Rhome'?'rho':t.terminal==='Powderly'?'pow':'sub'; }
-  if((t.owner||'').toUpperCase().includes('AGG')) return 'agg';
-  return 'sub';
+  return 'sub';   // AGGSHIP and every other subhauler → SUB
 }
 function planGroupByNum(num){
   const n=(num||'').trim().toUpperCase();
   if(n.startsWith('KT-')){ return n.endsWith(' W')?'ww':n.endsWith(' R')?'rho':n.endsWith(' P')?'pow':'sub'; }
-  if(/^AGG/i.test(n)) return 'agg';
   if(/^\d+$/.test(n)) return 'cac';
   return 'sub';
 }
@@ -1799,7 +1905,7 @@ async function readOrderFromSheet(e,oid){
     if(so&&so._warn&&so._warn.length){ console.warn('Excel match — VERIFY:\n'+so._warn.join('\n')); alert('⚠ Revisa material/pickup en '+(o.disp||'la orden')+':\n\n'+so._warn.join('\n')); }
   }catch(err){ console.error('readOrderFromSheet',err); toast('Read error: '+(err.message||err),true); }
 }
-const PL_GROUPS=[['ww','WW'],['rho','RHO'],['pow','POW'],['cac','CAC'],['agg','AGG'],['sub','SUB']];
+const PL_GROUPS=[['ww','WW'],['rho','RHO'],['pow','POW'],['cac','CAC'],['sub','SUB']];   // AGG folded into SUB (subhaulers)
 function renderPlanner(){
   if(!plannerOpen) return;
   planInitDraft();
@@ -2014,10 +2120,39 @@ function renderPlanDetail(){
       +'<button class="pd-add" onclick="planAddPair(\''+plFocus+'\')">+ truck</button>'
     +'</div>';
 }
-/* truck rail search */
+/* truck rail search — three behaviors from one box:
+   1) normal substring search (#/driver/owner)
+   2) PASTE A LIST (space/comma separated) → any truck matching ANY term shows
+   3) TYPE A CITY (e.g. "Tyler", "Terrell") that matches no truck → geocodes it and shows the
+      trucks NEAREST to that city by their Samsara parking position (no-GPS trucks excluded). */
 let truckQuery='';
-function setTruckQuery(v){truckQuery=v.trim().toLowerCase();const c=document.getElementById('tsclr');if(c)c.style.display=v?'block':'none';renderTrucks();}
-function clearTruckQuery(){truckQuery='';const i=document.getElementById('truckSearch');if(i)i.value='';const c=document.getElementById('tsclr');if(c)c.style.display='none';renderTrucks();}
+let truckQueryTokens=[];
+let cityMode=false, cityGeo=null, _cityTimer=null;
+function setTruckQuery(v){
+  truckQuery=String(v||'').trim().toLowerCase();
+  truckQueryTokens=truckQuery.split(/[\s,;]+/).filter(Boolean);
+  const c=document.getElementById('tsclr'); if(c)c.style.display=v?'block':'none';
+  // leaving city mode the moment the text changes; we re-enter it only if the geocode below succeeds
+  cityMode=false; cityGeo=null;
+  renderTrucks();
+  if(_cityTimer)clearTimeout(_cityTimer);
+  // a single alphabetic word (≥3 chars) that matches NO truck → try it as a place name
+  if(truckQuery && truckQueryTokens.length===1 && truckQuery.length>=3 && !/\d/.test(truckQuery)){
+    const txtHit=trucks.some(t=>((t.num+' '+(t.driver||'')+' '+(t.owner||'')).toLowerCase()).includes(truckQuery));
+    if(!txtHit){ const q=truckQuery; _cityTimer=setTimeout(()=>geocodeCity(q),450); }
+  }
+}
+function clearTruckQuery(){truckQuery='';truckQueryTokens=[];cityMode=false;cityGeo=null;const i=document.getElementById('truckSearch');if(i)i.value='';const c=document.getElementById('tsclr');if(c)c.style.display='none';renderTrucks();}
+function truckQueryHit(hay){ if(!truckQuery) return true; if(truckQueryTokens.length>1) return truckQueryTokens.some(tok=>hay.includes(tok)); return hay.includes(truckQuery); }
+/* geocode the typed place via the shell bridge, then show nearest-by-parking trucks */
+var _geoReqs={}, _geoSeq=0;
+window.__geoResult=function(id,res){ var cb=_geoReqs[id]; if(cb){ delete _geoReqs[id]; cb(res); } };
+function bridgeGeocode(q){ return new Promise(function(res){ var id='geo'+(++_geoSeq); _geoReqs[id]=res; try{ parent.postMessage({type:'geocode',reqId:id,q:q},'*'); }catch(e){ res(null); } setTimeout(function(){ if(_geoReqs[id]){ delete _geoReqs[id]; res(null); } },9000); }); }
+async function geocodeCity(q){
+  const g=await bridgeGeocode(q);
+  if(truckQuery!==q) return;                 // user kept typing → ignore stale result
+  if(g && g.lat!=null){ cityGeo={name:q,lat:g.lat,lng:g.lng}; cityMode=true; renderTrucks(); }
+}
 
 function plannerDateISO(){
   // dIdx 4 == today. Use the LIVE board day (from NewMile) when loaded, else the real local today.
@@ -2073,6 +2208,13 @@ function exportPlan(){
 function commitPlanner(){
   const oids=plOrderedOids();        // row order top→bottom decides per-truck sequences
   if(!oids.length){toast('No orders selected',true);return;}
+  const committing=new Set(oids);
+  // base per-truck sequence = how many OTHER orders (the ones we are NOT rebuilding now) the truck
+  // already runs today. We must NOT count the committed orders' current assigns — otherwise a truck
+  // already on one of them jumps to seq 2 and its seq-1 chip gets wiped. perTruck continues the
+  // count within this batch so a truck on two planned orders gets seq 1 then 2.
+  const baseCount={};
+  orders.forEach(o=>{ if(committing.has(o.id)) return; o.assigns.forEach(a=>{ baseCount[a.truck]=(baseCount[a.truck]||0)+1; }); });
   let totAssigns=0, touched=0; const perTruck={};
   oids.forEach(oid=>{
     const o=O(oid); const pairs=(planDraft[oid]||[]).filter(p=>(p.num||'').trim());
@@ -2081,11 +2223,11 @@ function commitPlanner(){
     const newAssigns=[];
     pairs.forEach(p=>{
       const id=planResolveTruck(p.num); if(!id) return;
-      if(newAssigns.some(a=>a.truck===id)) return;
-      const baseSeq=(perTruck[id]!=null?perTruck[id]:truckOrderCount(id));
-      const seq=baseSeq+1; perTruck[id]=seq;
+      if(newAssigns.some(a=>a.truck===id)) return;   // never list the same truck twice on one order
+      const cur=(perTruck[id]!=null?perTruck[id]:(baseCount[id]||0));
+      const seq=cur+1; perTruck[id]=seq;
       const ll=(typeof p.lds==='number'&&p.lds>0)?p.lds:'open';   // no number typed → ∞ open, never an invented limit
-      // keep the pre-loaded assignment id so the push updates that exact row instead of duplicating it
+      // keep the pre-loaded assignment id so the push UPDATES that exact row instead of duplicating it
       newAssigns.push({truck:id,ll,seq,done:prevDone[p.num.trim().toLowerCase()]||0,aid:prevAid[p.num.trim().toLowerCase()]});
       const t=T(id); if(t&&t.status==='free') t.status='assigned'; totAssigns++;
     });
@@ -2268,6 +2410,8 @@ setView('board');
   .gmap.crewi{border-color:#5a95f966;color:#7CC6FF}
   .gm-pt{cursor:pointer;border-bottom:1px dotted #3a4763}
   .gm-pt:hover{color:#5a95f9;border-bottom-color:#5a95f9}
+  .gm-pt.hasaddr{border-bottom-color:#4f9b6e}        /* real NewMile street address */
+  .gm-pt.noaddr{border-bottom:1px dashed #e0a04b}     /* name only — no saved address/coords */
   .rmi{font-size:11px;color:#5a95f9;margin-left:8px;white-space:nowrap}
   .rmi.rmiwarn{color:#e0a04b;cursor:help}
   .qedit{cursor:pointer;opacity:.55;margin-left:3px;font-size:11px}
@@ -2328,6 +2472,7 @@ setView('board');
   .tabscrim.open{display:flex}
   .tabpanel{width:min(1150px,95vw);height:min(780px,90vh);background:#202b38;border:1px solid var(--line);
     border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.55)}
+  .tabpanel.maximized{width:98vw;height:96vh;border-radius:10px}   /* ⛶ fill the work area */
   .tabpanel>header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);background:#1a222c;flex:none}
   .tabpanel>header b{font-size:14px;white-space:nowrap}
   .tabpanel>header .thead-tools{margin-left:auto;display:flex;gap:7px;align-items:center;min-width:0;flex-wrap:wrap;justify-content:flex-end}
@@ -2815,7 +2960,7 @@ setView('board');
   filters.sam=filters.sam||'all';
   window.setSam=function(k){ filters.sam=(filters.sam===k?'all':k); renderFilters(); renderTrucks(); };
   window.passFilter=function(t){
-    if(truckQuery){ var hay=(t.num+' '+(t.driver||'')+' '+(t.owner||'')).toLowerCase(); if(!hay.includes(truckQuery)) return false; }
+    if(truckQuery&&!cityMode){ var hay=(t.num+' '+(t.driver||'')+' '+(t.owner||'')).toLowerCase(); if(!truckQueryHit(hay)) return false; }
     if(filters.fleet!=='all' && fltGroupOf(t)!==filters.fleet) return false;
     if(filters.terminal!=='all' && t.terminal!==filters.terminal) return false;
     var used=assignedSet();
@@ -3100,18 +3245,35 @@ setView('board');
         +'<button class="gmap" onclick="msgZoom(\'-\')" title="Zoom messaging out">➖</button>'
         +'<button class="gmap" onclick="msgZoom(\'+\')" title="Zoom messaging in">➕</button>'
         +'<button class="gmap" onclick="msgZoom(\'0\')" title="Reset messaging zoom">100%</button>'
+        +'<button class="gmap" id="msgMaxBtn" onclick="msgMax()" title="Maximize / restore the messages window">⛶</button>'
         +'<button class="gmap" onclick="wvMsgReload()">↻</button>';
       $id('msgTrChk').addEventListener('change',function(){
         localStorage.setItem('mab_translate',this.checked?'1':'0');
         try{ parent.postMessage({type:'msgtrans',on:this.checked},'*'); }catch(e){}
       });
     }
+    msgApplyMax();               // restore last maximize choice before docking
     setTimeout(function(){ msgDock(true); },80);
     msgStopReminder();           // opening the tab acknowledges the alert
     var bdg=$id('msgBadge'); if(bdg){ bdg.classList.remove('show'); }
   };
   window.wvMsgReload=function(){ try{ parent.postMessage({type:'msgreload'},'*'); }catch(e){} };
   window.msgZoom=function(dir){ try{ parent.postMessage({type:'msgzoom',dir:dir},'*'); }catch(e){} };
+  /* ⛶ maximize / restore the messages window to fill the work area; the docked webview follows
+     the panel's new size (we just re-dock after the CSS resize). Remembered across opens. */
+  function msgApplyMax(){
+    var p=$id('tab-msg'); var panel=p&&p.querySelector('.tabpanel'); if(!panel) return;
+    var on=(localStorage.getItem('mab_msg_max')||'0')==='1';
+    panel.classList.toggle('maximized',on);
+    var btn=$id('msgMaxBtn'); if(btn) btn.textContent=on?'🗗':'⛶';
+  }
+  window.msgMax=function(){
+    var p=$id('tab-msg'); var panel=p&&p.querySelector('.tabpanel'); if(!panel) return;
+    var on=panel.classList.toggle('maximized');
+    try{ localStorage.setItem('mab_msg_max',on?'1':'0'); }catch(e){}
+    var btn=$id('msgMaxBtn'); if(btn) btn.textContent=on?'🗗':'⛶';
+    setTimeout(function(){ msgDock(true); },70);   // re-dock the webview to the resized panel
+  };
   /* closeTab is defined later by the tab scaffold — wrap it at init time (see init()) */
   function msgWrapCloseTab(){
     var orig=window.closeTab;

@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('newmile', {
   samsara: () => ipcRenderer.invoke('nm:samsara'),
   camera: (truckNum) => ipcRenderer.invoke('nm:camera', truckNum),
   route: (payload) => ipcRenderer.invoke('nm:route', payload),
+  geocode: (q) => ipcRenderer.invoke('nm:geocode', q),
   directory: () => ipcRenderer.invoke('nm:directory'),
   setOnCall: (list) => ipcRenderer.invoke('nm:setOnCall', list),
   drivers: () => ipcRenderer.invoke('nm:drivers'),

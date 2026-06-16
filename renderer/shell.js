@@ -314,6 +314,11 @@ window.addEventListener('DOMContentLoaded', async ()=>{
       catch(err){ board().__hosResult && board().__hosResult(e.data.reqId,{error:String(err&&err.message||err)}); }
       return;
     }
+    if(e.data.type==='geocode' && e.data.reqId){
+      try{ const res=await window.newmile.geocode(e.data.q); board().__geoResult && board().__geoResult(e.data.reqId,res); }
+      catch(err){ board().__geoResult && board().__geoResult(e.data.reqId,null); }
+      return;
+    }
     if(e.data.type==='calc' && e.data.reqId){
       try{ const res=await window.newmile.calc(e.data.name,e.data.args); board().__calcResult && board().__calcResult(e.data.reqId,res); }
       catch(err){ board().__calcResult && board().__calcResult(e.data.reqId,{error:String(err&&err.message||err)}); }
