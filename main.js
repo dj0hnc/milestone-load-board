@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { NewMileClient } = require('./mcp-client');
 const fuel = require('./fuel');
+const ai = require('./ai');
 
 let win, client;
 const recentLogs = [];
@@ -23,7 +24,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1480, height: 940, minWidth: 1100, minHeight: 700,
     backgroundColor: '#0e1422',
-    title: 'Milestone Load Board',
+    title: 'Milestone OS 1.0 (beta)',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -126,7 +127,9 @@ function applySettings(cfg, s) {
     cfg.samsara.tokens = s.samsaraTokens.filter(t => t && t.token);
   }
   if (s.githubToken) { cfg.github = cfg.github || {}; cfg.github.token = s.githubToken; }
+  if (s.aiKey != null) cfg.aiKey = s.aiKey;
   if (s.market) cfg.marketName = s.market;
+  try { ai.configure({ key: cfg.aiKey || '' }); } catch (e) {}   // 🤖 copilot dormant until a key is set
   return cfg;
 }
 ipcMain.handle('nm:getSettings', () => {
@@ -136,9 +139,16 @@ ipcMain.handle('nm:getSettings', () => {
     samsaraTokens: (s.samsaraTokens || []).map(t => ({ name: t.name || '', token: t.token || '' })),
     bundledTokens: (((loadConfig().samsara || {}).tokens) || []).map(t => ({ name: t.name, has: !!t.token })),
     githubToken: s.githubToken || '',
+    aiKey: s.aiKey || '',
     adminHash: s.adminHash || ''        // empty = default code 0605 (renderer hashes & compares)
   };
 });
+// 🤖 AI copilot — read-only chat over the live board. Renderer passes {messages, context}.
+ipcMain.handle('nm:ai', async (_e, payload) => {
+  try { const p = payload || {}; return await ai.chat(p.messages || [], p.context || ''); }
+  catch (e) { return { error: e.message || String(e) }; }
+});
+ipcMain.handle('nm:aiStatus', () => ({ ready: ai.ready(), model: ai.model() }));
 ipcMain.handle('nm:saveSettings', (_e, s) => {
   try {
     fs.writeFileSync(settingsPath(), JSON.stringify(s || {}, null, 2));
@@ -183,8 +193,13 @@ app.whenReady().then(() => {
     setInterval(fuelTick, 60 * 60 * 1000);
   } catch (e) { pushLog('fuel configure failed: ' + e.message); }
   createWindow();
-  setTimeout(checkForUpdate, 30 * 1000);                 // first check shortly after launch
-  setInterval(checkForUpdate, 4 * 60 * 60 * 1000);       // then every 4 hours
+  // AUTO-update check runs ONLY when explicitly enabled (github.autoUpdate === true). Off by default
+  // so nobody auto-pulls — Juan distributes the exe manually, then re-enables. The manual "Check for
+  // updates" button (nm:checkUpdate) still works regardless.
+  if (appCfg && appCfg.github && appCfg.github.autoUpdate === true) {
+    setTimeout(checkForUpdate, 30 * 1000);                 // first check shortly after launch
+    setInterval(checkForUpdate, 4 * 60 * 60 * 1000);       // then every 4 hours
+  } else { pushLog('auto-updater: OFF (manual check only) — github.autoUpdate not enabled'); }
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

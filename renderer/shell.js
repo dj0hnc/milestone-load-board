@@ -9,6 +9,9 @@
 const $ = s => document.querySelector(s);
 const board = () => document.getElementById('board').contentWindow;
 function toast(t){ const m=$('#msg'); m.textContent=t; m.classList.add('show'); clearTimeout(m._t); m._t=setTimeout(()=>m.classList.remove('show'),3000); }
+/* Miley lives in the board's tab row (the animated 🤝 button) — see board.html addTopTabs.
+   The shell just tells him to "think" while we sync NewMile, via board().__mileyThinking(). */
+function mileyThink(on){ try{ board().__mileyThinking && board().__mileyThinking(!!on); }catch(e){} }
 
 /* ---------- status ---------- */
 function setStatus(st){
@@ -173,6 +176,9 @@ async function renderAdmin(){
     +'<h4>⬇ Auto-updater token (GitHub)</h4>'
     +'<div class="hint">Fine-grained PAT, Contents: Read-only, repo milestone-load-board. Lets the app announce new versions.</div>'
     +'<input id="admGh" type="password" placeholder="github_pat_…" value="'+(s.githubToken||'').replace(/"/g,'&quot;')+'">'
+    +'<h4>🤖 AI Copilot key (Anthropic)</h4>'
+    +'<div class="hint">Anthropic API key (console.anthropic.com). Turns on the 🤖 Copilot tab — read-only chat over your live board. Pay-per-use. Leave empty to keep it off.</div>'
+    +'<input id="admAi" type="password" placeholder="sk-ant-…" value="'+(s.aiKey||'').replace(/"/g,'&quot;')+'">'
     +'<h4>🔑 Change admin code</h4>'
     +'<input id="admNewCode" type="password" placeholder="New code (leave empty to keep current)">'
     +'<button class="warn" id="admSave" style="width:100%;margin-top:8px">💾 Save settings</button>'
@@ -183,7 +189,7 @@ async function renderAdmin(){
     const toks=Array.from(document.querySelectorAll('#admToks .tokrow')).map(r=>({
       name:r.querySelector('.tname').value.trim(), token:r.querySelector('.ttok').value.trim()
     })).filter(t=>t.name||t.token);
-    const out={ market:$('#admMarket').value.trim(), samsaraTokens:toks, githubToken:$('#admGh').value.trim(), adminHash:s.adminHash||'' };
+    const out={ market:$('#admMarket').value.trim(), samsaraTokens:toks, githubToken:$('#admGh').value.trim(), aiKey:$('#admAi').value.trim(), adminHash:s.adminHash||'' };
     const nc=$('#admNewCode').value.trim();
     if(nc) out.adminHash=await sha256(nc);
     const res=await window.newmile.saveSettings(out);
@@ -317,6 +323,11 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     if(e.data.type==='geocode' && e.data.reqId){
       try{ const res=await window.newmile.geocode(e.data.q); board().__geoResult && board().__geoResult(e.data.reqId,res); }
       catch(err){ board().__geoResult && board().__geoResult(e.data.reqId,null); }
+      return;
+    }
+    if(e.data.type==='ai' && e.data.reqId){
+      try{ const res=await window.newmile.ai({messages:e.data.messages,context:e.data.context}); board().__aiResult && board().__aiResult(e.data.reqId,res); }
+      catch(err){ board().__aiResult && board().__aiResult(e.data.reqId,{error:String(err&&err.message||err)}); }
       return;
     }
     if(e.data.type==='calc' && e.data.reqId){
@@ -567,6 +578,7 @@ async function autoSync(){
 async function refreshDay(){
   const date=$('#day').value; if(!date) return;
   $('#dot').className='dot busy'; $('#stat').textContent='Syncing '+date+' with NewMile…';
+  mileyThink(true);
   try{
     await autoSync();   // finalized board changes go OUT first, then we pull the truth back
     const all=await window.newmile.refreshAll(date);   // Y/T/Tm orders + roster + rotation + live assignments
@@ -626,7 +638,8 @@ async function refreshDay(){
     setStatus(await window.newmile.status());
     if(autoSecs) autoLeft=autoSecs;
     toast('Synced '+date+' · today '+payload.dayMap[4].length+' / tomorrow '+payload.dayMap[5].length+' orders · '+liveAsg+' live assignments · rotation from '+all.priorDay);
-  }catch(e){ setStatus(await window.newmile.status()); toast('Refresh failed: '+(e.message||e)); }
+    mileyThink(false);
+  }catch(e){ setStatus(await window.newmile.status()); mileyThink(false); toast('Refresh failed: '+(e.message||e)); }
 }
 
 /* ---------- mappers (NewMile shape -> board shape) ---------- */

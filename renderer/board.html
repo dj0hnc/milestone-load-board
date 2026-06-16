@@ -455,6 +455,7 @@ input{font-family:inherit}
 
 
 </style>
+<script src="newmile-fan.js"></script>
 </head>
 <body>
 
@@ -2816,7 +2817,9 @@ setView('board');
         '<div class="enh-iss" id="enhIssues"></div>'+
         '<div class="enh-foot">Reads NewMile rotation · rules: contracted_rate · ATX Bluewing excluded · confirm-before-write</div>'+
       '</div>';
-    document.body.appendChild(p);
+    mileyEnsureCss();                       // ensures the "hidden until it's inside Miley" rule is live
+    try{ mileyDrawerEl(); }catch(e){}       // build the drawer skeleton so #mdDispatch exists
+    ($id('mdDispatch')||document.body).appendChild(p);   // Smart Dispatch now lives INSIDE Miley's drawer
     $id('enhHead').addEventListener('click',function(){ p.classList.toggle('min'); $id('enhChev').textContent=p.classList.contains('min')?'▴':'▾'; });
     $id('enhAuto').addEventListener('click',function(e){e.stopPropagation();autoPlan();});
     $id('enhReroll').addEventListener('click',function(e){e.stopPropagation();autoPlan(true);});
@@ -4094,10 +4097,185 @@ setView('board');
     else openCamOverlay(num,null,(res&&res.error)||'Camera did not answer');
   };
 
+  /* ---------- 🤝 Miley — animated bilingual dispatch buddy (read-only Claude over the live board).
+       Tab key stays 'copilot' (bridge contract). Mascot = inline SVG "Capataz" (gold stone head in a
+       hard-hat) animated with CSS keyframe states. Dormant until the Anthropic key is set. ---------- */
+  var aiMsgs=[], aiBusy=false, aiDraft='', _aiReqs={}, _aiSeq=0;
+  function aiEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  window.__aiResult=function(id,res){ var cb=_aiReqs[id]; if(cb){ delete _aiReqs[id]; cb(res); } };
+  function bridgeAi(messages,context){ return new Promise(function(res){ var id='ai'+(++_aiSeq); _aiReqs[id]=res; try{ parent.postMessage({type:'ai',reqId:id,messages:messages,context:context},'*'); }catch(e){ res({error:'bridge unavailable'}); } setTimeout(function(){ if(_aiReqs[id]){ delete _aiReqs[id]; res({error:'timeout'}); } },60000); }); }
+  function aiCtx(){
+    var os=orders.map(function(o){
+      var tks=(o.assigns||[]).map(function(a){var tk=T(a.truck);return tk?{num:tk.num,driver:a.driver||tk.driver||'',seq:a.seq,rolling:tk.status==='rolling'}:null;}).filter(Boolean);
+      return {disp:o.disp,cust:o.cust,mat:o.mat,unit:o.unit,ordered:o.target,delivered:(o.deliv||o.loadsDone||0),covered:isCovered(o),needLoads:Math.max(0,loadsToCover(o)),start:(o.time||(o.startHr+':00')),pickup:o.pickup,drop:o.drop,completed:!!o.completed,trucks:tks};
+    });
+    var byGrp={}; trucks.forEach(function(tk){ var g=grpLabel(rptGroupOf(tk)); (byGrp[g]=byGrp[g]||{total:0,free:0,rolling:0}); byGrp[g].total++; if(tk.status==='rolling')byGrp[g].rolling++; else if(tk.status!=='assigned')byGrp[g].free++; });
+    return JSON.stringify({day:((typeof days!=='undefined'&&days[dIdx])||'today'),date:(window.__boardToday||''),orders:os,fleetCounts:byGrp,truckTotal:trucks.length});
+  }
+  /* ----- Capataz mascot v2: the 3-stone Milestone logo brought to life (gold body + taupe/grey
+     feet) in a WHITE hard-hat with the REAL newmile fan (bundled PNG via window.__NM_FAN) on the
+     front. Inline SVG + CSS keyframe states (no libs, offline-safe). ----- */
+  function mileyEnsureCss(){
+    if($id('mileyCss')) return;
+    var st=document.createElement('style'); st.id='mileyCss';
+    st.textContent=`
+    #mileyStage{display:flex;align-items:center;gap:14px;padding:4px 2px 12px;border-bottom:1px solid var(--line);margin-bottom:10px}
+    #mileySvg{width:108px;height:114px;flex:none;overflow:visible}
+    .miley .m-char,.miley .m-eyes,.miley .m-mouth{transform-box:fill-box;transform-origin:center}
+    .miley .m-sh{fill:rgba(0,0,0,.30)}
+    .miley .m-gold{fill:#C49A4B} .miley .m-tan{fill:#97826A} .miley .m-grey{fill:#56585C}
+    .miley .m-brow{fill:none;stroke:#3a2f1c;stroke-width:5;stroke-linecap:round}
+    .miley .m-eyew{fill:#fff} .miley .m-pupil{fill:#26211a}
+    .miley .m-mouth{fill:none;stroke:#3a2f1c;stroke-width:5;stroke-linecap:round}
+    .miley .m-hatd{fill:#fff;stroke:#cfd4db;stroke-width:1.5} .miley .m-hatb{fill:#fff;stroke:#cfd4db;stroke-width:1.5}
+    .miley .m-arml,.miley .m-armr{transform-box:fill-box}
+    .miley .m-arml{transform-origin:88% 8%;animation:mArmL 3.4s ease-in-out infinite} .miley .m-armr{transform-origin:12% 8%;animation:mArmR 3.4s ease-in-out infinite}
+    @keyframes mArmL{0%,100%{transform:rotate(0)}50%{transform:rotate(-7deg)}} @keyframes mArmR{0%,100%{transform:rotate(0)}50%{transform:rotate(7deg)}}
+    .miley.celebrate .m-armr{animation:mWave .4s ease-in-out infinite} @keyframes mWave{0%,100%{transform:rotate(-10deg)}50%{transform:rotate(-46deg)}}
+    .miley .m-think,.miley .m-spark{opacity:0}
+    .miley .m-think circle{fill:#9fb2c9} .miley .m-spark text{fill:#ffd766;font-size:20px;font-weight:700}
+    .miley .m-char{animation:mBob 3.4s ease-in-out infinite}
+    .miley .m-eyes{animation:mBlink 4.8s infinite}
+    @keyframes mBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+    @keyframes mBlink{0%,91%,100%{transform:scaleY(1)}95.5%{transform:scaleY(.12)}}
+    .miley.thinking .m-char{animation:mWobble 1.6s ease-in-out infinite}
+    .miley.thinking .m-pupil{transform:translateY(-3px)}
+    .miley.thinking .m-think{opacity:1;animation:mDots 1.4s infinite}
+    @keyframes mWobble{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}
+    @keyframes mDots{0%,100%{opacity:.25}50%{opacity:1}}
+    .miley.talking .m-mouth{animation:mTalk .3s ease-in-out infinite}
+    @keyframes mTalk{0%,100%{transform:scaleY(1)}50%{transform:scaleY(2.1)}}
+    .miley.alert .m-char{animation:mShake .4s ease-in-out 2}
+    .miley.alert .m-gold{fill:#cf8a2f}
+    @keyframes mShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+    .miley.celebrate .m-char{animation:mBounce .5s ease 2}
+    .miley.celebrate .m-spark{opacity:1;animation:mSpark .6s ease infinite}
+    @keyframes mBounce{0%,100%{transform:translateY(0)}40%{transform:translateY(-13px)}}
+    @keyframes mSpark{0%,100%{opacity:.3}50%{opacity:1}}
+    /* ---- Smart Dispatch drawer ("sale de la pared") — home of Miley ---- */
+    #mileyDrawerScrim{position:fixed;inset:0;background:rgba(4,9,18,.42);backdrop-filter:blur(1.5px);z-index:79;opacity:0;pointer-events:none;transition:opacity .28s}
+    #mileyDrawerScrim.open{opacity:1;pointer-events:auto}
+    #mileyDrawer{position:fixed;top:0;right:0;height:100%;width:min(460px,94vw);background:linear-gradient(180deg,#101d31,#0c1626);border-left:1px solid var(--line);box-shadow:-22px 0 60px rgba(0,0,0,.55);z-index:80;transform:translateX(103%);transition:transform .32s cubic-bezier(.22,1,.36,1);display:flex;flex-direction:column;padding:14px 15px 12px}
+    #mileyDrawer.open{transform:none}
+    #mileyDrawer .mdHd{display:flex;align-items:center;gap:8px;margin:-2px 0 6px}
+    #mileyDrawer .mdHd b{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:17px;letter-spacing:.4px;color:#fff;flex:1}
+    #mileyDrawer .mdHd .pill{font-size:9px;font-weight:800;letter-spacing:.5px;color:var(--gold-soft);border:1px solid rgba(200,153,31,.4);background:rgba(200,153,31,.16);border-radius:5px;padding:1px 5px}
+    #mileyDrawerX{background:transparent;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1;padding:2px 4px}
+    #mileyDrawerX:hover{color:#fff}
+    #mileyDrawer #mileyStage{margin-bottom:8px}
+    .md-seg{display:flex;gap:6px;margin:2px 0 10px}
+    .md-seg button{flex:1;font-family:inherit;font-weight:700;font-size:12.5px;border:1px solid var(--line);background:var(--navy-3);color:var(--muted);border-radius:9px;padding:8px;cursor:pointer;transition:.15s}
+    .md-seg button.on{background:#C8991F;border-color:#C8991F;color:#1a1205}
+    .md-pane{min-height:0}
+    #mdDispatch{flex:1;overflow:auto}
+    #mdChat{flex:1;display:flex;flex-direction:column}
+    /* the Smart Dispatch panel no longer floats — it lives INSIDE Miley's drawer */
+    #enhPanel{display:none}
+    #mileyDrawer #enhPanel{display:block;position:static;right:auto;bottom:auto;width:100%;max-width:none;background:transparent;border:none;border-radius:0;box-shadow:none;margin:0}
+    #mileyDrawer #enhPanel .eh{display:none}
+    #mileyDrawer #enhBody{max-height:none;padding:0}`;
+    document.head.appendChild(st);
+  }
+  function mileyMascotSvg(){
+    return '<svg id="mileySvg" class="miley" viewBox="0 0 200 210" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
+      +'<ellipse class="m-sh" cx="100" cy="196" rx="50" ry="8"/>'
+      +'<g class="m-char">'
+        +'<ellipse class="m-grey" cx="78" cy="178" rx="22" ry="15" transform="rotate(-12 78 178)"/>'
+        +'<ellipse class="m-tan" cx="122" cy="178" rx="22" ry="15" transform="rotate(12 122 178)"/>'
+        +'<path class="m-arml m-gold" d="M54 128 C36 134 30 156 38 168 C44 176 55 173 55 163 C55 150 58 140 64 136 Z"/>'
+        +'<path class="m-armr m-gold" d="M146 128 C164 134 170 156 162 168 C156 176 145 173 145 163 C145 150 142 140 136 136 Z"/>'
+        +'<path class="m-gold" d="M50 112 C46 78 78 56 104 58 C146 60 158 86 154 116 C151 146 132 168 100 168 C66 168 54 144 50 112 Z"/>'
+        +'<path class="m-brow" d="M68 104 q13 -8 26 -2"/><path class="m-brow" d="M106 102 q13 -7 26 1"/>'
+        +'<g class="m-eyes"><ellipse class="m-eyew" cx="82" cy="120" rx="11" ry="12.5"/><ellipse class="m-eyew" cx="118" cy="120" rx="11" ry="12.5"/>'
+          +'<circle class="m-pupil" cx="84" cy="122" r="5"/><circle class="m-pupil" cx="120" cy="122" r="5"/></g>'
+        +'<path class="m-mouth" d="M84 146 Q100 158 118 144"/>'
+        +'<ellipse class="m-hatb" cx="100" cy="70" rx="62" ry="11"/><path class="m-hatd" d="M55 70 C60 30 140 30 145 70 Z"/>'
+        +(window.__NM_FAN?'<image href="'+window.__NM_FAN+'" x="86" y="38" width="28" height="28" preserveAspectRatio="xMidYMid meet"/>':'')
+      +'</g>'
+      +'<g class="m-think"><circle cx="156" cy="66" r="3.5"/><circle cx="171" cy="54" r="4.5"/><circle cx="188" cy="44" r="5.5"/></g>'
+      +'<g class="m-spark"><text x="34" y="64">✦</text><text x="156" y="50">✦</text></g>'
+      +'</svg>';
+  }
+  /* ---- the LIVING tab button: a tiny animated Capataz in the tab row (replaces the flat
+     🤝 Miley button). Bobs/blinks on its own; goes "thinking" while the shell syncs. ---- */
+  function tabMileyCss(){
+    if($id('tabMileyCss')) return;
+    var st=document.createElement('style'); st.id='tabMileyCss';
+    st.textContent=`
+    .toptab.toptab-miley{display:inline-flex;align-items:center;gap:5px;padding-left:7px}
+    #tabMileySvg{width:27px;height:29px;overflow:visible;flex:none;margin:-3px 0}
+    .toptab-miley .tmlabel{font-weight:700}
+    #tabMileySvg .mm-char,#tabMileySvg .mm-eyes{transform-box:fill-box;transform-origin:center}
+    #tabMileySvg .mm-char{animation:tmBob 3.2s ease-in-out infinite}
+    #tabMileySvg .mm-eyes{animation:tmBlink 4.6s infinite}
+    #tabMileySvg .mm-think{opacity:0}
+    #tabMileySvg.thinking .mm-char{animation:tmWob 1.3s ease-in-out infinite}
+    #tabMileySvg.thinking .mm-think{opacity:1;animation:tmDots 1.3s infinite}
+    @keyframes tmBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+    @keyframes tmBlink{0%,92%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
+    @keyframes tmWob{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
+    @keyframes tmDots{0%,100%{opacity:.25}50%{opacity:1}}`;
+    document.head.appendChild(st);
+  }
+  function tabMileySvg(){
+    return '<svg id="tabMileySvg" viewBox="0 0 200 210" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
+      +'<g class="mm-char">'
+        +'<ellipse fill="#56585C" cx="78" cy="178" rx="22" ry="15" transform="rotate(-12 78 178)"/>'
+        +'<ellipse fill="#97826A" cx="122" cy="178" rx="22" ry="15" transform="rotate(12 122 178)"/>'
+        +'<path fill="#C49A4B" d="M50 112 C46 78 78 56 104 58 C146 60 158 86 154 116 C151 146 132 168 100 168 C66 168 54 144 50 112 Z"/>'
+        +'<g class="mm-eyes"><ellipse fill="#fff" cx="82" cy="120" rx="11" ry="12.5"/><ellipse fill="#fff" cx="118" cy="120" rx="11" ry="12.5"/>'
+          +'<circle fill="#26211a" cx="84" cy="122" r="5"/><circle fill="#26211a" cx="120" cy="122" r="5"/></g>'
+        +'<path d="M84 146 Q100 156 118 144" fill="none" stroke="#3a2f1c" stroke-width="5" stroke-linecap="round"/>'
+        +'<ellipse fill="#fff" stroke="#cfd4db" stroke-width="1.4" cx="100" cy="70" rx="62" ry="11"/><path fill="#fff" stroke="#cfd4db" stroke-width="1.4" d="M55 70 C60 30 140 30 145 70 Z"/>'
+        +(window.__NM_FAN?'<image href="'+window.__NM_FAN+'" x="86" y="38" width="28" height="28" preserveAspectRatio="xMidYMid meet"/>':'')
+      +'</g>'
+      +'<g class="mm-think" fill="#9fb2c9"><circle cx="160" cy="60" r="4"/><circle cx="176" cy="48" r="5"/><circle cx="192" cy="38" r="6"/></g>'
+      +'</svg>';
+  }
+  window.__mileyThinking=function(on){ var s=$id('tabMileySvg'); if(s) s.setAttribute('class', on?'thinking':''); };
+  var Miley={ state:'idle', _t:0,
+    cap:function(s){ var en={idle:"Ready. Don't keep the trucks waiting.",thinking:'Reading the board…',talking:"Here's the deal.",alert:'Heads up, jefe.',celebrate:'Boom — done.'},
+                     es={idle:'Listo. No dejes esperando a las trocas.',thinking:'Leyendo el tablero…',talking:'Aquí está la cosa.',alert:'Aguas, jefe.',celebrate:'¡Listo, a rodar!'};
+      return (LANG==='es'?es:en)[s]||''; },
+    apply:function(){ var svg=$id('mileySvg'); if(svg) svg.setAttribute('class','miley'+(this.state!=='idle'?(' '+this.state):'')); var c=$id('mileyCap'); if(c) c.textContent=this.cap(this.state); },
+    setState:function(s){ this.state=s; this.apply(); clearTimeout(this._t); if(s==='talking'||s==='celebrate'||s==='alert'){ var self=this; this._t=setTimeout(function(){ self.state='idle'; self.apply(); }, s==='talking'?2400:1500); } }
+  };
+  function mileyStageHtml(){
+    return '<div id="mileyStage">'+mileyMascotSvg()
+      +'<div style="min-width:0"><div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:800;font-size:20px;letter-spacing:.5px;color:#fff;line-height:1">Miley <span style="color:var(--gold-soft);font-weight:600;font-size:12px;letter-spacing:.3px">· '+t('your dispatch yard-boss','tu capataz de despacho')+'</span></div>'
+      +'<div id="mileyCap" class="hint" style="margin:4px 0 0">'+t("Ready. Don't keep the trucks waiting.",'Listo. No dejes esperando a las trocas.')+'</div></div></div>';
+  }
+  /* renders ONLY the chat zone (into #mdChat) — the mascot stage + Smart Dispatch live in the drawer skeleton */
+  function aiRenderCopilot(){
+    var box=$id('mdChat'); if(!box)return;
+    var h='<div id="aiMsgs" style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:2px 2px">';
+    if(!aiMsgs.length) h+='<div class="hint" style="line-height:1.55">'+t('Ask me anything about today\'s board — "what orders are short?", "nearest free truck to Tyler", "who hasn\'t worked this week?", "summarize the day for Tony", "draft a text for KT-9". I read it live; I don\'t change NewMile.','Pregúntame lo que sea del tablero — "¿qué órdenes van cortas?", "troca libre más cerca de Tyler", "¿quién no ha trabajado esta semana?", "resume el día para Tony", "redacta un texto para KT-9". Lo leo en vivo; no cambio NewMile.')+'</div>';
+    aiMsgs.forEach(function(m){ var u=m.role==='user'; h+='<div style="align-self:'+(u?'flex-end':'flex-start')+';max-width:88%;background:'+(u?'var(--navy-3)':'#16233b')+';border:1px solid var(--line);border-radius:10px;padding:8px 11px;white-space:pre-wrap;font-size:13px;line-height:1.45">'+(u?'🧑 ':'🤝 ')+aiEsc(m.content)+'</div>'; });
+    h+='</div>';
+    h+='<div style="display:flex;gap:8px;margin-top:8px"><input id="aiIn" type="text" placeholder="'+t('Ask Miley about your board…','Pregúntale a Miley del tablero…')+'" style="flex:1;padding:9px 11px;border-radius:9px;border:1px solid var(--line);background:var(--navy-3);color:var(--text);font-size:14px"><button class="finbtn go" onclick="aiSendDesktop()">'+t('Ask','Preguntar')+'</button></div>';
+    box.innerHTML=h;
+    Miley.apply();
+    var i=$id('aiIn'); if(i){ i.value=aiDraft||''; i.oninput=function(){aiDraft=i.value;}; i.onkeydown=function(e){ if(e.key==='Enter'){ e.preventDefault(); aiSendDesktop(); } }; }
+    var ms=$id('aiMsgs'); if(ms) ms.scrollTop=ms.scrollHeight;
+  }
+  window.aiSendDesktop=async function(){
+    var i=$id('aiIn'); var q=((i?i.value:aiDraft)||'').trim(); if(!q||aiBusy)return;
+    if(window.mileyTab)window.mileyTab('chat');
+    aiMsgs.push({role:'user',content:q}); aiDraft=''; aiBusy=true; Miley.state='thinking'; aiRenderCopilot();
+    var history=aiMsgs.slice(-9,-1).map(function(m){return {role:m.role,content:m.content};});
+    var r=await bridgeAi(history.concat([{role:'user',content:q}]), aiCtx());
+    aiBusy=false;
+    var err=!(r&&r.text);
+    var txt=err?('⚠ '+(((r&&r.error)==='AI not configured')?t('AI not set up yet — paste your Anthropic key in ⚙ Settings → Admin.','AI no configurado — pega tu key de Anthropic en ⚙ Settings → Admin.'):((r&&r.error)||t('no reply','sin respuesta')))):r.text;
+    aiMsgs.push({role:'assistant',content:txt}); Miley.setState(err?'alert':'talking'); aiRenderCopilot();
+  };
+  window.__tabInit_copilot=function(){ Miley.state='idle'; aiRenderCopilot(); };
+
   /* ---------- top icon-tabs: 💬 Messages · 🚛 Trucks · 📇 Directory · 💰 Quoter ----------
      Each is a full-screen .tabscrim modal (z 64) — content filled by its own module section.
      openTab(key) lazily builds; ESC / scrim-click closes the TOPMOST open layer only. */
   var TABS=[
+    {key:'copilot',icon:'🤝', label:'Miley',     title:t('🤝 Miley — your dispatch yard-boss','🤝 Miley — tu capataz de despacho')},
     {key:'msg',   icon:'💬', label:'Messages',  title:'💬 Driver Messages'},
     {key:'trucks',icon:'🚛', label:'Trucks',    title:'🚛 Truck Manager'},
     {key:'dir',   icon:'📇', label:'Directory', title:'📇 Directory — trucks · drivers · locations · haulers'},
@@ -4121,6 +4299,7 @@ setView('board');
   }
   window.openTab=function(key){
     try{
+      if(key==='copilot'){ window.openMileyDrawer(); return; }   // Miley lives in the slide-out drawer, not a modal
       var el=enhTabModal(key);
       el.classList.add('open');
       var fn=window['__tabInit_'+key];           // each module registers its initializer
@@ -4128,6 +4307,56 @@ setView('board');
     }catch(e){ console.error('openTab',e); toast('Tab error: '+e.message,true); }
   };
   window.closeTab=function(key){ var el=$id('tab-'+key); if(el)el.classList.remove('open'); };
+
+  /* ===== 🤝 Smart Dispatch drawer — Miley's home. Slides in from the right wall; the
+     animated mini-Miley up in the shell topbar opens it (and hides while it's open). The
+     drawer body reuses id="tabBody-copilot" so aiRenderCopilot() works unchanged. ===== */
+  function mileyDrawerEl(){
+    var el=$id('mileyDrawer'); if(el) return el;
+    mileyEnsureCss();
+    var sc=document.createElement('div'); sc.id='mileyDrawerScrim';
+    sc.addEventListener('click',function(){ window.closeMileyDrawer(); });
+    document.body.appendChild(sc);
+    el=document.createElement('div'); el.id='mileyDrawer';
+    el.innerHTML='<div class="mdHd"><b>🤝 Smart Dispatch</b><span class="pill">MILEY</span>'
+      +'<button id="mileyDrawerX" title="'+t('Close','Cerrar')+'" onclick="closeMileyDrawer()">✕</button></div>'
+      +mileyStageHtml()
+      +'<div class="md-seg"><button id="mdSegDisp" class="on" onclick="mileyTab(\'dispatch\')">⚡ '+t('Auto-plan','Auto-plan')+'</button>'
+        +'<button id="mdSegChat" onclick="mileyTab(\'chat\')">💬 '+t('Chat','Chat')+'</button></div>'
+      +'<div class="md-pane" id="mdDispatch"></div>'
+      +'<div class="md-pane" id="mdChat" style="display:none"></div>';
+    document.body.appendChild(el);
+    Miley.apply();
+    return el;
+  }
+  window.mileyTab=function(which){
+    var d=$id('mdDispatch'), c=$id('mdChat'), bd=$id('mdSegDisp'), bc=$id('mdSegChat');
+    var chat=which==='chat';
+    if(d) d.style.display=chat?'none':'block';
+    if(c){ c.style.display=chat?'flex':'none'; if(chat) aiRenderCopilot(); }
+    if(bd) bd.className=chat?'':'on';
+    if(bc) bc.className=chat?'on':'';
+  };
+  window.openMileyDrawer=function(){
+    try{
+      var el=mileyDrawerEl(); var sc=$id('mileyDrawerScrim');
+      var disp=$id('mdDispatch'), panel=$id('enhPanel');
+      if(panel && disp && panel.parentNode!==disp) disp.appendChild(panel);   // unify: move Smart Dispatch into the drawer
+      if(sc)sc.classList.add('open'); el.classList.add('open');
+      Miley.state='idle'; Miley.apply();
+      window.mileyTab('dispatch');   // auto-plan is Miley's primary job
+      try{ if(typeof refresh==='function') refresh(); }catch(_e){}   // freshen KPIs/issues
+      try{ parent.postMessage({type:'mileyDrawer',open:true},'*'); }catch(_e){}
+    }catch(e){ console.error('openMileyDrawer',e); }
+  };
+  window.closeMileyDrawer=function(){
+    var el=$id('mileyDrawer'); if(el) el.classList.remove('open');
+    var sc=$id('mileyDrawerScrim'); if(sc) sc.classList.remove('open');
+    try{ parent.postMessage({type:'mileyDrawer',open:false},'*'); }catch(_e){}
+  };
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape'){ var d=$id('mileyDrawer'); if(d&&d.classList.contains('open')){ window.closeMileyDrawer(); } }
+  });
 
   /* ===== 🔐 WEBMASTER / Admin global — SEPARATE from FSC. Entering the code here enables
      all price/FSC/order tools tool-wide (session). Shows accesses + API keys (mask/reveal). ===== */
@@ -4347,8 +4576,9 @@ setView('board');
     var anchor=$id('enhMapBtn')||$id('pushBtn');
     if(!anchor||!anchor.parentNode||$id('toptab-msg')) return;
     TABS.forEach(function(d){
-      var b=document.createElement('button'); b.id='toptab-'+d.key; b.className='toptab';
-      b.innerHTML=d.icon+' '+d.label+(d.key==='msg'?'<span class="tbadge" id="msgBadge">0</span>':'');
+      var b=document.createElement('button'); b.id='toptab-'+d.key; b.className='toptab'+(d.key==='copilot'?' toptab-miley':'');
+      if(d.key==='copilot'){ tabMileyCss(); b.innerHTML=tabMileySvg()+'<span class="tmlabel">Miley</span>'; }
+      else b.innerHTML=d.icon+' '+d.label+(d.key==='msg'?'<span class="tbadge" id="msgBadge">0</span>':'');
       b.title=d.title;
       b.onclick=function(){ window.openTab(d.key); };
       if(d.key==='fsc') b.style.display='none';   // FSC tab hidden until the global admin code is entered
