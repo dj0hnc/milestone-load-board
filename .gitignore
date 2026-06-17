@@ -8,3 +8,5 @@ newmile.config.json
 # local build/diagnostic junk
 _build.log
 _chk_board.js
+
+.commitmsg.tmp
