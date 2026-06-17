@@ -1,0 +1,15 @@
+v2.6.34 - agentic Miley, shared truck flags, English sweep, seq fix, admin-gated update
+
+- Miley is now an AGENTIC tool-using dispatcher (read tools auto-run; write tools behind
+  a per-action confirm + a "Miley Actions" switch, default OFF). Reads Samsara/HOS/rotation,
+  finds nearest free trucks ranked, suggests plans; only finalize_and_push writes to NewMile.
+- Shared per-truck availability + call log (server store; desktop + all phones sync; migration
+  preserves existing local flags). Single add refuses, bulk skips + reports flagged trucks.
+- Sequence reconcile fixed (only reorderable assignments) + always-reconcile on refresh.
+- Excel read: correct VIEWED day, hardened canonical-file pick, plant-dominant matcher.
+- Locations: alias + both-name (Martin Marietta <-> Quikrete) match to the NewMile Locations tab.
+- Full English i18n sweep (auto by device, English default).
+- Update button is now ADMIN-GATED: coworkers can SEE an update but only the admin code installs;
+  auto-update stays OFF (github.autoUpdate=false) — the webmaster updates chosen machines by hand.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>

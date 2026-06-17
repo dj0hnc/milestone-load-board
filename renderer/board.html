@@ -718,7 +718,38 @@ function setOrderQuery(v){orderQuery=v.trim().toLowerCase();$('#sclr').style.dis
 function clearOrderQuery(){orderQuery='';$('#orderSearch').value='';$('#sclr').style.display='none';renderOrders();}
 
 /* RENDER */
-function render(){renderRibbon();renderFilters();renderTrucks();renderOrders();renderSummary();renderAlerts();}
+/* Keep every truck's per-order sequence a CLEAN, CONSISTENT 1..n across the day.
+   - On refresh a.seq = NewMile's raw ordinal (can be 5,7… from the truck's other assignments);
+     ranking it preserves NewMile's RELATIVE order but shows tidy 1,2,3 that match.
+   - When you change the seq on ONE order, the truck's OTHER orders renumber automatically so
+     there are never two "2"s (that ambiguity was scrambling the reconcile → wrong NewMile order
+     → deadhead). Primary sort = your seq (manual intent), tie-break = order start time, then id.
+   This feeds __getSeqIntent, so the post-sync reconcile sets NewMile's ordinals to exactly this. */
+function normalizeSeqs(){
+  var byTruck={};
+  orders.forEach(function(o){ (o.assigns||[]).forEach(function(a){ (byTruck[a.truck]=byTruck[a.truck]||[]).push({a:a,hr:(o.startHr||0),oid:String(o.id)}); }); });
+  Object.keys(byTruck).forEach(function(tid){
+    var list=byTruck[tid];
+    list.sort(function(x,y){ return ((x.a.seq||1)-(y.a.seq||1)) || (x.hr-y.hr) || x.oid.localeCompare(y.oid,undefined,{numeric:true}); });
+    list.forEach(function(e,i){ e.a.seq=i+1; });
+  });
+}
+/* Explicit "move this truck's order to position N" — used by the ✏️ edit modal so a MANUAL
+   seq change sticks (it produces DISTINCT 1..n that normalizeSeqs then preserves, instead of a
+   duplicate number that the tie-break would override). */
+function setAssignSeq(truckId, targetOid, newPos){
+  var list=[];
+  orders.forEach(function(o){ (o.assigns||[]).forEach(function(a){ if(a.truck===truckId) list.push({a:a,oid:String(o.id),hr:(o.startHr||0)}); }); });
+  if(list.length<2){ if(list.length)list[0].a.seq=1; return; }
+  list.sort(function(x,y){ return ((x.a.seq||1)-(y.a.seq||1))||(x.hr-y.hr)||x.oid.localeCompare(y.oid,undefined,{numeric:true}); });
+  var idx=-1; for(var i=0;i<list.length;i++){ if(list[i].oid===String(targetOid)){ idx=i; break; } }
+  if(idx<0) return;
+  var moved=list.splice(idx,1)[0];
+  var pos=Math.max(0,Math.min(list.length,(parseInt(newPos,10)||1)-1));
+  list.splice(pos,0,moved);
+  list.forEach(function(e,i){ e.a.seq=i+1; });
+}
+function render(){normalizeSeqs();renderRibbon();renderFilters();renderTrucks();renderOrders();renderSummary();renderAlerts();}
 
 /* RIBBON — day-aware, every number traceable to its source (hover any stat).
    LIVE numbers come straight from NewMile (assignments / load_count / weight_delivered);
@@ -785,23 +816,118 @@ function passFilter(t){
   if(filters.worked==='yes'&&t.workedYest!==true)return false;    // ran yesterday
   return true;
 }
+/* ===== 🚩 Per-truck availability + call LOG (LOCAL/internal — never pushed to NewMile) =====
+   When a driver/owner calls saying a truck can't work, flag it here. Flagged trucks are
+   EXCLUDED from auto-plan and WARN on manual assign until you clear the flag — so we never
+   leave loads dropped by planning a truck that already said no. Keeps a dated call log per
+   truck so whoever talks to them sees the history + leaves notes for the next call.
+   (Future: fold into the RingCentral phase so calls auto-log here.) */
+var TN=(function(){ try{ return JSON.parse(localStorage.getItem('mab_truckNotes')||'{}')||{}; }catch(e){ return {}; } })();
+function tnKey(n){ return String(n||'').trim().toLowerCase(); }
+function tnEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function tnJs(s){ return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+function tnSave(){ try{ localStorage.setItem('mab_truckNotes',JSON.stringify(TN)); }catch(e){} }
+function tnStamp(){ var d=new Date(),p=function(n){return String(n).padStart(2,'0');}; return p(d.getMonth()+1)+'/'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes()); }
+function tnEntry(n){ var k=tnKey(n); if(!TN[k])TN[k]={status:'ok',reason:'',log:[]}; if(!TN[k].log)TN[k].log=[]; return TN[k]; }
+window.tnGet=function(n){ return TN[tnKey(n)]||null; };
+window.tnBlocked=function(n){ var e=TN[tnKey(n)]; return !!(e&&(e.status==='off'||e.status==='shop')); };
+window.tnSetStatus=function(n,status,reason){ var e=tnEntry(n),was=e.status; e.status=status; e.reason=reason||''; e.updated=tnStamp();
+  if(was!==status) e.log.unshift({ts:tnStamp(),text:'➤ '+(status==='off'?t('Marked NOT AVAILABLE','Marcado NO DISPONIBLE'):status==='shop'?t('Marked IN SHOP','Marcado EN TALLER'):t('Marked available','Marcado disponible'))+(reason?(' — '+reason):'')}); tnSave(); };
+window.tnAddLog=function(n,text){ text=(text||'').trim(); if(!text)return; tnEntry(n).log.unshift({ts:tnStamp(),text:text}); tnSave(); };
+/* gate for the manual assign paths. SINGLE adds are refused (warn it can't be added).
+   BULK adds skip the blocked ones and report them — assign the rest. You must acknowledge
+   the notice (so it's not forgotten that the truck can't work). */
+function tnLabel(num){ var e=window.tnGet(num)||{}; return (e.status==='shop'?t('IN SHOP 🔧','EN TALLER 🔧'):t('NOT AVAILABLE ⛔','NO DISPONIBLE ⛔'))+(e.reason?(' — '+e.reason):''); }
+window.tnAlertBlocked=function(nums){
+  nums=(nums||[]).filter(function(n,i,a){return a.indexOf(n)===i;}); if(!nums.length)return;
+  var lines=nums.map(function(n){ return '🚩 '+n+': '+tnLabel(n); });
+  alert((nums.length===1?t('This truck was NOT added — flagged unavailable:','Esta troca NO se agregó — marcada no disponible:'):(t('These ','Estas ')+nums.length+t(' trucks were NOT added — flagged unavailable:',' trocas no se agregaron — marcadas no disponibles:')))+'\n\n'+lines.join('\n')+'\n\n'+t('Clear the flag in 📝 (on the card) once they can work again.','Quita el flag en 📝 (en la tarjeta) cuando ya puedan trabajar.'));
+};
+(function(){ var st=document.createElement('style'); st.id='tnCss'; st.textContent=
+  '.truck.tnblk{outline:1.5px solid #cf3030;outline-offset:-2px;background:rgba(207,48,48,.10)}'
+ +'.tnflag{margin-left:6px;cursor:pointer;font-size:13px;opacity:.6;padding:0 1px}.tnflag:hover{opacity:1}.tnflag.on{opacity:1}'
+ +'.tn-reason{color:#ff8f8f;font-size:11px;margin-top:2px;font-weight:700}'
+ +'#tnScrim{position:fixed;inset:0;background:rgba(4,9,18,.55);z-index:90;display:none;align-items:center;justify-content:center}#tnScrim.open{display:flex}'
+ +'#tnBox{width:min(440px,94vw);max-height:88vh;display:flex;flex-direction:column;background:#101d31;border:1px solid var(--line);border-radius:14px;overflow:hidden}'
+ +'#tnBox header{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}#tnBox header b{font-size:16px;color:#fff;flex:1}'
+ +'#tnBody{padding:12px 14px;overflow:auto}'
+ +'.tn-seg{display:flex;gap:6px;margin-bottom:10px}.tn-seg button{flex:1;border:1px solid var(--line);background:var(--navy-3);color:var(--muted);border-radius:9px;padding:9px 6px;font-weight:700;font-size:12px;cursor:pointer}'
+ +'.tn-seg button.ok.on{background:#1f9d57;border-color:#1f9d57;color:#06231a}.tn-seg button.off.on{background:#cf3030;border-color:#cf3030;color:#fff}.tn-seg button.shop.on{background:#d98a1f;border-color:#d98a1f;color:#231a06}'
+ +'#tnReason{width:100%;box-sizing:border-box;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--navy-3);color:var(--text);font-size:13px;margin-bottom:10px}'
+ +'.tn-logt{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:4px 0 6px}'
+ +'.tn-add{display:flex;gap:6px;margin-bottom:10px}.tn-add input{flex:1;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:var(--navy-3);color:var(--text);font-size:13px}'
+ +'.tn-log{display:flex;flex-direction:column;gap:6px}.tn-li{background:#0c1626;border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:12.5px;line-height:1.4}.tn-li .ts{color:var(--gold-soft);font-weight:700;font-size:11px;margin-right:6px}';
+  document.head.appendChild(st); })();
+function tnModalEl(){
+  var d=document.getElementById('tnScrim'); if(d)return d;
+  d=document.createElement('div'); d.id='tnScrim';
+  d.addEventListener('click',function(e){ if(e.target===d) d.classList.remove('open'); });
+  d.innerHTML='<div id="tnBox"><header><span>🚩</span><b id="tnTitle"></b><button class="gmap" style="padding:3px 9px" onclick="document.getElementById(\'tnScrim\').classList.remove(\'open\')">✕</button></header><div id="tnBody"></div></div>';
+  document.body.appendChild(d); return d;
+}
+window.openTruckNote=function(numOrId){
+  var t=T(numOrId)||trucks.find(function(x){return tnKey(x.num)===tnKey(numOrId);});
+  var num=t?t.num:numOrId;
+  tnModalEl().classList.add('open'); tnRenderNote(num);
+};
+function tnRenderNote(num){
+  var e=window.tnGet(num)||{status:'ok',reason:'',log:[]};
+  document.getElementById('tnTitle').textContent=num+' — '+t('notes / log','notas / log');
+  var b=document.getElementById('tnBody'); if(!b)return;
+  var seg=function(s,cls,lbl){ return '<button class="'+cls+(e.status===s?' on':'')+'" onclick="tnPick(\''+tnJs(num)+'\',\''+s+'\')">'+lbl+'</button>'; };
+  var h='<div class="tn-seg">'+seg('ok','ok',t('✅ Available','✅ Disponible'))+seg('off','off',t('⛔ No-work','⛔ No trabaja'))+seg('shop','shop',t('🔧 Shop','🔧 Taller'))+'</div>';
+  h+='<input id="tnReason" placeholder="'+t('Reason (broke down, day off, no driver…)','Razón (descompuesta, día personal, sin chofer…)')+'" value="'+tnEsc(e.reason||'')+'" onchange="tnSaveReason(\''+tnJs(num)+'\',this.value)">';
+  h+='<div class="tn-logt">'+t('📞 Call log / notes','📞 Log de llamadas / notas')+'</div>';
+  h+='<div class="tn-add"><input id="tnNew" placeholder="'+t('What they said / next call…','Qué dijeron / próxima llamada…')+'" onkeydown="if(event.key===\'Enter\')tnPost(\''+tnJs(num)+'\')"><button class="finbtn go" onclick="tnPost(\''+tnJs(num)+'\')">➕</button></div>';
+  h+='<div class="tn-log">';
+  if(!(e.log&&e.log.length)) h+='<div class="hint">'+t('No notes yet. Jot down what was discussed so anyone sees the history.','Sin notas todavía. Apunta lo que se habló para que cualquiera vea el historial.')+'</div>';
+  else e.log.forEach(function(l){ h+='<div class="tn-li"><span class="ts">'+tnEsc(l.ts)+'</span>'+tnEsc(l.text)+'</div>'; });
+  h+='</div>'; b.innerHTML=h;
+  var ni=document.getElementById('tnNew'); if(ni)setTimeout(function(){ni.focus();},40);
+}
+/* SHARED store: read/write the mab-mobile server (same PC) so desktop + all phones see the same.
+   Best-effort — if the server is down (no mab-mobile running), fall back to local so it never breaks. */
+function tnServer(op,extra){ return (window.__nmBridge?window.__nmBridge('truckNotes',Object.assign({op:op},extra||{}),15000):Promise.resolve(null)); }
+window.__tnRefresh=async function(){ try{
+    var r=await tnServer('get'); if(!r||!r.notes) return;   // server unreachable → keep local
+    var srv=r.notes;
+    // FIRST RUN: server empty but this device has local flags → migrate them up (never lose them)
+    if(Object.keys(srv).length===0 && Object.keys(TN).length>0){
+      for(var k in TN){ var e=TN[k]; if(e&&(e.status==='off'||e.status==='shop'||(e.reason||'')||(e.log&&e.log.length))){ try{ await tnServer('set',{num:k,status:e.status||'ok',reason:e.reason||''}); }catch(_e){} } }
+      var r2=await tnServer('get'); if(r2&&r2.notes)srv=r2.notes;
+    }
+    TN=srv; tnSave(); render();
+  }catch(e){} };
+window.tnPick=async function(num,status){ var r=(document.getElementById('tnReason')||{}).value||'';
+  var res=await tnServer('set',{num:num,status:status,reason:r}); if(res&&res.notes){ TN=res.notes; tnSave(); } else window.tnSetStatus(num,status,r);   // offline fallback
+  tnRenderNote(num); try{render();}catch(e){} };
+window.tnSaveReason=async function(num,val){ var cur=(window.tnGet(num)||{}).status||'ok';
+  var res=await tnServer('set',{num:num,status:cur,reason:val||''}); if(res&&res.notes){ TN=res.notes; tnSave(); } else { tnEntry(num).reason=val||''; tnSave(); } };
+window.tnPost=async function(num){ var i=document.getElementById('tnNew'),v=i?i.value:''; if(!(v||'').trim())return;
+  var res=await tnServer('log',{num:num,text:v.trim()}); if(res&&res.notes){ TN=res.notes; tnSave(); } else window.tnAddLog(num,v);
+  if(i)i.value=''; tnRenderNote(num); };
+
 function truckCard(t,used,distMi){
   const isUsed=used.has(t.id);
+  const blk=window.tnBlocked&&window.tnBlocked(t.num);
+  const tnE=blk?(window.tnGet(t.num)||{}):null;
   const st=isUsed?(t.status==='free'?'assigned':t.status):t.status;
   const isSel=selected.has(t.id)||activeTruck===t.id;
   const oc=truckOrderCount(t.id);
-  return `<div class="truck ${isUsed?'used':''} ${t.onCall?'':'offcall'} ${isSel?'sel':''} ${(amMode&&isUsed)?'amtap':''}" draggable="false" data-id="${t.id}"
+  return `<div class="truck ${isUsed?'used':''} ${t.onCall?'':'offcall'} ${isSel?'sel':''} ${(amMode&&isUsed)?'amtap':''} ${blk?'tnblk':''}" draggable="false" data-id="${t.id}"
     onpointerdown="truckPointerDown(event,'${t.id}')" onclick="clickTruck(event,'${t.id}')">
     <div class="row1"><span class="callbubble ${t.onCall?'':'off'}" title="${t.onCall?'On call':'Off call'}"></span>
       <span class="tnum">${t.num}</span>
-      ${distMi!=null?`<span class="distpin" title="${t('Driving distance from','Distancia desde')} ${cityGeo?cityGeo.name:''} ${t('to its parking spot','a su parking')}">📍 ${Math.round(distMi)} mi</span>`:''}
+      ${distMi!=null?`<span class="distpin" title="${window.t('Driving distance from','Distancia desde')} ${cityGeo?cityGeo.name:''} ${window.t('to its parking spot','a su parking')}">📍 ${Math.round(distMi)} mi</span>`:''}
       ${oc?`<span class="onct" title="On ${oc} order(s) — can still add another">on ${oc}</span>`:''}
-      ${t.lat!=null?`<span class="parkpin" onclick="truckParkingNearby(event,'${t.id}')" title="Dónde está parqueada — tap para ver las órdenes/plantas más cercanas de hoy y asignar" style="cursor:pointer;margin-left:4px">📍</span>`:''}
-      <span class="star ${t.prio?'on':''}" onclick="togglePrio(event,'${t.id}')" title="Priority truck">★</span></div>
+      ${t.lat!=null?`<span class="parkpin" onclick="truckParkingNearby(event,'${t.id}')" title="${window.t('Where it is parked — tap to see today\'s nearest orders/plants and assign','Dónde está parqueada — tap para ver las órdenes/plantas más cercanas de hoy y asignar')}" style="cursor:pointer;margin-left:4px">📍</span>`:''}
+      <span class="star ${t.prio?'on':''}" onclick="togglePrio(event,'${t.id}')" title="Priority truck">★</span>
+      <span class="tnflag ${blk?'on':''}" onclick="event.stopPropagation();openTruckNote('${t.id}')" title="${blk?('🚩 '+(tnE.status==='shop'?window.t('In shop','En taller'):window.t('No-work','No trabaja'))+(tnE.reason?(' — '+tnEsc(tnE.reason)):'')):window.t('Notes / availability','Notas / disponibilidad')}">${blk?'🚩':'📝'}</span></div>
+    ${blk?`<div class="tn-reason">🚩 ${tnE.status==='shop'?window.t('IN SHOP','EN TALLER'):window.t('NO-WORK','NO TRABAJA')}${tnE.reason?(' · '+tnEsc(tnE.reason)):''}</div>`:''}
     <div class="towner">${t.driver?`<b class="tdrv">${t.driver}</b> · `:''}${t.owner}${t.terminal?` <span class="termtag">📍 ${t.terminal}</span>`:''}</div>
     <div class="tmeta"><span class="chip ${statusClass[st]}">${statusLabel[st]}</span>
       ${t.workedYest!=null?`<span class="wy ${t.workedYest?'ran':'no'}" title="${t.workedYest?'Ran Tue Jun 9 — rotate work to a rested truck for fairness':'Did NOT run yesterday — good pick for fair rotation'}">${t.workedYest?'⚡ ran yest':'💤 rested'}</span>`:'<span class="wy no" title="work history loads live from NewMile">idle · live</span>'}
-      <span class="idledays">${t.daysIdle!=null?('<b>'+t.daysIdle+'d</b> sin trabajar'):(t.idleBeyond?'<span title="Sin actividad en los últimos 14 días — probablemente sub fuera de rotación">sin actividad 14d+</span>':(t.loads7d!=null?(t.loads7d+'/7d'):'<span title="tap 📆 Días sin trabajar to load multi-day rotation">idle · live</span>'))}</span></div>
+      <span class="idledays">${t.daysIdle!=null?('<b>'+t.daysIdle+'d</b> '+window.t('no work','sin trabajar')):(t.idleBeyond?'<span title="'+window.t('No activity in the last 14 days — probably a sub out of rotation','Sin actividad en los últimos 14 días — probablemente sub fuera de rotación')+'">'+window.t('no activity 14d+','sin actividad 14d+')+'</span>':(t.loads7d!=null?(t.loads7d+'/7d'):'<span title="'+window.t('tap 📆 Days with no work to load multi-day rotation','tap 📆 Días sin trabajar to load multi-day rotation')+'">idle · live</span>'))}</span></div>
   </div>`;
 }
 // trucks currently shown given the active filters/search (city mode = nearest-by-parking, no-GPS excluded)
@@ -1177,6 +1303,7 @@ function dropTruckOnOrder(truckId,oid,fromOid){
   if(oid===fromOid) return;                                  // dropped back on its own order → nothing to do
   const tk=T(truckId); const nm=tk?tk.num:truckId;
   if(o.assigns.some(a=>a.truck===truckId)){ toast(nm+' '+t('is already on this order','ya está en esta orden')); return; }
+  if(window.tnBlocked&&window.tnBlocked(nm)){ window.tnAlertBlocked([nm]); return; }   // 🚩 single → refuse + warn
   const seq=truckOrderCount(truckId)+1;                      // consecutive across the day
   o.assigns.push({truck:truckId, ll:'open', seq:seq, done:0});
   if(tk&&tk.status==='free') tk.status='assigned';
@@ -1190,9 +1317,10 @@ function doneSticky(){selected.clear();renderTrucks();toast('Multi-assign done')
 
 /* apply selected trucks to an order with auto consecutive sequence */
 function applySelectedToOrder(oid,ll){
-  const o=O(oid);let added=0;
+  const o=O(oid);let added=0;const _blocked=[];
   [...selected].forEach(id=>{
     if(o.assigns.some(a=>a.truck===id))return; // skip dup
+    const _tk=T(id); if(_tk&&window.tnBlocked&&window.tnBlocked(_tk.num)){ _blocked.push(_tk.num); return; }   // 🚩 bulk → skip this one, keep the rest
     const seq=truckOrderCount(id)+1;
     o.assigns.push({truck:id,ll,seq,done:0,rate:modalRate});
     const t=T(id);if(t.status==='free')t.status='assigned';
@@ -1201,7 +1329,8 @@ function applySelectedToOrder(oid,ll){
   });
   if(added)markDraft(oid);
   render();
-  toast(added?`Added ${added} to ${o.disp} (auto-seq)`:'Already on this order',!added);
+  toast(added?`Added ${added} to ${o.disp} (auto-seq)`+(_blocked.length?` · ${_blocked.length} 🚩 omitida(s)`:''):(_blocked.length?'Ninguna agregada — todas 🚩 bloqueadas':'Already on this order'),!added);
+  if(_blocked.length)window.tnAlertBlocked(_blocked);
 }
 
 /* MODAL */
@@ -1213,7 +1342,7 @@ function openModal(ctx){
   if(ctx.mode==='single'){const t=T(ctx.truckId);const cnt=truckOrderCount(ctx.truckId);modalSeqMax=cnt+1;modalSeq=cnt+1;title=`Assign ${t.num}`;sub=`To <b>${o.disp} — ${o.mat}</b><br>${o.cust}`;$('#okBtn').textContent='Assign';}
   else if(ctx.mode==='bulk'){modalLL=lastLL;modalSeqMax=1;title=`Assign ${selected.size} trucks → ${o.disp}`;sub=`Load limit for <b>${o.disp} — ${o.mat}</b> — each order can differ. Trucks auto-sequence.`;$('#okBtn').textContent='Assign to this order';}
   else if(ctx.mode==='multiOrder'){modalLL=lastLL;modalSeqMax=1;title=`Assign ${ctx.truckIds.length} truck(s) → ${selectedOrders.size} orders`;sub=`One load limit applied to <b>all ${selectedOrders.size} selected orders</b>. Trucks auto-sequence per order.`;$('#okBtn').textContent='Assign to all selected';}
-  else if(ctx.mode==='edit'){const a=o.assigns[ctx.idx];const t=T(a.truck);modalLL=(a.ll==null?'open':a.ll);modalSeqMax=Math.max(2,truckOrderCount(a.truck));modalSeq=a.seq;modalRate=(a.rate||'');title=`Edit ${t.num}`;sub=`On <b>${o.disp} — ${o.mat}</b>`;$('#okBtn').textContent='Save';}
+  else if(ctx.mode==='edit'){const a=o.assigns[ctx.idx];const t=T(a.truck);modalLL=(a.ll==null?'open':a.ll);modalSeqMax=truckOrderCount(a.truck);modalSeq=a.seq;modalRate=(a.rate||'');title=`Edit ${t.num}`;sub=`On <b>${o.disp} — ${o.mat}</b>`;$('#okBtn').textContent='Save';}
   $('#mTitle').textContent=title;$('#mSub').innerHTML=sub;
   renderLLOpts();renderSeqOpts();renderRateOpts();
   $('#scrim').classList.add('show');
@@ -1244,6 +1373,8 @@ function closeModal(){$('#scrim').classList.remove('show');modalCtx=null;}
 function confirmAssign(){
   if(!modalCtx)return;const o=O(modalCtx.orderId);
   if(modalCtx.mode==='single'){
+    const _snm=(T(modalCtx.truckId)||{}).num;
+    if(_snm&&window.tnBlocked&&window.tnBlocked(_snm)){ window.tnAlertBlocked([_snm]); closeModal(); return; }   // 🚩 single → refuse
     o.assigns.push({truck:modalCtx.truckId,ll:modalLL,seq:modalSeq,done:0,rate:modalRate});
     const t=T(modalCtx.truckId);if(t.status==='free')t.status='assigned';
     if(o.finalized)o.modified=true;
@@ -1251,16 +1382,17 @@ function confirmAssign(){
   } else if(modalCtx.mode==='bulk'){
     lastLL=modalLL;const oid=modalCtx.orderId;closeModal();applySelectedToOrder(oid,modalLL); // selection stays sticky for the next order
   } else if(modalCtx.mode==='edit'){
-    o.assigns[modalCtx.idx].ll=modalLL;o.assigns[modalCtx.idx].seq=modalSeq;o.assigns[modalCtx.idx].rate=modalRate;
+    {const _ea=o.assigns[modalCtx.idx];_ea.ll=modalLL;_ea.rate=modalRate;setAssignSeq(_ea.truck,o.id,modalSeq);}
     if(o.finalized)o.modified=true;
     markDraft(o.id);closeModal();render();
   } else if(modalCtx.mode==='multiOrder'){
-    lastLL=modalLL;const ll=modalLL;const tids=modalCtx.truckIds;let added=0,skipped=0;
+    lastLL=modalLL;const ll=modalLL;const tids=modalCtx.truckIds;let added=0,skipped=0;const _blk=[];
     [...selectedOrders].forEach(oid=>{const od=O(oid);if(!od){skipped++;return;}
-      tids.forEach(id=>{if(od.assigns.some(a=>a.truck===id))return;const seq=truckOrderCount(id)+1;od.assigns.push({truck:id,ll,seq,done:0,rate:modalRate});const t=T(id);if(t.status==='free')t.status='assigned';if(od.finalized)od.modified=true;added++;});markDraft(oid);});
+      tids.forEach(id=>{if(od.assigns.some(a=>a.truck===id))return;const _t0=T(id);if(_t0&&window.tnBlocked&&window.tnBlocked(_t0.num)){_blk.push(_t0.num);return;}const seq=truckOrderCount(id)+1;od.assigns.push({truck:id,ll,seq,done:0,rate:modalRate});const t=T(id);if(t.status==='free')t.status='assigned';if(od.finalized)od.modified=true;added++;});markDraft(oid);});
     selected.clear();activeTruck=null;
     closeModal();render();
-    toast(added?`Added ${added} assignment(s) across ${selectedOrders.size-skipped} order(s)`:'Those trucks were already on the selected orders',!added);
+    toast(added?`Added ${added} assignment(s) across ${selectedOrders.size-skipped} order(s)`+(_blk.length?` · ${[...new Set(_blk)].length} 🚩 omitida(s)`:''):(_blk.length?'Ninguna agregada — 🚩 bloqueadas':'Those trucks were already on the selected orders'),!added);
+    if(_blk.length)window.tnAlertBlocked(_blk);
   }
 }
 function editAssign(e,oid,i){e.stopPropagation();openModal({mode:'edit',orderId:oid,idx:i});}
@@ -1359,6 +1491,7 @@ window.__clearPendingSync=function(ids){ (ids||[]).forEach(id=>{ window.__pendin
    truck should run TODAY'S orders in. a.seq is the truck's sequence position (1st order=1, 2nd=2…).
    The reconcile step uses this to make NewMile's per-truck ordinals match the board exactly. */
 window.__getSeqIntent=function(){
+  normalizeSeqs();                 // intent must be the clean 1..n ranking, not raw ordinals
   const intent={};
   orders.forEach(o=>{
     const oid=parseInt((''+o.id).replace(/^o/,''),10); if(isNaN(oid))return;
@@ -1809,12 +1942,19 @@ function matchSheetOrder(o, list){
   var oFull=_pnorm((o.disp||'')+' '+(o.cust||'')+' '+(o.mat||'')+' '+(o.drop||'')+' '+(o.pickup||''));
   var oset=new Set(_ptoks(oFull)); var oCodes=new Set(oFull.match(/[A-Z0-9]{3,}/g)||[]);
   var oMat=_pMatSig((o.disp||'')+' '+(o.mat||''));
+  // The DESTINATION PLANT (Gilmer, Mineola, Spangler…) is the real discriminator. A shared
+  // pickup/source (e.g. "Broken Bow Sand" feeds many plants) must NOT outweigh it, or a
+  // PG order to Gilmer wrongly matches a PG row to Mt. Pleasant. So score the sheet row's
+  // customer (its plant) against the order's drop+disp plant tokens, heavily.
+  var oDest=new Set(_ptoks((o.drop||'')+' '+(o.disp||'')));
   var od=String(o.disp||'').trim(), oid=String(o.id||'').replace(/^o/,'');
   var best=null, score=0;
   (list||[]).forEach(function(so){
     var sc=0, sd=String(so.disp||'').trim(), sdN=_pnorm(sd);
     if(sd&&(sd===od||sd===oid))sc+=100;
     else if(sdN&&sdN.length>=3&&(oCodes.has(sdN)||oFull.indexOf(sdN)>=0))sc+=60;
+    var plant=_ptoks(so.customer||'').filter(function(t){return oDest.has(t);});   // PLANT match dominates
+    sc+=plant.length*15; sc+=plant.filter(function(t){return t.length>=5;}).length*10;
     var stoks=_ptoks((so.customer||'')+' '+(so.material||'')+' '+(so.pickup||''));
     var shared=stoks.filter(function(t){return oset.has(t);});
     sc+=shared.length*8; sc+=shared.filter(function(t){return t.length>=5;}).length*9;
@@ -1831,11 +1971,18 @@ function matchSheetOrder(o, list){
 }
 async function readPlanIntoPlanner(){
   try{
-    var dayEl=document.getElementById('day'); var day=(dayEl&&dayEl.value)||new Date().toISOString().slice(0,10);
-    toast('Reading the day’s order sheet…');
+    var day=plannerDateISO();   // the day Juan is VIEWING (dIdx) — NOT the shell #day (absent in the iframe) nor today
+    toast('Reading the order sheet for '+day+'…');
     var r=await window.__nmBridge('readPlan',{dateISO:day});
-    if(!r||r.error){ toast('Plan: '+((r&&r.error)||'failed')+(r&&r.candidates?' · found: '+r.candidates.slice(0,3).join(', '):''),true); return; }
-    if(!r.orders){ toast('That file isn’t a daily order sheet',true); return; }
+    // SAME fallback as the per-order 📄 Excel button: OneDrive auto-find first, else pick by hand.
+    if(!r || r.error || !r.orders){
+      toast(t('Could not find the sheet in OneDrive (','No hallé la hoja en OneDrive (')+((r&&r.error)?r.error:t('no file','sin archivo'))+t(') — pick the file…',') — escoge el archivo…'));
+      var pick=await window.__nmBridge('pickPlanFile',{dateISO:day},120000);
+      if(!pick || pick.canceled) return;
+      if(pick.error){ toast('Excel: '+pick.error,true); return; }
+      if(pick.orderSheet && pick.orders){ r={orders:pick.orders, file:pick.file, tab:pick.tab}; }
+      else { toast(t('That file is not a per-day order sheet','Ese archivo no es una hoja de órdenes por día'),true); return; }
+    }
     var targets=(selectedOrders&&selectedOrders.size)?[...selectedOrders]:(window.orders||[]).filter(function(o){return !o.completed;}).map(function(o){return o.id;});
     if(!targets.length){ toast('No orders for that day to fill',true); return; }
     var usedKeys=new Set(), filled=0, trucksN=0, warned=[], noMatch=[];
@@ -1856,7 +2003,7 @@ async function readPlanIntoPlanner(){
     var msg='📥 '+filled+' order(s) · '+trucksN+' truck(s) from '+(r.file||'the sheet')+(r.tab?' (tab '+r.tab+')':'');
     if(warned.length) msg+=' · ⚠ '+warned.length+' to verify';
     toast(msg, !filled);
-    if(warned.length){ console.warn('Plan match — VERIFY material/pickup:\n'+warned.join('\n')); alert('⚠ Revisa material/pickup en:\n\n'+warned.join('\n')); }
+    if(warned.length){ console.warn('Plan match — VERIFY material/pickup:\n'+warned.join('\n')); alert(t('⚠ Check material/pickup on:','⚠ Revisa material/pickup en:')+'\n\n'+warned.join('\n')); }
   }catch(e){ console.error('readPlanIntoPlanner',e); toast('Read error: '+e.message,true); }
 }
 /* per-order: read THIS order's trucks/loads from the day's Excel sheet straight onto the order
@@ -1865,29 +2012,29 @@ async function readOrderFromSheet(e,oid){
   if(e&&e.stopPropagation)e.stopPropagation();
   try{
     var o=O(oid); if(!o){toast('Order not found',true);return;}
-    var dayEl=document.getElementById('day'); var day=(dayEl&&dayEl.value)||window.__boardToday||__locTodayISO;
-    toast('Leyendo el plan de '+(o.disp||'la orden')+'…');
+    var day=plannerDateISO();   // the day this order is SHOWN on (dIdx), not today
+    toast(t('Reading the plan for ','Leyendo el plan de ')+(o.disp||t('the order','la orden'))+' ('+day+')…');
     var r=await window.__nmBridge('readPlan',{dateISO:day});
     // OneDrive auto-find failed (file not synced on this PC, or no tab for the day) → let the
     // dispatcher PICK the Excel by hand. Same matching, just a manual source.
     if(!r || r.error || !r.orders){
-      toast('No hallé la hoja en OneDrive ('+((r&&r.error)?r.error:'sin archivo')+') — escoge el archivo…');
+      toast(t('Could not find the sheet in OneDrive (','No hallé la hoja en OneDrive (')+((r&&r.error)?r.error:t('no file','sin archivo'))+t(') — pick the file…',') — escoge el archivo…'));
       var pick=await window.__nmBridge('pickPlanFile',{dateISO:day},120000);
       if(!pick || pick.canceled) return;
       if(pick.error){ toast('Excel: '+pick.error,true); return; }
       if(pick.orderSheet && pick.orders){ r={orders:pick.orders, file:pick.file}; }
       else if(pick.pairs){ r={pairsOnly:pick.pairs, file:pick.file}; }
-      else { toast('No pude leer ese archivo',true); return; }
+      else { toast(t('Could not read that file','No pude leer ese archivo'),true); return; }
     }
     var so=null, tr=[];
     if(r.orders){
       so=matchSheetOrder(o, r.orders);
-      if(!so){ toast('No encontré '+(o.disp||'esta orden')+' en la hoja',true); return; }
+      if(!so){ toast(t('Could not find ','No encontré ')+(o.disp||t('this order','esta orden'))+t(' in the sheet',' en la hoja'),true); return; }
       tr=(so.trucks||[]).filter(function(t){return (t.num||'').trim();});
     } else if(r.pairsOnly){
       tr=r.pairsOnly.filter(function(p){return (p.num||'').trim();});   // lista simple (no hoja por orden)
     }
-    if(!tr.length){ toast((o.disp||'orden')+': sin trocas en '+(r.file||'la hoja'),true); return; }
+    if(!tr.length){ toast((o.disp||t('order','orden'))+t(': no trucks in ',': sin trocas en ')+(r.file||t('the sheet','la hoja')),true); return; }
     var added=0, dup=0, unresolved=[];
     tr.forEach(function(p){
       var t=trucks.find(function(x){return x.num.trim().toLowerCase()===String(p.num).trim().toLowerCase();});
@@ -1901,9 +2048,9 @@ async function readOrderFromSheet(e,oid){
     if(o.finalized&&added)o.modified=true;
     if(added)markDraft(o.id);
     render();
-    var msg='📄 '+(o.disp||'orden')+': +'+added+' troca(s) de '+(r.file||'la hoja')+(dup?' · '+dup+' ya estaban':'')+(unresolved.length?' · '+unresolved.length+' no encontradas ('+unresolved.slice(0,3).join(', ')+')':'');
+    var msg='📄 '+(o.disp||t('order','orden'))+': +'+added+t(' truck(s) from ',' troca(s) de ')+(r.file||t('the sheet','la hoja'))+(dup?' · '+dup+t(' already there',' ya estaban'):'')+(unresolved.length?' · '+unresolved.length+t(' not found (',' no encontradas (')+unresolved.slice(0,3).join(', ')+')':'');
     toast(msg, !added);
-    if(so&&so._warn&&so._warn.length){ console.warn('Excel match — VERIFY:\n'+so._warn.join('\n')); alert('⚠ Revisa material/pickup en '+(o.disp||'la orden')+':\n\n'+so._warn.join('\n')); }
+    if(so&&so._warn&&so._warn.length){ console.warn('Excel match — VERIFY:\n'+so._warn.join('\n')); alert(t('⚠ Check material/pickup on ','⚠ Revisa material/pickup en ')+(o.disp||t('the order','la orden'))+':\n\n'+so._warn.join('\n')); }
   }catch(err){ console.error('readOrderFromSheet',err); toast('Read error: '+(err.message||err),true); }
 }
 const PL_GROUPS=[['ww','WW'],['rho','RHO'],['pow','POW'],['cac','CAC'],['sub','SUB']];   // AGG folded into SUB (subhaulers)
@@ -1918,7 +2065,7 @@ function renderPlanner(){
       <th class="fz c1">Disp #</th><th class="fz c2">Material</th><th>Dropoff</th><th>Ord</th><th>Rem</th>
       ${PL_GROUPS.map(g=>`<th class="grp">${g[1]}</th>`).join('')}
       <th>Trks</th><th>Lds</th><th>Tons</th>
-      <th class="totc" title="Auto-plan: cuántas trocas para ESTA orden (vacío = auto por tonelaje). 1, 40, lo que sea.">🎯trk</th>
+      <th class="totc" title="${t('Auto-plan: how many trucks for THIS order (blank = auto by tonnage). 1, 40, whatever.','Auto-plan: cuántas trocas para ESTA orden (vacío = auto por tonelaje). 1, 40, lo que sea.')}">🎯trk</th>
       <th colspan="${maxPairs+1}" style="text-align:left;color:#8b96a5">type TRK # + LDS per truck — group counts auto-fill ▶</th>
     </tr></thead>`;
   let rows='';
@@ -1944,7 +2091,7 @@ function renderPlanner(){
       <td class="remc" style="color:${rem>0?'#fb923c':'#22c55e'}">${Math.round(rem)}</td>
       ${PL_GROUPS.map(g=>`<td class="tally ${g[0]}" data-g="${g[0]}">0</td>`).join('')}
       <td class="totc" data-tot="trks">0</td><td class="totc" data-tot="lds">0</td><td class="totc" data-tot="tons">0</td>
-      <td class="totc"><input class="lds" style="width:42px;text-align:center" value="${o.planTrucks||''}" placeholder="auto" inputmode="numeric" title="# de trocas para auto-plan (esta orden)" onclick="event.stopPropagation()" oninput="planSetTrucks('${oid}',this.value)"></td>
+      <td class="totc"><input class="lds" style="width:42px;text-align:center" value="${o.planTrucks||''}" placeholder="auto" inputmode="numeric" title="${t('# of trucks for auto-plan (this order)','# de trocas para auto-plan (esta orden)')}" onclick="event.stopPropagation()" oninput="planSetTrucks('${oid}',this.value)"></td>
       ${pcells}</tr>`;
   });
   let foot=`<tfoot><tr>
@@ -2216,7 +2363,7 @@ function commitPlanner(){
   // count within this batch so a truck on two planned orders gets seq 1 then 2.
   const baseCount={};
   orders.forEach(o=>{ if(committing.has(o.id)) return; o.assigns.forEach(a=>{ baseCount[a.truck]=(baseCount[a.truck]||0)+1; }); });
-  let totAssigns=0, touched=0; const perTruck={};
+  let totAssigns=0, touched=0; const perTruck={}; const _blk=[];
   oids.forEach(oid=>{
     const o=O(oid); const pairs=(planDraft[oid]||[]).filter(p=>(p.num||'').trim());
     if(!pairs.length) return;
@@ -2225,6 +2372,7 @@ function commitPlanner(){
     pairs.forEach(p=>{
       const id=planResolveTruck(p.num); if(!id) return;
       if(newAssigns.some(a=>a.truck===id)) return;   // never list the same truck twice on one order
+      if(window.tnBlocked&&window.tnBlocked(p.num)){ _blk.push(p.num); return; }   // 🚩 skip blocked, report after
       const cur=(perTruck[id]!=null?perTruck[id]:(baseCount[id]||0));
       const seq=cur+1; perTruck[id]=seq;
       const ll=(typeof p.lds==='number'&&p.lds>0)?p.lds:'open';   // no number typed → ∞ open, never an invented limit
@@ -2236,7 +2384,8 @@ function commitPlanner(){
     if(o.finalized) o.modified=true; touched++;
   });
   render(); renderPlanner();
-  toast(totAssigns?`Planned ${totAssigns} truck assignment(s) across ${touched} order(s)`:'Type a truck # and loads first',!totAssigns);
+  toast(totAssigns?`Planned ${totAssigns} truck assignment(s) across ${touched} order(s)`+(_blk.length?` · ${[...new Set(_blk)].length} 🚩 omitida(s)`:''):(_blk.length?'Ninguna — 🚩 bloqueadas':'Type a truck # and loads first'),!totAssigns);
+  if(_blk.length)window.tnAlertBlocked(_blk);
 }
 
 /* planner resize */
@@ -2594,7 +2743,7 @@ setView('board');
     if(t.status==='rolling'){
       var ls=String(t.loadStatus||'');
       if(ls.indexOf('drop')>=0) return {k:'dropoff',ic:'📦',lbl:'driving to dropoff'};
-      if(t.loadLimit!=null && t.loadDone!=null && t.loadDone>=t.loadLimit-1) return {k:'lastload',ic:'🏁',lbl:'última carga '+t.loadDone+'/'+t.loadLimit};
+      if(t.loadLimit!=null && t.loadDone!=null && t.loadDone>=t.loadLimit-1) return {k:'lastload',ic:'🏁',lbl:t('last load ','última carga ')+t.loadDone+'/'+t.loadLimit};
       return {k:'working',ic:'🚚',lbl:ls?ls.replace(/_/g,' '):'working'};
     }
     var u=used||assignedSet();
@@ -2628,7 +2777,7 @@ setView('board');
     if(!window.__nmBridge){ toast&&toast('Rotation needs the live app',true); return; }
     var ref=window.__boardToday||new Date().toISOString().slice(0,10);
     var WIN=days||window.__rotDays||30; window.__rotDays=WIN;
-    toast&&toast('📆 Jalando '+WIN+' días de historial…');
+    toast&&toast('📆 '+t('Pulling ','Jalando ')+WIN+t(' days of history…',' días de historial…'));
     var res=await window.__nmBridge('rotationHistory',{date:ref,days:WIN},120000);
     var rows=(res&&res.rows)||[]; if(res&&res.error){ toast&&toast('Rotation: '+res.error,true); return; }
     var lw=rotBuildLastWorked(rows); var idx={};
@@ -2645,7 +2794,7 @@ setView('board');
     try{ renderTrucks(); enhRenderFilters&&enhRenderFilters(); }catch(e){}
     var active=trucks.filter(function(t){return t.daysIdle!=null;}).length;
     var nIdle=trucks.filter(function(t){return t.daysIdle!=null && t.daysIdle>=3;}).length;
-    toast&&toast('📆 Rotación '+WIN+'d · '+active+' activas que no han trabajado ('+nIdle+' ≥3d) — '+ (trucks.length-active) +' dormidas ocultas');
+    toast&&toast('📆 '+t('Rotation ','Rotación ')+WIN+'d · '+active+t(' active with no work (',' activas que no han trabajado (')+nIdle+' ≥3d) — '+ (trucks.length-active) +t(' dormant hidden',' dormidas ocultas'));
   };
   window.clearRotation=function(){ filters.rotActive=false; renderTrucks(); enhRenderFilters&&enhRenderFilters(); };
   /* pool of assignable trucks honoring exclusions + planOpts filters */
@@ -2654,6 +2803,7 @@ setView('board');
     orders.forEach(function(o){ (o.assigns||[]).forEach(function(a){ var t=T(a.truck); if(t) used[(t.num||'').trim().toLowerCase()]=o.id; }); });
     return trucks.filter(function(t){
       if(BLUEWING.test(t.owner||'')||used[(t.num||'').trim().toLowerCase()]||t.status==='noshow') return false;
+      if(window.tnBlocked&&window.tnBlocked(t.num)) return false;   // 🚩 flagged unavailable (shop/off) — never auto-plan it
       if(planOpts.groups[fltGroupOf(t)]===0) return false;     // 0 = excluded; unknown = included
       if(planOpts.gpsOnly && t.lat==null) return false;
       if(planOpts.onCallOnly && !t.onCall) return false;
@@ -2690,7 +2840,7 @@ setView('board');
       if(!oids.length){
         var emptyNm=orders.filter(function(o){return !o.completed&&o.unit!=='hour'&&o.assigns.length===0&&o.nm>0;}).length;
         var hourly=orders.filter(function(o){return !o.completed&&o.unit==='hour'&&o.assigns.length===0;}).length;
-        toast(emptyNm?('⚠ '+emptyNm+' orden(es) salen vacías pero YA tienen trocas en NewMile (subs no mapeados al roster) — por eso no las cubre'):(hourly?'Solo quedan órdenes por hora — el auto-plan no las dimensiona':'No hay órdenes sin cubrir para auto-plan'),true);
+        toast(emptyNm?('⚠ '+emptyNm+t(' order(s) show empty but ALREADY have trucks in NewMile (subs not mapped to the roster) — that is why it does not cover them',' orden(es) salen vacías pero YA tienen trocas en NewMile (subs no mapeados al roster) — por eso no las cubre')):(hourly?t('Only hourly orders left — auto-plan does not size those','Solo quedan órdenes por hora — el auto-plan no las dimensiona'):t('No uncovered orders for auto-plan','No hay órdenes sin cubrir para auto-plan')),true);
         return;
       }
       if(typeof plannerOpen==='undefined' || !plannerOpen) openPlanner();
@@ -2704,7 +2854,7 @@ setView('board');
       }
 
       var pool=planPool();
-      if(!pool.length){ toast('No hay trocas disponibles para el auto-plan — revisa ⚙ Plan filters (on-call / GPS / deadhead máx) y el filtro de flota',true); return; }
+      if(!pool.length){ toast(t('No trucks available for auto-plan — check ⚙ Plan filters (on-call / GPS / max deadhead) and the fleet filter','No hay trocas disponibles para el auto-plan — revisa ⚙ Plan filters (on-call / GPS / deadhead máx) y el filtro de flota'),true); return; }
 
       var assigned=0, ordersTouched=0, dhSum=0, dhN=0, newSuggest={};
       oids.forEach(function(oid){
@@ -2738,7 +2888,7 @@ setView('board');
       lastSuggested=newSuggest;
       window.__lastDeadhead = dhN ? Math.round(dhSum/dhN) : null;
       renderPlanner(); refresh();
-      toast(assigned? ('⚡ Auto-plan: '+assigned+' rested truck(s) across '+ordersTouched+' order(s)'+(window.__lastDeadhead!=null?(' · ~'+window.__lastDeadhead+' mi avg deadhead'):'')+' — review & adjust') : 'No pude asignar — sube el "Max deadhead" en ⚙ Plan filters o quita on-call/GPS; quizá ninguna troca queda dentro del rango',!assigned);
+      toast(assigned? ('⚡ Auto-plan: '+assigned+' rested truck(s) across '+ordersTouched+' order(s)'+(window.__lastDeadhead!=null?(' · ~'+window.__lastDeadhead+' mi avg deadhead'):'')+' — review & adjust') : t('Could not assign — raise the "Max deadhead" in ⚙ Plan filters or drop on-call/GPS; maybe no truck falls within range','No pude asignar — sube el "Max deadhead" en ⚙ Plan filters o quita on-call/GPS; quizá ninguna troca queda dentro del rango'),!assigned);
     }catch(e){ console.error('autoPlan',e); toast('Auto-plan error: '+e.message,true); }
   }
 
@@ -3003,15 +3153,15 @@ setView('board');
         +'<button class="fchip teal '+(filters.avail==='free'?'on':'')+'" onclick="setState(\'avail\',\'free\')">🟢 Free — unassigned</button>'
         +'<button class="fchip '+(filters.avail==='assigned'?'on':'')+'" onclick="setState(\'avail\',\'assigned\')">📌 Assigned</button>'
         +'<button class="fchip wyon '+(filters.avail==='rolling'?'on':'')+'" onclick="setState(\'avail\',\'rolling\')" title="Hauling right now per NewMile load status">🚛 Rolling'+(rolling?(' ('+rolling+')'):'')+'</button>'
-        +'<button class="fchip '+(filters.avail==='lastload'?'on':'')+'" onclick="setState(\'avail\',\'lastload\')" title="En su última carga (NewMile) — a punto de liberarse. No necesita Samsara.">🏁 Última carga'+(lastN?(' ('+lastN+')'):'')+'</button>'
-        +'<button class="fchip '+(filters.avail==='dropoff'?'on':'')+'" onclick="setState(\'avail\',\'dropoff\')" title="Driving to dropoff (NewMile). No necesita Samsara.">📦 A descarga'+(dropN?(' ('+dropN+')'):'')+'</button>'
-        +'<button class="fchip rest '+(filters.avail==='unassigned'?'on':'')+'" onclick="setState(\'avail\',\'unassigned\')" title="Trocas en on-call que NO están en ninguna orden de hoy — ¿se te olvidó asignar a alguien? Combínalo con el filtro de flota.">🚨 Sin asignar'+(unN?(' ('+unN+')'):'')+'</button>'
+        +'<button class="fchip '+(filters.avail==='lastload'?'on':'')+'" onclick="setState(\'avail\',\'lastload\')" title="'+t('On its last load (NewMile) — about to free up. No Samsara needed.','En su última carga (NewMile) — a punto de liberarse. No necesita Samsara.')+'">🏁 '+t('Last load','Última carga')+(lastN?(' ('+lastN+')'):'')+'</button>'
+        +'<button class="fchip '+(filters.avail==='dropoff'?'on':'')+'" onclick="setState(\'avail\',\'dropoff\')" title="'+t('Driving to dropoff (NewMile). No Samsara needed.','Driving to dropoff (NewMile). No necesita Samsara.')+'">📦 '+t('To dropoff','A descarga')+(dropN?(' ('+dropN+')'):'')+'</button>'
+        +'<button class="fchip rest '+(filters.avail==='unassigned'?'on':'')+'" onclick="setState(\'avail\',\'unassigned\')" title="'+t('On-call trucks NOT on any order today — did you forget to assign someone? Combine it with the fleet filter.','Trocas en on-call que NO están en ninguna orden de hoy — ¿se te olvidó asignar a alguien? Combínalo con el filtro de flota.')+'">🚨 '+t('Unassigned','Sin asignar')+(unN?(' ('+unN+')'):'')+'</button>'
         +'</div>'
         +'<div class="ef-sec"><span class="ef-lbl">🔄 Rotation</span>'
         +'<button class="fchip rest '+(filters.worked==='off'?'on':'')+'" onclick="setState(\'worked\',\'off\')">💤 Rested — next up</button>'
         +'<button class="fchip wyon '+(filters.worked==='yes'?'on':'')+'" onclick="setState(\'worked\',\'yes\')">⚡ Ran yesterday</button>'
-        +'<button class="fchip '+(filters.rotActive?'on':'')+'" onclick="'+(filters.rotActive?'clearRotation()':'loadRotation()')+'" title="Jala el historial de tickets NewMile y muestra SOLO trocas activas que no han trabajado (rotación justa). Oculta las dormidas. Sin Samsara.">📆 No han trabajado</button>'
-        +(filters.rotActive?[14,30,60].map(function(d){return '<button class="fchip '+(window.__rotDays===d?'on':'')+'" onclick="loadRotation('+d+')" title="ACTIVA = trabajó en los últimos '+d+' días">'+d+'d</button>';}).join(''):'')
+        +'<button class="fchip '+(filters.rotActive?'on':'')+'" onclick="'+(filters.rotActive?'clearRotation()':'loadRotation()')+'" title="'+t('Pulls the NewMile ticket history and shows ONLY active trucks that have not worked (fair rotation). Hides the dormant ones. No Samsara.','Jala el historial de tickets NewMile y muestra SOLO trocas activas que no han trabajado (rotación justa). Oculta las dormidas. Sin Samsara.')+'">📆 '+t('No work yet','No han trabajado')+'</button>'
+        +(filters.rotActive?[14,30,60].map(function(d){return '<button class="fchip '+(window.__rotDays===d?'on':'')+'" onclick="loadRotation('+d+')" title="'+t('ACTIVE = worked in the last ','ACTIVA = trabajó en los últimos ')+d+t(' days',' días')+'">'+d+'d</button>';}).join(''):'')
         +'</div>'
         +(hasGps?(
          '<div class="ef-sec"><span class="ef-lbl">🛰 Samsara</span>'
@@ -3084,7 +3234,7 @@ setView('board');
     d.innerHTML='<div id="mapPanel">'
       +'<header><b>🗺 Live Map</b>'
       +'<input id="mapSearch" placeholder="Truck # / driver…" autocomplete="off">'
-      +'<input id="mapPlace" placeholder="📍 Dirección, ciudad o coordenadas — Enter" autocomplete="off" style="min-width:230px">'
+      +'<input id="mapPlace" placeholder="'+t('📍 Address, city or coordinates — Enter','📍 Dirección, ciudad o coordenadas — Enter')+'" autocomplete="off" style="min-width:230px">'
       +'<span id="mapInfo"></span>'
       +'<button id="mapClose">✕</button></header>'
       +'<div id="liveMap"></div></div>';
@@ -3149,7 +3299,7 @@ setView('board');
   /* 📍 jump the map to any address / city / coordinates (board places → Census → OpenStreetMap) */
   async function findOnMap(q){
     q=(q||'').trim(); if(!q||!_lmap) return;
-    var inf=$id('mapInfo'); if(inf) inf.textContent='Buscando "'+q+'"…';
+    var inf=$id('mapInfo'); if(inf) inf.textContent=t('Searching ','Buscando ')+'"'+q+'"…';
     var loc=null;
     var cm=q.match(/^\s*(-?\d{1,3}(?:\.\d+)?)\s*[, ]\s*(-?\d{1,3}(?:\.\d+)?)\s*$/);   // "lat,lng"
     if(cm){ loc={lat:parseFloat(cm[1]),lng:parseFloat(cm[2]),src:'coords'}; }
@@ -3158,7 +3308,7 @@ setView('board');
       var r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q),{headers:{Accept:'application/json'}});
       var j=await r.json(); if(j&&j[0]) loc={lat:parseFloat(j[0].lat),lng:parseFloat(j[0].lon),src:'osm',name:j[0].display_name};
     }catch(e){} }
-    if(!loc){ if(inf)inf.textContent='No encontré "'+q+'"'; toast('No encontré: '+q,true); return; }
+    if(!loc){ if(inf)inf.textContent=t('Could not find ','No encontré ')+'"'+q+'"'; toast(t('Could not find: ','No encontré: ')+q,true); return; }
     _lmFind.clearLayers();
     var mk=L.marker([loc.lat,loc.lng]).addTo(_lmFind);
     var gmap='https://www.google.com/maps/search/?api=1&query='+loc.lat+','+loc.lng;
@@ -3787,8 +3937,8 @@ setView('board');
       return {t:t,d:d,drv:(h&&h.driveMin!=null)?h.driveMin:null,rested:t.workedYest===false,free:t.status!=='rolling',state:sstate,rank:rank};
     }).sort(function(a,b){ return (b.rank-a.rank)||(b.rested-a.rested)||((a.d==null)-(b.d==null))||((a.d||9e9)-(b.d||9e9)); });
     if(!cands.length){ if(body)body.innerHTML='<div style="padding:14px;color:#8b96a5">No free/finishing trucks found right now.</div>'; return; }
-    if(body)body.innerHTML='<div style="padding:6px 4px;color:#8b96a5;font-size:12px">Free + a punto de liberarse primero, más cercanos al pickup. Subs sin GPS entran por su estado NewMile. Tap to assign.</div>'+cands.slice(0,40).map(function(c){
-      var bits=[]; if(c.d!=null)bits.push('📍 '+Math.round(c.d)+' mi'); else bits.push('📡 NewMile (sin GPS)'); bits.push(c.state.ic+' '+c.state.lbl); if(c.rested)bits.push('💤 rested'); if(c.drv!=null)bits.push('⏱ '+(c.drv>=60?(Math.floor(c.drv/60)+'h'+(c.drv%60?(c.drv%60)+'m':'')):(c.drv+'m')));
+    if(body)body.innerHTML='<div style="padding:6px 4px;color:#8b96a5;font-size:12px">'+t('Free + about to free up first, nearest to the pickup. Subs with no GPS come in by their NewMile state. Tap to assign.','Free + a punto de liberarse primero, más cercanos al pickup. Subs sin GPS entran por su estado NewMile. Tap to assign.')+'</div>'+cands.slice(0,40).map(function(c){
+      var bits=[]; if(c.d!=null)bits.push('📍 '+Math.round(c.d)+' mi'); else bits.push('📡 '+t('NewMile (no GPS)','NewMile (sin GPS)')); bits.push(c.state.ic+' '+c.state.lbl); if(c.rested)bits.push('💤 rested'); if(c.drv!=null)bits.push('⏱ '+(c.drv>=60?(Math.floor(c.drv/60)+'h'+(c.drv%60?(c.drv%60)+'m':'')):(c.drv+'m')));
       return '<div onclick="nearbyAdd(\''+oid+'\',\''+c.t.id+'\')" style="display:flex;justify-content:space-between;gap:10px;padding:10px 6px;border-bottom:1px solid #1f283d;cursor:pointer"><span><b>'+(c.t.num||'')+'</b> <span style="color:#8b96a5">'+(c.t.driver||'')+'</span> <span style="color:#5a95f9;font-size:11px">'+(c.t.group||'')+'</span></span><span style="color:#aeb7c0;font-size:12px">'+bits.join(' · ')+' ＋</span></div>';
     }).join('');
   };
@@ -3798,21 +3948,21 @@ setView('board');
   window.truckParkingNearby=function(e,tid){
     if(e&&e.stopPropagation)e.stopPropagation();
     var t=T(tid); if(!t){ toast&&toast('Truck not found',true); return; }
-    if(t.lat==null){ toast&&toast('Sin GPS para '+(t.num||''),true); return; }
+    if(t.lat==null){ toast&&toast(window.t('No GPS for ','Sin GPS para ')+(t.num||''),true); return; }
     var scr=document.getElementById('repScrim'), body=document.getElementById('repBody'), title=document.getElementById('repTitle');
-    if(title)title.textContent='📍 '+(t.num||'')+' — plantas/órdenes más cercanas';
+    if(title)title.textContent='📍 '+(t.num||'')+' — '+window.t('nearest plants/orders','plantas/órdenes más cercanas');
     var cands=(orders||[]).filter(function(o){ return !o.completed && o.pickupLat!=null; })
       .map(function(o){ return { o:o, mi:enhHavMi(t.lat,t.lon,o.pickupLat,o.pickupLng) }; })
       .sort(function(a,b){ return a.mi-b.mi; });
     var maps='https://www.google.com/maps/search/?api=1&query='+t.lat+','+t.lon;
     var onOrder={}; (orders||[]).forEach(function(o){ (o.assigns||[]).forEach(function(a){ if(a.truck===t.id) onOrder[o.id]=1; }); });
-    var head='<div style="padding:6px 4px;color:#8b96a5;font-size:12px">📍 Parqueada <a href="'+maps+'" target="_blank" style="color:#5a95f9">aquí (Google Maps)</a>'+(t.mph!=null?' · '+Math.round(t.mph)+' mph':'')+' — órdenes de HOY por cercanía. Tap para asignar.</div>';
+    var head='<div style="padding:6px 4px;color:#8b96a5;font-size:12px">📍 '+window.t('Parked ','Parqueada ')+'<a href="'+maps+'" target="_blank" style="color:#5a95f9">'+window.t('here (Google Maps)','aquí (Google Maps)')+'</a>'+(t.mph!=null?' · '+Math.round(t.mph)+' mph':'')+window.t(' — TODAY\'s orders by proximity. Tap to assign.',' — órdenes de HOY por cercanía. Tap para asignar.')+'</div>';
     if(body)body.innerHTML=head+(cands.length?cands.slice(0,40).map(function(c){
-      var on=onOrder[c.o.id]?' <span style="color:#22c55e;font-size:11px">✓ ya en esta</span>':'';
+      var on=onOrder[c.o.id]?' <span style="color:#22c55e;font-size:11px">✓ '+window.t('already on this','ya en esta')+'</span>':'';
       return '<div onclick="parkAssign(\''+tid+'\',\''+c.o.id+'\')" style="display:flex;justify-content:space-between;gap:10px;padding:10px 6px;border-bottom:1px solid #1f283d;cursor:pointer">'
         +'<span><b>'+(c.o.disp||'')+'</b> <span style="color:#8b96a5">'+(c.o.mat||'')+'</span>'+on+'<br><span style="color:#8b96a5;font-size:11px">'+(c.o.pickup||'')+'</span></span>'
         +'<span style="color:#aeb7c0;font-size:12px;white-space:nowrap">📍 ~'+Math.round(c.mi)+' mi ＋</span></div>';
-    }).join(''):'<div style="padding:14px;color:#8b96a5">No hay órdenes con ubicación para hoy.</div>');
+    }).join(''):'<div style="padding:14px;color:#8b96a5">'+window.t('No orders with a location for today.','No hay órdenes con ubicación para hoy.')+'</div>');
     if(scr)scr.classList.add('show');
   };
   window.parkAssign=function(tid,oid){ var s=document.getElementById('repScrim'); if(s)s.classList.remove('show'); if(typeof openModal==='function') openModal({mode:'single',truckId:tid,orderId:oid}); };
@@ -4103,15 +4253,70 @@ setView('board');
   var aiMsgs=[], aiBusy=false, aiDraft='', _aiReqs={}, _aiSeq=0;
   function aiEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   window.__aiResult=function(id,res){ var cb=_aiReqs[id]; if(cb){ delete _aiReqs[id]; cb(res); } };
-  function bridgeAi(messages,context){ return new Promise(function(res){ var id='ai'+(++_aiSeq); _aiReqs[id]=res; try{ parent.postMessage({type:'ai',reqId:id,messages:messages,context:context},'*'); }catch(e){ res({error:'bridge unavailable'}); } setTimeout(function(){ if(_aiReqs[id]){ delete _aiReqs[id]; res({error:'timeout'}); } },60000); }); }
+  function bridgeAi(messages,context,tools){ return new Promise(function(res){ var id='ai'+(++_aiSeq); _aiReqs[id]=res; try{ parent.postMessage({type:'ai',reqId:id,messages:messages,context:context,tools:tools},'*'); }catch(e){ res({error:'bridge unavailable'}); } setTimeout(function(){ if(_aiReqs[id]){ delete _aiReqs[id]; res({error:'timeout'}); } },120000); }); }
   function aiCtx(){
-    var os=orders.map(function(o){
-      var tks=(o.assigns||[]).map(function(a){var tk=T(a.truck);return tk?{num:tk.num,driver:a.driver||tk.driver||'',seq:a.seq,rolling:tk.status==='rolling'}:null;}).filter(Boolean);
-      return {disp:o.disp,cust:o.cust,mat:o.mat,unit:o.unit,ordered:o.target,delivered:(o.deliv||o.loadsDone||0),covered:isCovered(o),needLoads:Math.max(0,loadsToCover(o)),start:(o.time||(o.startHr+':00')),pickup:o.pickup,drop:o.drop,completed:!!o.completed,trucks:tks};
-    });
-    var byGrp={}; trucks.forEach(function(tk){ var g=grpLabel(rptGroupOf(tk)); (byGrp[g]=byGrp[g]||{total:0,free:0,rolling:0}); byGrp[g].total++; if(tk.status==='rolling')byGrp[g].rolling++; else if(tk.status!=='assigned')byGrp[g].free++; });
-    return JSON.stringify({day:((typeof days!=='undefined'&&days[dIdx])||'today'),date:(window.__boardToday||''),orders:os,fleetCounts:byGrp,truckTotal:trucks.length});
+    // COMPACT summary only (keeps tokens low for the agent loop / rate limit). Miley pulls detail
+    // via tools (list_short_orders, find_free_trucks_near_order, truck_status, …).
+    var compl=0, short=[]; orders.forEach(function(o){ if(o.completed){compl++;return;} if(!isCovered(o)) short.push({id:o.id,disp:o.disp,cust:o.cust,mat:o.mat,needLoads:Math.max(0,loadsToCover(o)),start:(o.time||((o.startHr||0)+':00')),pickup:o.pickup,drop:o.drop}); });
+    var byGrp={}, freeN=0, blk=0; trucks.forEach(function(tk){ var g=grpLabel(rptGroupOf(tk)); (byGrp[g]=byGrp[g]||{total:0,free:0}); byGrp[g].total++; var isFree=(tk.status!=='assigned'&&tk.status!=='rolling'&&tk.status!=='noshow'); if(isFree)byGrp[g].free++; if(isFree)freeN++; if(window.tnBlocked&&window.tnBlocked(tk.num))blk++; });
+    return JSON.stringify({day:((typeof days!=='undefined'&&days[dIdx])||'today'),date:(window.__boardToday||''),orders:orders.length,completed:compl,shortCount:short.length,shortOrders:short.slice(0,40),fleetCounts:byGrp,trucksTotal:trucks.length,trucksFree:freeN,trucksFlaggedOff:blk});
   }
+
+  /* ===== 🤝 AGENTIC MILEY — Claude tool-use. READ tools auto-run; WRITE tools need Miley.canAct
+     (default OFF) + a per-action confirm card. All reuse existing engine functions; the only tool
+     that writes to NewMile is finalize_and_push (through the confirmed sync — never reorders seq). ===== */
+  function _ord(ref){ ref=String(ref==null?'':ref).trim(); if(!ref)return null;
+    return orders.find(function(o){ return String(o.id)===ref||String(o.id)==='o'+ref||(o.disp&&o.disp.toLowerCase()===ref.toLowerCase()); })
+        || orders.find(function(o){ return (o.disp&&o.disp.toLowerCase().indexOf(ref.toLowerCase())>=0)||(''+o.id).indexOf(ref)>=0; }); }
+  function _etaMin(mi){ return mi==null?null:Math.round(mi/45*60); }
+  async function _hosMap(){ try{ return (await bridgeHos())||{}; }catch(e){ return {}; } }
+  function _truckPool(){ try{ return planPool(); }catch(e){ return trucks.filter(function(t){ return t.status!=='noshow' && !(window.tnBlocked&&window.tnBlocked(t.num)); }); } }
+  function _fleet(t){ try{ return grpLabel(rptGroupOf(t)); }catch(e){ return t.fleet||''; } }
+  function _mi(o,t){ try{ var d=distTo(o,t); return d==null?null:Math.round(d); }catch(e){ return null; } }
+
+  var MILEY_READ={
+    list_short_orders:function(){ var os=orders.filter(function(o){return !o.completed&&!isCovered(o);}).map(function(o){return {disp:o.disp,cust:o.cust,mat:o.mat,needLoads:Math.max(0,loadsToCover(o)),start:(o.time||((o.startHr||0)+':00')),pickup:o.pickup,drop:o.drop,trucksOn:(o.assigns||[]).length};}); return JSON.stringify({day:((typeof days!=='undefined'&&days[dIdx])||'today'),count:os.length,shortOrders:os}); },
+    find_free_trucks_near_order:async function(input){ var o=_ord(input.orderId||input.disp||input.order); if(!o)return 'Order not found: '+(input.orderId||input.disp||''); var hos=await _hosMap(); var rows=_truckPool().map(function(t){ var mi=_mi(o,t); var h=hos[(t.driver||'').toLowerCase()]; return {num:t.num,miles:mi,etaMin:_etaMin(mi),restedDays:(t.daysIdle!=null?t.daysIdle:null),onCall:!!t.onCall,fleet:_fleet(t),driveMinLeft:(h?h.driveMin:null),status:t.status,driver:t.driver||''}; }); rows.sort(function(a,b){ var am=a.miles==null?9e9:a.miles,bm=b.miles==null?9e9:b.miles; return am-bm||((b.restedDays||0)-(a.restedDays||0))||((b.onCall?1:0)-(a.onCall?1:0)); }); return JSON.stringify({order:{disp:o.disp,pickup:o.pickup,drop:o.drop,needLoads:Math.max(0,loadsToCover(o))},options:rows.slice(0,8)}); },
+    list_idle_trucks:function(input){ var d=parseInt(input&&input.days,10); if(isNaN(d))d=2; var rows=trucks.filter(function(t){return t.daysIdle!=null&&t.daysIdle>=d&&!(window.tnBlocked&&window.tnBlocked(t.num));}).sort(function(a,b){return (b.daysIdle||0)-(a.daysIdle||0);}).map(function(t){return {num:t.num,daysIdle:t.daysIdle,onCall:!!t.onCall,fleet:_fleet(t),lastWorked:t.lastWorked||null};}); return JSON.stringify({minDays:d,count:rows.length,idle:rows.slice(0,40)}); },
+    truck_status:async function(input){ var t=T(input.num); if(!t)return 'Truck not found: '+(input.num||''); var hos=await _hosMap(); var h=hos[(t.driver||'').toLowerCase()]; var f=(window.tnGet&&window.tnGet(t.num))||null; return JSON.stringify({num:t.num,driver:t.driver||'',fleet:_fleet(t),status:t.status,onCall:!!t.onCall,daysIdle:(t.daysIdle!=null?t.daysIdle:null),lat:(t.lat!=null?t.lat:null),lon:(t.lon!=null?t.lon:null),mph:(t.mph!=null?t.mph:null),gpsTime:t.gpsTime||null,driveMinLeft:(h?h.driveMin:null),flag:f?{status:f.status,reason:f.reason}:null}); },
+    samsara_locations:function(input){ var nums=(input&&input.nums)||null,set=null; if(nums&&nums.length){set={};nums.forEach(function(n){set[String(n).trim().toLowerCase()]=1;});} var list=trucks.filter(function(t){return t.lat!=null&&(!set||set[t.num.trim().toLowerCase()]);}); return JSON.stringify({count:list.length,trucks:list.slice(0,60).map(function(t){return {num:t.num,lat:t.lat,lon:t.lon,mph:(t.mph!=null?t.mph:null),gpsTime:t.gpsTime||null,driver:t.driver||''};})}); },
+    suggest_plan:function(){ var pool=_truckPool(),avoid={},out=[]; orders.filter(function(o){return !o.completed&&!isCovered(o);}).forEach(function(o){ var need=Math.max(1,loadsToCover(o)); var ranked=pool.filter(function(t){return !avoid[t.num];}).map(function(t){return {t:t,mi:_mi(o,t)};}).sort(function(a,b){var am=a.mi==null?9e9:a.mi,bm=b.mi==null?9e9:b.mi;return am-bm||((b.t.daysIdle||0)-(a.t.daysIdle||0));}); var picks=ranked.slice(0,need).map(function(r){avoid[r.t.num]=1;return {num:r.t.num,miles:r.mi};}); if(picks.length)out.push({disp:o.disp,need:need,suggest:picks}); }); return JSON.stringify({preview:out}); }
+  };
+  var MILEY_WRITE={
+    set_truck_status:{desc:function(i){return t('Flag truck ','Marcar troca ')+i.num+' → '+(i.status||'')+(i.reason?(' ('+i.reason+')'):'');}, fn:async function(i){ if(!i.num)return 'num required'; await window.tnSetStatus(i.num,(i.status==='off'||i.status==='shop')?i.status:'ok',i.reason||''); try{render();}catch(e){} return 'OK — '+i.num+' set to '+(i.status||'ok'); }},
+    add_truck_log:{desc:function(i){return t('Add note on ','Nota en ')+i.num+': '+(i.text||'');}, fn:async function(i){ if(!i.num||!i.text)return 'num+text required'; await window.tnAddLog(i.num,i.text); return 'OK — logged on '+i.num; }},
+    run_autoplan:{desc:function(){return t('Run auto-plan (fills the planner; nothing pushed to NewMile)','Correr auto-plan (llena el planner; no manda a NewMile)');}, fn:function(){ try{ autoPlan(); return 'OK — auto-plan staged into the planner. Review & push when ready.'; }catch(e){ return 'auto-plan error: '+(e.message||e); } }},
+    assign_truck:{desc:function(i){return t('Stage ','Poner ')+i.truckNum+' → '+(i.orderId||i.disp||'order');}, fn:function(i){ var o=_ord(i.orderId||i.disp); if(!o)return 'Order not found'; var t2=T(i.truckNum); if(!t2)return 'Truck not found: '+i.truckNum; if(window.tnBlocked&&window.tnBlocked(t2.num))return t2.num+' is flagged unavailable — clear the flag first'; try{ dropTruckOnOrder(t2.id,o.id); if(typeof i.loads==='number'&&i.loads>0&&o.assigns){ var a=o.assigns.filter(function(x){return x.truck===t2.id;}).pop(); if(a)a.ll=i.loads; } render(); return 'OK — '+t2.num+' staged on '+(o.disp||o.id)+' (review & push)'; }catch(e){ return 'assign error: '+(e.message||e); } }},
+    finalize_and_push:{desc:function(i){return '⚠ '+t('FINALIZE & PUSH to NewMile: order ','FINALIZAR y MANDAR a NewMile: orden ')+(i.orderId||i.disp||'');}, fn:function(i){ var o=_ord(i.orderId||i.disp); if(!o)return 'Order not found'; try{ if(window.finalizeOrder)window.finalizeOrder(null,o.id); else if(typeof markDraft==='function')markDraft(o.id); parent.postMessage({type:'refresh'},'*'); return 'OK — '+(o.disp||o.id)+' finalized & syncing to NewMile now.'; }catch(e){ return 'push error: '+(e.message||e); } }}
+  };
+  function mileyConfirm(desc){ return new Promise(function(resolve){ var box=$id('aiMsgs'); if(!box){ resolve(false); return; }
+    var div=document.createElement('div'); div.style.cssText='align-self:flex-start;max-width:92%;background:#16233b;border:1px solid var(--gold-soft);border-radius:10px;padding:9px 11px;font-size:13px;line-height:1.4';
+    var cid='cf'+(++_aiSeq);
+    div.innerHTML='🤝 '+aiEsc(desc)+'<div id="'+cid+'b" style="display:flex;gap:8px;margin-top:8px"><button class="finbtn go" id="'+cid+'y">✓ '+t('Do it','Hazlo')+'</button><button class="gmap" id="'+cid+'n">✗ '+t('Cancel','Cancelar')+'</button></div>';
+    box.appendChild(div); box.scrollTop=box.scrollHeight;
+    $id(cid+'y').onclick=function(){ var b=$id(cid+'b'); if(b)b.innerHTML='<span style="color:var(--green)">✓ '+t('confirmed','confirmado')+'</span>'; resolve(true); };
+    $id(cid+'n').onclick=function(){ var b=$id(cid+'b'); if(b)b.innerHTML='<span style="color:var(--muted)">✗ '+t('cancelled','cancelado')+'</span>'; resolve(false); };
+  }); }
+  async function mileyToolRun(name,input){ input=input||{};
+    if(MILEY_READ[name]){ try{ return await MILEY_READ[name](input); }catch(e){ return 'tool error: '+(e.message||e); } }
+    var w=MILEY_WRITE[name];
+    if(w){ if(!Miley.canAct) return t('BLOCKED: Miley Actions are OFF — ask the dispatcher to turn on the 🔓 Actions switch in the drawer before acting.','BLOQUEADO: las Acciones de Miley están APAGADAS — pídele al despachador prender el switch 🔓 Actions en el cajón antes de accionar.');
+      var ok=await mileyConfirm(w.desc(input)); if(!ok) return t('The dispatcher CANCELLED this action.','El despachador CANCELÓ esta acción.');
+      try{ return await w.fn(input); }catch(e){ return 'action error: '+(e.message||e); } }
+    return 'unknown tool: '+name; }
+  var MILEY_TOOLS=[
+    {name:'list_short_orders',description:'List the day\'s orders that are NOT fully covered, with loads still needed.',input_schema:{type:'object',properties:{}}},
+    {name:'find_free_trucks_near_order',description:'Best free/available trucks near an order, RANKED by deadhead distance, with miles, est ETA min, rested days, on-call, fleet, HOS drive minutes left. Excludes flagged (shop/off) trucks.',input_schema:{type:'object',properties:{orderId:{type:'string',description:'order id (oNNN) or its disp/reference number'}},required:['orderId']}},
+    {name:'list_idle_trucks',description:'Trucks that have NOT worked in N+ days (fair-rotation candidates), most-idle first. Excludes flagged trucks.',input_schema:{type:'object',properties:{days:{type:'number',description:'minimum idle days (default 2)'}}}},
+    {name:'truck_status',description:'A truck\'s live Samsara GPS (lat/lon/mph/time), HOS drive minutes left, on-call, days idle, fleet, and any shop/off flag.',input_schema:{type:'object',properties:{num:{type:'string'}},required:['num']}},
+    {name:'samsara_locations',description:'Live Samsara GPS positions (all trucks with GPS, or a given list of truck numbers).',input_schema:{type:'object',properties:{nums:{type:'array',items:{type:'string'}}}}},
+    {name:'suggest_plan',description:'Dry-run plan preview: best truck pick(s) per uncovered order by distance + rotation. Changes NOTHING.',input_schema:{type:'object',properties:{}}},
+    {name:'set_truck_status',description:'Set a truck availability flag shared with everyone: status "off" (no-work), "shop" (in shop), or "ok" (available), with a reason. Needs dispatcher confirm.',input_schema:{type:'object',properties:{num:{type:'string'},status:{type:'string',enum:['off','shop','ok']},reason:{type:'string'}},required:['num','status']}},
+    {name:'add_truck_log',description:'Add a dated call-log note to a truck (shared). Needs dispatcher confirm.',input_schema:{type:'object',properties:{num:{type:'string'},text:{type:'string'}},required:['num','text']}},
+    {name:'run_autoplan',description:'Run auto-plan to fill uncovered orders in the PLANNER (stages locally; nothing sent to NewMile). Needs dispatcher confirm.',input_schema:{type:'object',properties:{}}},
+    {name:'assign_truck',description:'Stage a truck onto an order in the planner (local; not pushed). Needs dispatcher confirm.',input_schema:{type:'object',properties:{orderId:{type:'string'},truckNum:{type:'string'},loads:{type:'number'}},required:['orderId','truckNum']}},
+    {name:'finalize_and_push',description:'Finalize an order and PUSH it to NewMile — the ONLY tool that writes to NewMile. Needs dispatcher confirm.',input_schema:{type:'object',properties:{orderId:{type:'string'}},required:['orderId']}}
+  ];
   /* ----- Capataz mascot v2: the 3-stone Milestone logo brought to life (gold body + taupe/grey
      feet) in a WHITE hard-hat with the REAL newmile fan (bundled PNG via window.__NM_FAN) on the
      front. Inline SVG + CSS keyframe states (no libs, offline-safe). ----- */
@@ -4233,13 +4438,14 @@ setView('board');
       +'</svg>';
   }
   window.__mileyThinking=function(on){ var s=$id('tabMileySvg'); if(s) s.setAttribute('class', on?'thinking':''); };
-  var Miley={ state:'idle', _t:0,
+  var Miley={ state:'idle', _t:0, canAct:false,   // canAct = master switch for WRITE tools (default OFF)
     cap:function(s){ var en={idle:"Ready. Don't keep the trucks waiting.",thinking:'Reading the board…',talking:"Here's the deal.",alert:'Heads up, jefe.',celebrate:'Boom — done.'},
                      es={idle:'Listo. No dejes esperando a las trocas.',thinking:'Leyendo el tablero…',talking:'Aquí está la cosa.',alert:'Aguas, jefe.',celebrate:'¡Listo, a rodar!'};
       return (LANG==='es'?es:en)[s]||''; },
     apply:function(){ var svg=$id('mileySvg'); if(svg) svg.setAttribute('class','miley'+(this.state!=='idle'?(' '+this.state):'')); var c=$id('mileyCap'); if(c) c.textContent=this.cap(this.state); },
     setState:function(s){ this.state=s; this.apply(); clearTimeout(this._t); if(s==='talking'||s==='celebrate'||s==='alert'){ var self=this; this._t=setTimeout(function(){ self.state='idle'; self.apply(); }, s==='talking'?2400:1500); } }
   };
+  window.mileyToggleAct=function(){ Miley.canAct=!Miley.canAct; var b=$id('mileyActBtn'); if(b)b.innerHTML=(Miley.canAct?'🔓 '+t('Actions ON','Acciones ON'):'🔒 '+t('Actions OFF','Acciones OFF')); toast(Miley.canAct?t('🔓 Miley Actions ON — she\'ll still ask you to confirm each one','🔓 Acciones de Miley ON — igual te pide confirmar cada una'):t('🔒 Miley Actions OFF','🔒 Acciones de Miley OFF')); };
   function mileyStageHtml(){
     return '<div id="mileyStage">'+mileyMascotSvg()
       +'<div style="min-width:0"><div style="font-family:\'Barlow Condensed\',sans-serif;font-weight:800;font-size:20px;letter-spacing:.5px;color:#fff;line-height:1">Miley <span style="color:var(--gold-soft);font-weight:600;font-size:12px;letter-spacing:.3px">· '+t('your dispatch yard-boss','tu capataz de despacho')+'</span></div>'
@@ -4261,13 +4467,28 @@ setView('board');
   window.aiSendDesktop=async function(){
     var i=$id('aiIn'); var q=((i?i.value:aiDraft)||'').trim(); if(!q||aiBusy)return;
     if(window.mileyTab)window.mileyTab('chat');
-    aiMsgs.push({role:'user',content:q}); aiDraft=''; aiBusy=true; Miley.state='thinking'; aiRenderCopilot();
-    var history=aiMsgs.slice(-9,-1).map(function(m){return {role:m.role,content:m.content};});
-    var r=await bridgeAi(history.concat([{role:'user',content:q}]), aiCtx());
+    aiMsgs.push({role:'user',content:q}); aiDraft=''; aiBusy=true; aiRenderCopilot();
+    Miley.state='thinking'; Miley.apply();   // animate mascot WITHOUT re-rendering the chat (so live confirm cards survive the loop)
+    // API conversation = chat history (text only) + the live tool round-trips appended below
+    var convo=aiMsgs.filter(function(m){return typeof m.content==='string';}).slice(-9).map(function(m){return {role:m.role,content:m.content};});
+    var finalText='';
+    try{
+      var hops=0;
+      while(hops++<6){
+        var r=await bridgeAi(convo, aiCtx(), MILEY_TOOLS);
+        if(!r||r.error){ finalText='⚠ '+(((r&&r.error)==='AI not configured')?t('AI not set up yet — paste your Anthropic key in ⚙ Settings → Admin.','AI no configurado — pega tu key de Anthropic en ⚙ Settings → Admin.'):((r&&r.error)||t('no reply','sin respuesta'))); break; }
+        var blocks=r.content||[];
+        var tus=blocks.filter(function(b){return b.type==='tool_use';});
+        if(r.stop_reason!=='tool_use'||!tus.length){ finalText=r.text||'(no reply)'; break; }
+        convo.push({role:'assistant',content:blocks});       // echo the assistant's tool_use turn back
+        var results=[];
+        for(var u=0;u<tus.length;u++){ var tu=tus[u]; var out; try{ out=await mileyToolRun(tu.name,tu.input); }catch(e){ out='tool error: '+(e.message||e); } results.push({type:'tool_result',tool_use_id:tu.id,content:String(out)}); }
+        convo.push({role:'user',content:results});
+        Miley.state='thinking'; Miley.apply();
+      }
+    }catch(e){ finalText='⚠ '+(e.message||e); }
     aiBusy=false;
-    var err=!(r&&r.text);
-    var txt=err?('⚠ '+(((r&&r.error)==='AI not configured')?t('AI not set up yet — paste your Anthropic key in ⚙ Settings → Admin.','AI no configurado — pega tu key de Anthropic en ⚙ Settings → Admin.'):((r&&r.error)||t('no reply','sin respuesta')))):r.text;
-    aiMsgs.push({role:'assistant',content:txt}); Miley.setState(err?'alert':'talking'); aiRenderCopilot();
+    aiMsgs.push({role:'assistant',content:finalText}); Miley.setState(/^⚠/.test(finalText)?'alert':'talking'); aiRenderCopilot();
   };
   window.__tabInit_copilot=function(){ Miley.state='idle'; aiRenderCopilot(); };
 
@@ -4280,7 +4501,7 @@ setView('board');
     {key:'trucks',icon:'🚛', label:'Trucks',    title:'🚛 Truck Manager'},
     {key:'dir',   icon:'📇', label:'Directory', title:'📇 Directory — trucks · drivers · locations · haulers'},
     {key:'quote', icon:'💰', label:'Quoter',    title:'💰 Load Quoter'},
-    {key:'fsc',   icon:'💲', label:'FSC',       title:'💲 FSC / Precios — diésel · programas · editor por PO'}
+    {key:'fsc',   icon:'💲', label:'FSC',       title:t('💲 FSC / Pricing — diesel · programs · per-PO editor','💲 FSC / Precios — diésel · programas · editor por PO')}
   ];
   function tabDef(k){ for(var i=0;i<TABS.length;i++) if(TABS[i].key===k) return TABS[i]; return null; }
   function enhTabModal(key){
@@ -4319,6 +4540,7 @@ setView('board');
     document.body.appendChild(sc);
     el=document.createElement('div'); el.id='mileyDrawer';
     el.innerHTML='<div class="mdHd"><b>🤝 Smart Dispatch</b><span class="pill">MILEY</span>'
+      +'<button id="mileyActBtn" class="gmap" style="padding:3px 8px;font-size:11px;margin-left:auto" title="'+t('Let Miley take actions (each one still asks you to confirm)','Deja que Miley accione (cada acción te pide confirmar)')+'" onclick="mileyToggleAct()">'+(Miley.canAct?'🔓 '+t('Actions ON','Acciones ON'):'🔒 '+t('Actions OFF','Acciones OFF'))+'</button>'
       +'<button id="mileyDrawerX" title="'+t('Close','Cerrar')+'" onclick="closeMileyDrawer()">✕</button></div>'
       +mileyStageHtml()
       +'<div class="md-seg"><button id="mdSegDisp" class="on" onclick="mileyTab(\'dispatch\')">⚡ '+t('Auto-plan','Auto-plan')+'</button>'
@@ -4379,28 +4601,28 @@ setView('board');
     var b=$id('wmBody'); if(!b)return;
     if(!(st&&st.priceAdmin)){
       b.innerHTML='<div style="max-width:340px;margin:20px auto;text-align:center">'
-        +'<div style="font-size:34px">🔒</div><div style="font-weight:800;font-size:16px;margin:6px 0">Admin global</div>'
-        +'<div style="color:var(--muted);font-size:13px;margin-bottom:12px">Ingresa tu clave para habilitar precios, FSC, crear y re-ordenar órdenes en todo el tool (una vez por sesión).</div>'
-        +'<input id="wmCode" type="password" placeholder="Clave de admin global" style="width:100%;text-align:center;font-size:18px;letter-spacing:3px;padding:10px;border-radius:10px;background:var(--navy-2);border:1px solid var(--line);color:var(--gold-soft)">'
-        +'<button class="finbtn go" style="width:100%;margin-top:10px" onclick="wmUnlock()">Habilitar</button>'
+        +'<div style="font-size:34px">🔒</div><div style="font-weight:800;font-size:16px;margin:6px 0">'+t('Global admin','Admin global')+'</div>'
+        +'<div style="color:var(--muted);font-size:13px;margin-bottom:12px">'+t('Enter your code to enable pricing, FSC, and creating and re-ordering orders across the whole tool (once per session).','Ingresa tu clave para habilitar precios, FSC, crear y re-ordenar órdenes en todo el tool (una vez por sesión).')+'</div>'
+        +'<input id="wmCode" type="password" placeholder="'+t('Global admin code','Clave de admin global')+'" style="width:100%;text-align:center;font-size:18px;letter-spacing:3px;padding:10px;border-radius:10px;background:var(--navy-2);border:1px solid var(--line);color:var(--gold-soft)">'
+        +'<button class="finbtn go" style="width:100%;margin-top:10px" onclick="wmUnlock()">'+t('Enable','Habilitar')+'</button>'
         +'<div id="wmErr" style="color:var(--red);font-size:12px;margin-top:8px"></div></div>';
       var inp=$id('wmCode'); if(inp){ inp.focus(); inp.addEventListener('keydown',function(e){ if(e.key==='Enter')wmUnlock(); }); }
       return;
     }
     var w=st; function row(k,v){ return '<div class="fsc-row"><span>'+k+'</span><b>'+esc2(v)+'</b></div>'; }
-    b.innerHTML='<div class="fsc-row" style="color:var(--green);font-weight:800">🔓 Admin global ACTIVO — esta sesión</div>'
-      +row('Versión del tool', w.version||'—')
+    b.innerHTML='<div class="fsc-row" style="color:var(--green);font-weight:800">🔓 '+t('Global admin ACTIVE — this session','Admin global ACTIVO — esta sesión')+'</div>'
+      +row(t('Tool version','Versión del tool'), w.version||'—')
       +'<div style="font-weight:700;margin:10px 0 2px;color:var(--muted)">NewMile</div>'
-      +row('Conectado', (w.newmile&&w.newmile.connected)?('✓ '+(w.newmile.user||'')+(w.newmile.org?(' · '+w.newmile.org):'')):'no')
+      +row(t('Connected','Conectado'), (w.newmile&&w.newmile.connected)?('✓ '+(w.newmile.user||'')+(w.newmile.org?(' · '+w.newmile.org):'')):'no')
       +row('Token', (w.newmile&&w.newmile.token)||'—')
-      +'<div style="font-weight:700;margin:10px 0 2px;color:var(--muted)">Samsara (por flota)</div>'
-      +(((w.samsara||[]).length)?w.samsara.map(function(s){return row(s.fleet,s.key);}).join(''):'<div style="color:var(--muted);font-size:12px">— sin keys —</div>')
-      +'<div style="font-weight:700;margin:10px 0 2px;color:var(--muted)">Otros</div>'
-      +row('EIA (diésel)', (w.eia&&w.eia.key)||'—')
+      +'<div style="font-weight:700;margin:10px 0 2px;color:var(--muted)">'+t('Samsara (per fleet)','Samsara (por flota)')+'</div>'
+      +(((w.samsara||[]).length)?w.samsara.map(function(s){return row(s.fleet,s.key);}).join(''):'<div style="color:var(--muted);font-size:12px">'+t('— no keys —','— sin keys —')+'</div>')
+      +'<div style="font-weight:700;margin:10px 0 2px;color:var(--muted)">'+t('Other','Otros')+'</div>'
+      +row(t('EIA (diesel)','EIA (diésel)'), (w.eia&&w.eia.key)||'—')
       +row('GitHub updater', ((w.github&&w.github.repo)||'—')+' · '+((w.github&&w.github.token)||'—'))
-      +'<div style="color:var(--muted);font-size:11px;margin-top:10px">'+(WM.reveal?'⚠ Mostrando keys COMPLETAS — no compartas esta pantalla.':'Keys enmascaradas (últimos 4).')+' Da la clave solo a quien tú quieras.</div>'
-      +'<button class="gmap" style="margin-top:10px" onclick="wmToggleReveal()">'+(WM.reveal?'🙈 Ocultar keys':'👁 Mostrar keys completas')+'</button> '
-      +'<button class="gmap" style="margin-top:10px" onclick="wmRelock()">🔒 Bloquear ahora</button>';
+      +'<div style="color:var(--muted);font-size:11px;margin-top:10px">'+(WM.reveal?t('⚠ Showing FULL keys — do not share this screen.','⚠ Mostrando keys COMPLETAS — no compartas esta pantalla.'):t('Keys masked (last 4).','Keys enmascaradas (últimos 4).'))+' '+t('Only give the code to whoever you choose.','Da la clave solo a quien tú quieras.')+'</div>'
+      +'<button class="gmap" style="margin-top:10px" onclick="wmToggleReveal()">'+(WM.reveal?t('🙈 Hide keys','🙈 Ocultar keys'):t('👁 Show full keys','👁 Mostrar keys completas'))+'</button> '
+      +'<button class="gmap" style="margin-top:10px" onclick="wmRelock()">🔒 '+t('Lock now','Bloquear ahora')+'</button>';
   }
   window.wmUnlock=async function(){
     var code=($id('wmCode')||{}).value||'';
@@ -4411,7 +4633,7 @@ setView('board');
     else { var e=$id('wmErr'); if(e)e.textContent=(r&&r.error)||t('Wrong code','Clave incorrecta'); }
   };
   window.wmToggleReveal=async function(){
-    if(!WM.reveal){ if(!confirm('¿Mostrar las API keys COMPLETAS?\n\nAsegúrate de que nadie más vea la pantalla.'))return; WM.reveal=true; }
+    if(!WM.reveal){ if(!confirm(t('Show the FULL API keys?\n\nMake sure nobody else can see the screen.','¿Mostrar las API keys COMPLETAS?\n\nAsegúrate de que nadie más vea la pantalla.')))return; WM.reveal=true; }
     else WM.reveal=false;
     var st=await fscBridge('status',{reveal:!!WM.reveal}); wmRender(st);
   };
@@ -4436,9 +4658,9 @@ setView('board');
         +'<div style="color:var(--muted);font-size:13px;margin-bottom:12px">'+t('Pricing, FSC and order editing unlock from ⚙ Settings by entering your code.','Precios, FSC y edición de órdenes se habilitan en ⚙ Settings al ingresar tu clave.')+'</div></div>';
       return;
     }
-    var segs=[['dash','📈 Diésel'],['prog','📋 Programas'],['po','🧾 Editor PO']]
+    var segs=[['dash','📈 '+t('Diesel','Diésel')],['prog','📋 '+t('Programs','Programas')],['po','🧾 '+t('PO Editor','Editor PO')]]
       .map(function(x){return '<button class="fchip '+(FSC.tab===x[0]?'on':'')+'" onclick="fscTab(\''+x[0]+'\')">'+x[1]+'</button>';}).join('');
-    b.innerHTML='<div class="ef-sec" style="margin-bottom:10px">'+segs+'</div><div id="fscBody"><div style="color:var(--muted);padding:20px;text-align:center">Cargando…</div></div>';
+    b.innerHTML='<div class="ef-sec" style="margin-bottom:10px">'+segs+'</div><div id="fscBody"><div style="color:var(--muted);padding:20px;text-align:center">'+t('Loading…','Cargando…')+'</div></div>';
     if(FSC.tab==='dash')fscDash(); else if(FSC.tab==='prog')fscPrograms(); else fscPO();
   }
   window.fscTab=function(t){ FSC.tab=t; fscRender(); };
@@ -4449,91 +4671,91 @@ setView('board');
     var r=await fscBridge('latest'); if(FSC.tab!=='dash')return;
     var d=r&&r.latest; var hist=((await fscBridge('history'))||{}).history||[]; if(FSC.tab!=='dash')return;
     var h='<div class="fsc-kpis">'
-      +'<div class="fsc-kpi"><b>'+(d?'$'+Number(d.diesel_price).toFixed(2):'—')+'</b><span>Diésel/gal (EIA)</span></div>'
-      +'<div class="fsc-kpi"><b>'+(d?esc2(d.week_date):'—')+'</b><span>Semana</span></div>'
-      +'<div class="fsc-kpi"><b>'+((r&&r.programs)||0)+'</b><span>Programas</span></div></div>'
-      +'<div style="color:var(--muted);font-size:12px;margin:8px 0">Precio nacional on-highway (EIA). Se actualiza solo los lunes ~6 AM CST.</div>'
-      +'<button class="gmap" onclick="fscRefresh()">↻ Actualizar diésel ahora</button>';
-    if(hist.length){ h+='<div style="margin-top:12px;font-weight:700;color:var(--gold-soft)">Historial</div>';
+      +'<div class="fsc-kpi"><b>'+(d?'$'+Number(d.diesel_price).toFixed(2):'—')+'</b><span>'+t('Diesel/gal (EIA)','Diésel/gal (EIA)')+'</span></div>'
+      +'<div class="fsc-kpi"><b>'+(d?esc2(d.week_date):'—')+'</b><span>'+t('Week','Semana')+'</span></div>'
+      +'<div class="fsc-kpi"><b>'+((r&&r.programs)||0)+'</b><span>'+t('Programs','Programas')+'</span></div></div>'
+      +'<div style="color:var(--muted);font-size:12px;margin:8px 0">'+t('National on-highway price (EIA). Updates automatically Mondays ~6 AM CST.','Precio nacional on-highway (EIA). Se actualiza solo los lunes ~6 AM CST.')+'</div>'
+      +'<button class="gmap" onclick="fscRefresh()">↻ '+t('Refresh diesel now','Actualizar diésel ahora')+'</button>';
+    if(hist.length){ h+='<div style="margin-top:12px;font-weight:700;color:var(--gold-soft)">'+t('History','Historial')+'</div>';
       hist.slice(-10).reverse().forEach(function(x){ h+='<div class="fsc-row"><span>'+esc2(x.week_date)+'</span><b>$'+Number(x.diesel_price).toFixed(2)+'</b></div>'; }); }
     fscBody(h);
   }
-  window.fscRefresh=async function(){ toast('Consultando EIA…'); var r=await fscBridge('refresh'); toast(r&&r.error?('✗ '+r.error):(r&&r.added?'✓ Diésel actualizado':'✓ Ya estaba al día'),r&&!!r.error); fscDash(); };
+  window.fscRefresh=async function(){ toast(t('Querying EIA…','Consultando EIA…')); var r=await fscBridge('refresh'); toast(r&&r.error?('✗ '+r.error):(r&&r.added?t('✓ Diesel updated','✓ Diésel actualizado'):t('✓ Already up to date','✓ Ya estaba al día')),r&&!!r.error); fscDash(); };
 
   async function fscPrograms(){
     var r=await fscBridge('programs'); if(FSC.tab!=='prog')return;
     var progs=(r&&r.programs)||{}; var names=Object.keys(progs).sort();
-    var h='<button class="finbtn go" onclick="fscEditProgram(\'\')">+ Nuevo programa de cliente</button>';
-    if(!names.length) h+='<div style="color:var(--muted);font-size:12px;margin-top:8px">Aún no hay programas. Crea uno por cliente (ej. Lhoist) con su escala diésel→%.</div>';
+    var h='<button class="finbtn go" onclick="fscEditProgram(\'\')">+ '+t('New customer program','Nuevo programa de cliente')+'</button>';
+    if(!names.length) h+='<div style="color:var(--muted);font-size:12px;margin-top:8px">'+t('No programs yet. Create one per customer (e.g. Lhoist) with its diesel→% scale.','Aún no hay programas. Crea uno por cliente (ej. Lhoist) con su escala diésel→%.')+'</div>';
     names.forEach(function(n){ var p=progs[n];
-      h+='<div class="fsc-row click" onclick="fscEditProgram(\''+esc2(n).replace(/'/g,"\\'")+'\')"><div><b>'+esc2(n)+'</b>'+(p.enabled===false?' <span style="color:var(--red)">(off)</span>':'')+'<br><small style="color:var(--muted)">'+(p.calculation_type||'PER_TON')+' · '+((p.table||[]).length)+' niveles · base $'+Number(p.base_fuel_price||0).toFixed(2)+'</small></div><span>▸</span></div>'; });
+      h+='<div class="fsc-row click" onclick="fscEditProgram(\''+esc2(n).replace(/'/g,"\\'")+'\')"><div><b>'+esc2(n)+'</b>'+(p.enabled===false?' <span style="color:var(--red)">(off)</span>':'')+'<br><small style="color:var(--muted)">'+(p.calculation_type||'PER_TON')+' · '+((p.table||[]).length)+' '+t('levels','niveles')+' · '+t('base','base')+' $'+Number(p.base_fuel_price||0).toFixed(2)+'</small></div><span>▸</span></div>'; });
     fscBody(h);
   }
   window.fscEditProgram=async function(name){
     var p={enabled:true,base_fuel_price:3.00,calculation_type:'PER_TON',table:[{diesel:3.00,surcharge:0}]};
     if(name){ var r=await fscBridge('getProgram',{customer:name}); if(r&&r.program)p=r.program; }
     var types=['PER_TON','PER_LOAD','HOURLY'];
-    var h='<div style="font-weight:800;font-size:15px;margin-bottom:8px">'+(name?'⛽ '+esc2(name):'Nuevo programa FSC')+'</div>'
-      +(name?'':'<div class="fsc-fld"><label>Cliente (exacto como en NewMile)</label><input id="fscName" type="text"></div>')
-      +'<div class="fsc-fld"><label>Tipo de cálculo</label><select id="fscType">'+types.map(function(t){return '<option'+(p.calculation_type===t?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div>'
-      +'<div class="fsc-fld"><label>Precio base de diésel ($/gal)</label><input id="fscBase" type="number" step="0.01" value="'+(p.base_fuel_price||0)+'"></div>'
-      +'<label class="fsc-fld" style="flex-direction:row;gap:8px;align-items:center"><input id="fscEnabled" type="checkbox"'+(p.enabled!==false?' checked':'')+'> Activo</label>'
-      +'<div style="font-weight:700;color:var(--gold-soft);margin:8px 0 4px">Escala diésel → surcharge % (del rate base)</div><div id="fscRows">'
+    var h='<div style="font-weight:800;font-size:15px;margin-bottom:8px">'+(name?'⛽ '+esc2(name):t('New FSC program','Nuevo programa FSC'))+'</div>'
+      +(name?'':'<div class="fsc-fld"><label>'+t('Customer (exact as in NewMile)','Cliente (exacto como en NewMile)')+'</label><input id="fscName" type="text"></div>')
+      +'<div class="fsc-fld"><label>'+t('Calculation type','Tipo de cálculo')+'</label><select id="fscType">'+types.map(function(ty){return '<option'+(p.calculation_type===ty?' selected':'')+'>'+ty+'</option>';}).join('')+'</select></div>'
+      +'<div class="fsc-fld"><label>'+t('Base diesel price ($/gal)','Precio base de diésel ($/gal)')+'</label><input id="fscBase" type="number" step="0.01" value="'+(p.base_fuel_price||0)+'"></div>'
+      +'<label class="fsc-fld" style="flex-direction:row;gap:8px;align-items:center"><input id="fscEnabled" type="checkbox"'+(p.enabled!==false?' checked':'')+'> '+t('Active','Activo')+'</label>'
+      +'<div style="font-weight:700;color:var(--gold-soft);margin:8px 0 4px">'+t('Diesel scale → surcharge % (of base rate)','Escala diésel → surcharge % (del rate base)')+'</div><div id="fscRows">'
       +(p.table||[]).map(fscRowHtml).join('')+'</div>'
-      +'<button class="gmap" onclick="fscAddRow()">+ Nivel</button> '
-      +'<button class="finbtn go" onclick="fscSaveProgram(\''+esc2(name).replace(/'/g,"\\'")+'\')">💾 Guardar</button> '
-      +(name?'<button class="gmap" style="color:var(--red)" onclick="fscDelProgram(\''+esc2(name).replace(/'/g,"\\'")+'\')">🗑 Borrar</button> ':'')
-      +'<button class="gmap" onclick="fscTab(\'prog\')">← Volver</button>';
+      +'<button class="gmap" onclick="fscAddRow()">+ '+t('Level','Nivel')+'</button> '
+      +'<button class="finbtn go" onclick="fscSaveProgram(\''+esc2(name).replace(/'/g,"\\'")+'\')">💾 '+t('Save','Guardar')+'</button> '
+      +(name?'<button class="gmap" style="color:var(--red)" onclick="fscDelProgram(\''+esc2(name).replace(/'/g,"\\'")+'\')">🗑 '+t('Delete','Borrar')+'</button> ':'')
+      +'<button class="gmap" onclick="fscTab(\'prog\')">← '+t('Back','Volver')+'</button>';
     fscBody(h);
   };
-  function fscRowHtml(t){ return '<div class="fsc-steprow"><input type="number" step="0.01" value="'+(t.diesel!=null?t.diesel:'')+'" placeholder="diésel" style="width:90px"> → <input type="number" step="0.1" value="'+(t.surcharge!=null?t.surcharge:'')+'" placeholder="%" style="width:70px">% <b class="x" onclick="this.closest(\'.fsc-steprow\').remove()">✕</b></div>'; }
+  function fscRowHtml(t){ return '<div class="fsc-steprow"><input type="number" step="0.01" value="'+(t.diesel!=null?t.diesel:'')+'" placeholder="'+window.t('diesel','diésel')+'" style="width:90px"> → <input type="number" step="0.1" value="'+(t.surcharge!=null?t.surcharge:'')+'" placeholder="%" style="width:70px">% <b class="x" onclick="this.closest(\'.fsc-steprow\').remove()">✕</b></div>'; }
   window.fscAddRow=function(){ var c=$id('fscRows'); if(c)c.insertAdjacentHTML('beforeend',fscRowHtml({diesel:'',surcharge:''})); };
   window.fscSaveProgram=async function(name){
     var cust=name||(($id('fscName')||{}).value||'').trim();
-    if(!cust){ toast('Escribe el nombre del cliente',true); return; }
+    if(!cust){ toast(t('Type the customer name','Escribe el nombre del cliente'),true); return; }
     var rows=[].slice.call(document.querySelectorAll('#fscRows .fsc-steprow')).map(function(r){ var ins=r.querySelectorAll('input'); return {diesel:parseFloat(ins[0].value),surcharge:parseFloat(ins[1].value)}; }).filter(function(t){return isFinite(t.diesel)&&isFinite(t.surcharge);});
     var program={enabled:($id('fscEnabled')||{}).checked!==false,base_fuel_price:parseFloat(($id('fscBase')||{}).value)||0,calculation_type:($id('fscType')||{}).value||'PER_TON',table:rows};
     var r=await fscBridge('saveProgram',{customer:cust,program:program});
-    toast(r&&r.error?('✗ '+r.error):'✓ Programa guardado',r&&!!r.error);
+    toast(r&&r.error?('✗ '+r.error):t('✓ Program saved','✓ Programa guardado'),r&&!!r.error);
     if(!(r&&r.error)){ FSC.tab='prog'; fscRender(); }
   };
-  window.fscDelProgram=async function(name){ if(!confirm('¿Borrar el programa FSC de '+name+'?'))return; await fscBridge('deleteProgram',{customer:name}); toast('Programa borrado'); FSC.tab='prog'; fscRender(); };
+  window.fscDelProgram=async function(name){ if(!confirm(t('Delete the FSC program for ','¿Borrar el programa FSC de ')+name+'?'))return; await fscBridge('deleteProgram',{customer:name}); toast(t('Program deleted','Programa borrado')); FSC.tab='prog'; fscRender(); };
 
   function fscMonthStart(){ var t=(window.__boardToday||new Date().toISOString().slice(0,10)); return t.slice(0,8)+'01'; }
   function fscPO(){
     var from=FSC.from||fscMonthStart(), to=FSC.to||(window.__boardToday||new Date().toISOString().slice(0,10));
-    var h='<div style="color:var(--muted);font-size:12px;margin-bottom:8px">Filtra órdenes de toda la org y aplica/edita el FSC (payable, a las trocas). Cambiar precios pide código admin.</div>'
-      +'<div class="fsc-fld"><label>Desde</label><input id="fscFrom" type="date" value="'+from+'"></div>'
-      +'<div class="fsc-fld"><label>Hasta</label><input id="fscTo" type="date" value="'+to+'"></div>'
-      +'<div class="fsc-fld"><label>Filtro (cliente / proyecto / PO / nombre — opcional)</label><input id="fscQ" type="text" value="'+esc2(FSC.q||'')+'" placeholder="ej. Lhoist · Stagecoach · 28940"></div>'
-      +'<button class="finbtn go" onclick="fscSearch()">🔎 Buscar órdenes</button><div id="fscList"></div>';
+    var h='<div style="color:var(--muted);font-size:12px;margin-bottom:8px">'+t('Filter orders org-wide and apply/edit the FSC (payable, to the trucks). Changing prices requires the admin code.','Filtra órdenes de toda la org y aplica/edita el FSC (payable, a las trocas). Cambiar precios pide código admin.')+'</div>'
+      +'<div class="fsc-fld"><label>'+t('From','Desde')+'</label><input id="fscFrom" type="date" value="'+from+'"></div>'
+      +'<div class="fsc-fld"><label>'+t('To','Hasta')+'</label><input id="fscTo" type="date" value="'+to+'"></div>'
+      +'<div class="fsc-fld"><label>'+t('Filter (customer / project / PO / name — optional)','Filtro (cliente / proyecto / PO / nombre — opcional)')+'</label><input id="fscQ" type="text" value="'+esc2(FSC.q||'')+'" placeholder="'+t('e.g. Lhoist · Stagecoach · 28940','ej. Lhoist · Stagecoach · 28940')+'"></div>'
+      +'<button class="finbtn go" onclick="fscSearch()">🔎 '+t('Search orders','Buscar órdenes')+'</button><div id="fscList"></div>';
     fscBody(h);
     if(FSC.orders.length) fscRenderList();
   }
   window.fscSearch=async function(){
     FSC.from=($id('fscFrom')||{}).value; FSC.to=($id('fscTo')||{}).value; FSC.q=(($id('fscQ')||{}).value||'').trim();
-    var lb=$id('fscList'); if(lb)lb.innerHTML='<div style="color:var(--muted);padding:14px">Buscando en NewMile… (unos segundos)</div>';
+    var lb=$id('fscList'); if(lb)lb.innerHTML='<div style="color:var(--muted);padding:14px">'+t('Searching NewMile… (a few seconds)','Buscando en NewMile… (unos segundos)')+'</div>';
     var r=await fscBridge('orders',{from:FSC.from,to:FSC.to,q:FSC.q});
-    if(!r||r.error){ toast('✗ '+((r&&r.error)||'falló'),true); if(lb)lb.innerHTML=''; return; }
+    if(!r||r.error){ toast('✗ '+((r&&r.error)||t('failed','falló')),true); if(lb)lb.innerHTML=''; return; }
     var list=r.orders||[]; list.forEach(function(o){ o.newFsc=o.suggestFsc; o._sel=(o.hasProgram&&Math.abs((o.suggestFsc||0)-(o.currentFsc||0))>0.001); });
     FSC.orders=list; fscRenderList();
   };
   function fscRenderList(){
     var list=FSC.orders, lb=$id('fscList'); if(!lb)return;
-    if(!list.length){ lb.innerHTML='<div style="color:var(--muted);padding:14px">Sin órdenes en ese rango/filtro.</div>'; return; }
+    if(!list.length){ lb.innerHTML='<div style="color:var(--muted);padding:14px">'+t('No orders in that range/filter.','Sin órdenes en ese rango/filtro.')+'</div>'; return; }
     var sel=list.filter(function(o){return o._sel;}).length;
-    var h='<div style="margin:10px 0;color:var(--muted);font-size:12px">'+list.length+' órdenes · '+sel+' seleccionadas</div>';
+    var h='<div style="margin:10px 0;color:var(--muted);font-size:12px">'+list.length+' '+t('orders','órdenes')+' · '+sel+' '+t('selected','seleccionadas')+'</div>';
     list.forEach(function(o,i){ var chg=Math.abs((o.newFsc||0)-(o.currentFsc||0))>0.001; var u=(o.unit?o.unit[0].toLowerCase():'u');
       h+='<div class="fsc-ord '+(o._sel?'on':'')+'"><label><input type="checkbox" '+(o._sel?'checked':'')+' onchange="fscSel('+i+',this.checked)"> <b>'+esc2(o.ref||('#'+o.orderId))+'</b></label>'
-        +'<button class="gmap" style="float:right;padding:1px 7px" onclick="fscReorder('+i+')" title="Re-ordenar: crea otra igual (mismo cliente/PO/rate/FSC), solo cambia toneladas y fecha">🔁 Reorder</button>'
+        +'<button class="gmap" style="float:right;padding:1px 7px" onclick="fscReorder('+i+')" title="'+t('Reorder: creates another identical one (same customer/PO/rate/FSC), only changes tons and date','Re-ordenar: crea otra igual (mismo cliente/PO/rate/FSC), solo cambia toneladas y fecha')+'">🔁 Reorder</button>'
         +'<div class="fsc-ord-m">'+esc2(o.customer)+(o.project?' · '+esc2(o.project):'')+' · '+o.qty+u+' @ $'+o.baseRate.toFixed(2)+'</div>'
-        +'<div class="fsc-ord-m">FSC: $'+Number(o.currentFsc).toFixed(2)+' → <b style="color:'+(chg?'var(--gold-soft)':'var(--muted)')+'">$<input type="number" step="0.01" value="'+Number(o.newFsc).toFixed(2)+'" style="width:64px" onchange="fscEdit('+i+',this.value)"></b>/'+u+(o.pct?' ('+o.pct+'%)':'')+(o.hasProgram?'':' · <span style="color:var(--orange)">sin programa</span>')+'</div>'
-        +(o._reorder?('<div class="fsc-reorder"><div class="fsc-ord-m" style="color:var(--gold-soft);font-weight:700">🔁 Re-ordenar (misma orden, nueva fecha/toneladas)</div>'
-          +'<div class="fsc-steprow">Ton/cargas <input id="roQ'+i+'" type="number" step="0.1" value="'+o.qty+'" style="width:80px"> · Para fecha <input id="roD'+i+'" type="date" value="'+fscTomorrow()+'"></div>'
-          +'<button class="finbtn go" onclick="fscDoReorder('+i+')">✓ Crear orden</button> <button class="gmap" onclick="fscCancelReorder('+i+')">Cancelar</button></div>'):'')
+        +'<div class="fsc-ord-m">FSC: $'+Number(o.currentFsc).toFixed(2)+' → <b style="color:'+(chg?'var(--gold-soft)':'var(--muted)')+'">$<input type="number" step="0.01" value="'+Number(o.newFsc).toFixed(2)+'" style="width:64px" onchange="fscEdit('+i+',this.value)"></b>/'+u+(o.pct?' ('+o.pct+'%)':'')+(o.hasProgram?'':' · <span style="color:var(--orange)">'+t('no program','sin programa')+'</span>')+'</div>'
+        +(o._reorder?('<div class="fsc-reorder"><div class="fsc-ord-m" style="color:var(--gold-soft);font-weight:700">🔁 '+t('Reorder (same order, new date/tons)','Re-ordenar (misma orden, nueva fecha/toneladas)')+'</div>'
+          +'<div class="fsc-steprow">'+t('Tons/loads','Ton/cargas')+' <input id="roQ'+i+'" type="number" step="0.1" value="'+o.qty+'" style="width:80px"> · '+t('For date','Para fecha')+' <input id="roD'+i+'" type="date" value="'+fscTomorrow()+'"></div>'
+          +'<button class="finbtn go" onclick="fscDoReorder('+i+')">✓ '+t('Create order','Crear orden')+'</button> <button class="gmap" onclick="fscCancelReorder('+i+')">'+t('Cancel','Cancelar')+'</button></div>'):'')
         +'</div>';
     });
-    h+='<button class="finbtn go" style="margin-top:10px" onclick="fscApply()">⚖ Aplicar FSC a '+sel+' orden(es) — pide código</button>';
+    h+='<button class="finbtn go" style="margin-top:10px" onclick="fscApply()">⚖ '+t('Apply FSC to ','Aplicar FSC a ')+sel+t(' order(s) — asks for code',' orden(es) — pide código')+'</button>';
     lb.innerHTML=h;
   }
   function fscTomorrow(){ var t=(window.__boardToday||new Date().toISOString().slice(0,10)); var d=new Date(t+'T12:00:00'); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); }
@@ -4542,26 +4764,26 @@ setView('board');
   window.fscDoReorder=async function(i){
     var o=FSC.orders[i]; if(!o)return;
     var q=parseFloat(($id('roQ'+i)||{}).value); var dISO=($id('roD'+i)||{}).value;
-    if(!isFinite(q)||q<=0){ toast('Pon una cantidad válida',true); return; }
-    if(!dISO){ toast('Elige la fecha',true); return; }
-    if(!confirm('Crear una orden NUEVA en NewMile igual a "'+(o.ref||o.orderId)+'" ('+esc2(o.customer)+')\ncon '+q+' '+(o.unit||'')+' para el '+dISO+'?\n\nMismo cliente / PO / rate / FSC.'))return;
-    toast('Creando orden…');
+    if(!isFinite(q)||q<=0){ toast(t('Enter a valid quantity','Pon una cantidad válida'),true); return; }
+    if(!dISO){ toast(t('Pick the date','Elige la fecha'),true); return; }
+    if(!confirm(t('Create a NEW order in NewMile identical to "','Crear una orden NUEVA en NewMile igual a "')+(o.ref||o.orderId)+'" ('+esc2(o.customer)+')\n'+t('with ','con ')+q+' '+(o.unit||'')+t(' for ',' para el ')+dISO+'?\n\n'+t('Same customer / PO / rate / FSC.','Mismo cliente / PO / rate / FSC.')))return;
+    toast(t('Creating order…','Creando orden…'));
     var r=await fscBridge('reorder',{orderId:o.orderId,quantity:q,dateISO:dISO});
-    if(!r||r.error){ toast('✗ '+((r&&r.error)||'falló'),true); return; }
-    toast('✓ Orden creada ('+(r.ref||r.newId)+')'+(r.fees?(' · FSC '+(r.feesCopied?'copiado':'no se copió')):''));
+    if(!r||r.error){ toast('✗ '+((r&&r.error)||t('failed','falló')),true); return; }
+    toast(t('✓ Order created (','✓ Orden creada (')+(r.ref||r.newId)+')'+(r.fees?(' · FSC '+(r.feesCopied?t('copied','copiado'):t('not copied','no se copió'))):''));
     o._reorder=false; fscSearch();
   };
   window.fscSel=function(i,on){ if(FSC.orders[i]){ FSC.orders[i]._sel=on; fscRenderList(); } };
   window.fscEdit=function(i,v){ if(FSC.orders[i]){ var n=parseFloat(v); FSC.orders[i].newFsc=isFinite(n)?n:0; } };
   window.fscApply=async function(){
     var items=FSC.orders.filter(function(o){return o._sel;});
-    if(!items.length){ toast('Selecciona al menos una orden',true); return; }
-    var code=prompt('Vas a CAMBIAR el FSC de '+items.length+' orden(es) en NewMile (pago a las trocas).\n\nCódigo admin para confirmar:');
+    if(!items.length){ toast(t('Select at least one order','Selecciona al menos una orden'),true); return; }
+    var code=prompt(t('You are about to CHANGE the FSC of ','Vas a CAMBIAR el FSC de ')+items.length+t(' order(s) in NewMile (pay to the trucks).\n\nAdmin code to confirm:',' orden(es) en NewMile (pago a las trocas).\n\nCódigo admin para confirmar:'));
     if(code===null)return;
-    toast('Aplicando a '+items.length+' orden(es)…');
+    toast(t('Applying to ','Aplicando a ')+items.length+t(' order(s)…',' orden(es)…'));
     var r=await fscBridge('apply',{adminCode:code,items:items.map(function(o){return {orderId:o.orderId,ref:o.ref,newFscRate:o.newFsc,unitId:o.unitId,payableFees:o.payableFees};})});
-    if(!r||r.error){ toast('✗ '+((r&&r.error)||'falló'),true); return; }
-    toast('✓ FSC aplicado a '+r.applied+'/'+r.total); fscSearch();
+    if(!r||r.error){ toast('✗ '+((r&&r.error)||t('failed','falló')),true); return; }
+    toast(t('✓ FSC applied to ','✓ FSC aplicado a ')+r.applied+'/'+r.total); fscSearch();
   };
   /* ESC closes the topmost open overlay (cam > map > tabs > push/assign) */
   document.addEventListener('keydown',function(ev){

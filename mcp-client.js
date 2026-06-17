@@ -563,10 +563,25 @@ class NewMileClient {
       // cache _v<2 = legacy entries geocoded the OLD (",TX"-forced, no quality gate) way — distrust
       // and re-resolve them so previously-wrong pins get corrected.
       const cached = (cache[k] && cache[k]._v >= 2) ? cache[k] : null;
-      let hit = locIdx[k] || cached || null;
-      if (!hit) { // fuzzy: org location name contained in pickup name or vice versa
-        const fk = locKeys.find(lk => lk.length > 6 && (k.includes(lk) || lk.includes(k)));
-        if (fk) hit = locIdx[fk];
+      // CANDIDATE names to match against the Locations tab (org_location). Dispatchers abbreviate
+      // (RKH→R K HALL, QK→QUIKRETE, TXMAT→TEXAS MATERIALS). And Martin Marietta REBRANDED to Quikrete
+      // for most plants (Juan 2026-06-17) — but a few stayed MM and the saved Location may use either
+      // name, so when MM/Martin Marietta appears we try BOTH "Martin Marietta X" AND "Quikrete X".
+      const base = ' ' + k + ' ';
+      const cands = [k];
+      if (/ RKH /.test(base)) cands.push(base.replace(/ RKH /g, ' R K HALL ').trim());
+      if (/ QK /.test(base)) cands.push(base.replace(/ QK /g, ' QUIKRETE ').trim());
+      if (/ TXMAT /.test(base)) cands.push(base.replace(/ TXMAT /g, ' TEXAS MATERIALS ').trim());
+      if (/ (MM|MARTIN MARIETTA) /.test(base)) {
+        cands.push(base.replace(/ MM /g, ' MARTIN MARIETTA ').trim());
+        cands.push(base.replace(/ (MM|MARTIN MARIETTA) /g, ' QUIKRETE ').trim());
+      }
+      let hit = cached || null;
+      for (let ci = 0; ci < cands.length && !hit; ci++) {
+        const ck = cands[ci];
+        if (locIdx[ck]) { hit = locIdx[ck]; break; }
+        const fk = locKeys.find(lk => lk.length > 6 && (ck.includes(lk) || lk.includes(ck)));   // substring either way
+        if (fk) { hit = locIdx[fk]; break; }
       }
       if (!hit && geocoded < 25) {   // geocode fallback, capped per refresh, only quality hits cached
         const raw = names[k].raw;
@@ -1135,11 +1150,13 @@ class NewMileClient {
   async reconcileSequences(intentByTruck) {
     const out = { checked: 0, reordered: [], skipped: 0, failed: [] };
     const entries = Object.entries(intentByTruck || {});
-    const movable = (r) => {
-      const st = String(r.assignment_status || r.status || r.state || '').toLowerCase();
-      const hauled = (r.load_count || 0) > 0;
-      return !hauled && (st === 'draft' || st === 'pending' || st === '');   // never shuffle active/completed/hauled rows
-    };
+    const statusOf = (r) => String(r.assignment_status || r.status || r.state || '').toLowerCase();
+    // can be INCLUDED in a reorder_assignments call — NewMile rejects the WHOLE call if any id is
+    // not in one of these statuses, so completed/hauled rows must be left out of the list entirely.
+    const REORDERABLE = ['draft', 'pending', 'missing_driver', 'pending_removal', 'active'];
+    const reorderable = (r) => (r.load_count || 0) === 0 && REORDERABLE.indexOf(statusOf(r)) >= 0;
+    // safe to actually REPOSITION (don't shuffle an active/in-progress truck — only fresh rows)
+    const movable = (r) => (r.load_count || 0) === 0 && (statusOf(r) === 'draft' || statusOf(r) === 'pending');
     for (const [tidStr, orderSeq] of entries) {
       const tid = Number(tidStr);
       if (!tid || !orderSeq) continue;
@@ -1152,22 +1169,24 @@ class NewMileClient {
       } catch (e) { out.failed.push({ truck_id: tid, reason: e.message }); continue; }
       if (rows.length < 2) { out.skipped++; continue; }
       const oidOf = (r) => (r.order_id != null ? r.order_id : (r.order && r.order.id));
-      const cur = rows.slice().sort((a, b) => ((a.ordinal || 0) - (b.ordinal || 0)));
-      // which rows does the tool manage AND is it safe to move?
-      const isManaged = (r) => (orderSeq[oidOf(r)] != null) && movable(r);
+      // ONLY reorderable rows go in the list — a busy truck can carry dozens of completed loads
+      // and including even one makes reorder_assignments reject the whole call.
+      const ro = rows.filter(reorderable).sort((a, b) => ((a.ordinal || 0) - (b.ordinal || 0)));
+      if (ro.length < 2) { out.skipped++; continue; }
+      // of those, which are tool-managed (in the day's intent) AND safe to reposition
       const managedIdx = [];
-      cur.forEach((r, i) => { if (isManaged(r)) managedIdx.push(i); });
-      if (managedIdx.length < 2) { out.skipped++; continue; }   // nothing to reorder
+      ro.forEach((r, i) => { if (orderSeq[oidOf(r)] != null && movable(r)) managedIdx.push(i); });
+      if (managedIdx.length < 2) { out.skipped++; continue; }   // need ≥2 managed to define an order
       // desired order of just the managed rows: by intended sequence, tie-break by current ordinal
-      const managedSorted = managedIdx.map(i => cur[i]).sort((a, b) => {
+      const managedSorted = managedIdx.map(i => ro[i]).sort((a, b) => {
         const d = (orderSeq[oidOf(a)] - orderSeq[oidOf(b)]);
         return d || ((a.ordinal || 0) - (b.ordinal || 0));
       });
-      // pin everything else: rebuild the full list, dropping the managed rows back into their own slots in the desired order
-      const result = cur.slice();
+      // reposition only the managed rows; keep the other reorderable rows (other-day pending, active) in place
+      const result = ro.slice();
       managedIdx.forEach((slot, k) => { result[slot] = managedSorted[k]; });
       const newIds = result.map(r => r.id);
-      const curIds = cur.map(r => r.id);
+      const curIds = ro.map(r => r.id);
       out.checked++;
       if (newIds.join(',') === curIds.join(',')) { out.skipped++; continue; }   // already correct — no API call
       try {

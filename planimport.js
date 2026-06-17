@@ -9,6 +9,8 @@ const path = require('path');
 const sheet = require('./sheet');
 
 const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+// Duplicate / non-canonical copies that must NEVER be picked over the live working sheet.
+const JUNK_FILE = /(\b|_|-)(test|copy|backup|archive|old|template|draft|sample)(\b|_|-)|~\$/i;
 
 // Windows OneDrive folders (esp. "OneDrive - <Company>" + SharePoint shortcuts) are reparse
 // points → readdir reports them as neither file nor dir. Resolve via statSync.
@@ -32,19 +34,24 @@ function findPlanFiles(prefix, max) {
     for (const e of ents) {
       if (/^[.$~]/.test(e.name)) continue;
       const p = path.join(dir, e.name); const k = entKind(p, e);
-      if (k.isFile && re.test(e.name)) { let st = {}; try { st = fs.statSync(p); } catch (x) {} hits.push({ path: p, dir: dir, name: e.name, mtime: st.mtimeMs || 0 }); }
-      else if (k.isDir) walk(p, depth + 1);
+      if (k.isFile && re.test(e.name) && !JUNK_FILE.test(e.name)) {     // skip TEST/copy/backup duplicates
+        let st = {}; try { st = fs.statSync(p); } catch (x) {}
+        const folder = path.dirname(p).toLowerCase();                   // prefer a real dispatch/order-sheet FOLDER…
+        const score = (/order sheet/.test(folder) ? 3 : 0) + (/dispatch/.test(folder) ? 1 : 0);  // …over a loose copy in the OneDrive root
+        hits.push({ path: p, dir: dir, name: e.name, mtime: st.mtimeMs || 0, score: score });
+      }
+      else if (k.isDir && !JUNK_FILE.test(e.name)) walk(p, depth + 1);
     }
   };
   listOneDriveRoots().forEach((r) => walk(r, 0));
-  hits.sort((a, b) => b.mtime - a.mtime);
+  hits.sort((a, b) => (b.score - a.score) || (b.mtime - a.mtime));   // canonical folder first, then most-recent
   return hits.slice(0, cap);
 }
 function pickMonthFile(dir, dateISO) {
   const d = new Date((dateISO || '') + 'T12:00:00'); if (isNaN(d)) return null;
   const m = MONTHS_FULL[d.getMonth()], ab = m.slice(0, 3), y = String(d.getFullYear());
   let ents = []; try { ents = fs.readdirSync(dir); } catch (e) { return null; }
-  const xlsx = ents.filter((n) => /\.(xlsx|xlsm|csv)$/i.test(n) && !/^[~$]/.test(n));
+  const xlsx = ents.filter((n) => /\.(xlsx|xlsm|csv)$/i.test(n) && !/^[~$]/.test(n) && !JUNK_FILE.test(n));
   const reM = new RegExp('(^|[^a-z])' + m + '([^a-z]|$)', 'i'), reA = new RegExp('(^|[^a-z])' + ab + '([^a-z]|$)', 'i');
   let cand = xlsx.filter((n) => reM.test(n) || reA.test(n));
   const withY = cand.filter((n) => n.indexOf(y) >= 0); if (withY.length) cand = withY;

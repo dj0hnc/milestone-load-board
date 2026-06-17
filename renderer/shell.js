@@ -125,8 +125,12 @@ function wireUpdBtn(){
       const r=await window.newmile.checkUpdate();
       if(r&&r.update){
         m.style.color='var(--green)';
-        m.innerHTML='🆕 v'+r.update.version+' available (you have '+(r.update.current||'')+'). <a href="#" id="updDl">⬇ Download now</a>';
-        const dl=document.getElementById('updDl'); if(dl)dl.onclick=async(ev)=>{ ev.preventDefault(); m.style.color='var(--dim)'; m.textContent='Downloading…';
+        m.innerHTML='🆕 v'+r.update.version+' available (you have '+(r.update.current||'')+'). <a href="#" id="updDl">⬇ Download &amp; install</a>';
+        const dl=document.getElementById('updDl'); if(dl)dl.onclick=async(ev)=>{ ev.preventDefault();
+          // GATED: only the admin code can actually install — auto-update stays OFF and coworkers
+          // can SEE an update but can't self-install; the webmaster walks the chosen machines.
+          if(!adminUnlocked){ m.style.color='#e0a04b'; m.innerHTML='🔒 Enter the admin code below, then click ⬇ Download &amp; install again.'; setTimeout(()=>{ var c=document.getElementById('admCode'); if(c)c.focus(); },50); return; }
+          m.style.color='var(--dim)'; m.textContent='Downloading…';
           const d=await window.newmile.downloadUpdate();
           m.style.color=(d&&d.ok)?'var(--green)':'var(--red)';
           m.textContent=(d&&d.ok)?'✓ Downloaded — folder opened. Close this app and run the new .exe.':('Download failed: '+((d&&d.error)||'unknown')); };
@@ -326,7 +330,7 @@ window.addEventListener('DOMContentLoaded', async ()=>{
       return;
     }
     if(e.data.type==='ai' && e.data.reqId){
-      try{ const res=await window.newmile.ai({messages:e.data.messages,context:e.data.context}); board().__aiResult && board().__aiResult(e.data.reqId,res); }
+      try{ const res=await window.newmile.ai({messages:e.data.messages,context:e.data.context,tools:e.data.tools}); board().__aiResult && board().__aiResult(e.data.reqId,res); }
       catch(err){ board().__aiResult && board().__aiResult(e.data.reqId,{error:String(err&&err.message||err)}); }
       return;
     }
@@ -384,6 +388,11 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     }
     if(e.data.type==='pickPlanFile' && e.data.reqId){
       try{ const res=await window.newmile.pickPlanFile(e.data.dateISO); board().__nmResult && board().__nmResult(e.data.reqId,res); }
+      catch(err){ board().__nmResult && board().__nmResult(e.data.reqId,{error:String(err&&err.message||err)}); }
+      return;
+    }
+    if(e.data.type==='truckNotes' && e.data.reqId){
+      try{ const res=await window.newmile.truckNotes({op:e.data.op,num:e.data.num,status:e.data.status,reason:e.data.reason,text:e.data.text,by:e.data.by}); board().__nmResult && board().__nmResult(e.data.reqId,res); }
       catch(err){ board().__nmResult && board().__nmResult(e.data.reqId,{error:String(err&&err.message||err)}); }
       return;
     }
@@ -581,6 +590,17 @@ async function refreshDay(){
   mileyThink(true);
   try{
     await autoSync();   // finalized board changes go OUT first, then we pull the truth back
+    // ALWAYS re-assert the board's per-truck sequence onto NewMile (Juan: "reacomoda SIEMPRE") —
+    // not just when something was pushed. Runs BEFORE the pull, so the board's edited seq wins;
+    // reconcile only moves draft/pending/non-hauled rows, pins the rest, and is idempotent.
+    try{
+      const seqIntent=(board().__getSeqIntent&&board().__getSeqIntent())||{};
+      if(Object.keys(seqIntent).length){
+        const rc=await window.newmile.reconcileSeq(seqIntent);
+        if(rc&&rc.reordered&&rc.reordered.length) appendLog('reconcile: fixed sequence for '+rc.reordered.length+' truck(s) → '+rc.reordered.join(', '));
+        else if(rc&&rc.failed&&rc.failed.length) appendLog('reconcile: '+rc.failed.length+' failed — '+rc.failed.map(f=>f.truck_id+':'+f.reason).join('; '));
+      }
+    }catch(e){ appendLog('reconcile (refresh) skipped: '+(e.message||e)); }
     const all=await window.newmile.refreshAll(date);   // Y/T/Tm orders + roster + rotation + live assignments
     const worked=workedSet(all.tickets||[]);
     const trucksMapped=dedupeTrucks(all.trucks||[]).map(t=>mapTruck(t,worked));
@@ -633,6 +653,7 @@ async function refreshDay(){
     });
     board().__applyLiveData(payload);
     try{ board().__priorDay=all.priorDay; board().render&&board().render(); }catch(e){}
+    try{ board().__tnRefresh && board().__tnRefresh(); }catch(e){}   // pull the SHARED truck flags/notes
     try{ await samsaraMoveCheck(payload, date); }catch(e){ appendLog('samsara check skipped: '+(e.message||e)); }
     const liveAsg=Object.values(asg).reduce((n,a)=>n+(a?a.length:0),0);
     setStatus(await window.newmile.status());

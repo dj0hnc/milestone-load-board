@@ -145,7 +145,7 @@ ipcMain.handle('nm:getSettings', () => {
 });
 // 🤖 AI copilot — read-only chat over the live board. Renderer passes {messages, context}.
 ipcMain.handle('nm:ai', async (_e, payload) => {
-  try { const p = payload || {}; return await ai.chat(p.messages || [], p.context || ''); }
+  try { const p = payload || {}; return await ai.chat(p.messages || [], p.context || '', p.tools || null); }
   catch (e) { return { error: e.message || String(e) }; }
 });
 ipcMain.handle('nm:aiStatus', () => ({ ready: ai.ready(), model: ai.model() }));
@@ -655,6 +655,20 @@ ipcMain.handle('nm:readPlan', async (_e, { dateISO } = {}) => {
     if (/Cannot find module 'xlsx/.test(String(e.message))) return { error: 'Excel reader not bundled in this build' };
     return { error: e.message || String(e) };
   }
+});
+// 🚩 SHARED truck availability/notes — proxied to the mab-mobile server (same PC) so the desktop
+// and ALL phones share ONE store. Base URL from app-settings.notesServer (default localhost:8090).
+// Best-effort: if the server is down (e.g. a coworker without it), the renderer falls back to its
+// own localStorage so flagging never breaks.
+ipcMain.handle('nm:truckNotes', async (_e, payload = {}) => {
+  try {
+    const s = loadSettings() || {};
+    const base = (s.notesServer || 'http://localhost:8090').replace(/\/+$/, '');
+    const op = (payload && payload.op) || 'get';
+    const url = base + '/api/truck-notes' + (op === 'set' ? '/set' : op === 'log' ? '/log' : '');
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload || {}) });
+    return await r.json();
+  } catch (e) { return { error: String((e && e.message) || e), offline: true }; }
 });
 // Fallback when the OneDrive auto-find fails (file not synced on THIS PC, or no tab for the day):
 // let the dispatcher pick the .xlsx/.csv by hand, parse it, and return per-order rows to match.
