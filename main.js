@@ -126,7 +126,7 @@ function applySettings(cfg, s) {
     cfg.samsara = cfg.samsara || {};
     cfg.samsara.tokens = s.samsaraTokens.filter(t => t && t.token);
   }
-  if (s.githubToken) { cfg.github = cfg.github || {}; cfg.github.token = s.githubToken; }
+  if (s.githubToken) { cfg.github = cfg.github || {}; cfg.github.token = String(s.githubToken).replace(/[^\x21-\x7E]/g, ''); }
   if (s.aiKey != null) cfg.aiKey = s.aiKey;
   if (s.market) cfg.marketName = s.market;
   try { ai.configure({ key: cfg.aiKey || '' }); } catch (e) {}   // 🤖 copilot dormant until a key is set
@@ -448,7 +448,8 @@ async function checkForUpdate() {
     const gh = (appCfg && appCfg.github) || {};
     if (!gh.owner || !gh.repo) { return; }                 // owner/repo ship in the config; token only needed if the repo is PRIVATE
     const hdr = { Accept: 'application/vnd.github+json', 'User-Agent': 'MilestoneLoadBoard' };
-    if (gh.token) hdr.Authorization = 'Bearer ' + gh.token; // public releases → no token; private → PAT
+    const ghTok = (gh.token || '').replace(/[^\x21-\x7E]/g, ''); // strip BOM/zero-width/whitespace — a stray U+FEFF breaks the header ByteString
+    if (ghTok) hdr.Authorization = 'Bearer ' + ghTok; // public releases → no token; private → PAT
     const r = await fetch(`https://api.github.com/repos/${gh.owner}/${gh.repo}/releases/latest`, { headers: hdr });
     if (!r.ok) {
       pushLog('updater: HTTP ' + r.status + (gh.token ? '' : ' (no token — private repo needs a PAT, or make releases public)'));
@@ -484,7 +485,8 @@ ipcMain.handle('nm:downloadUpdate', async () => {
     if (!_updateInfo || !_updateInfo.assetId) return { error: 'No update staged' };
     const gh = appCfg.github;
     const dhdr = { Accept: 'application/octet-stream', 'User-Agent': 'MilestoneLoadBoard' };
-    if (gh.token) dhdr.Authorization = 'Bearer ' + gh.token;   // public release asset → no token needed
+    const ghTok = (gh.token || '').replace(/[^\x21-\x7E]/g, '');   // strip BOM/zero-width so the header doesn't throw
+    if (ghTok) dhdr.Authorization = 'Bearer ' + ghTok;   // public release asset → no token needed
     const r = await fetch(`https://api.github.com/repos/${gh.owner}/${gh.repo}/releases/assets/${_updateInfo.assetId}`, {
       headers: dhdr, redirect: 'follow'
     });

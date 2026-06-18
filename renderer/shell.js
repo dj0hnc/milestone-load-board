@@ -592,7 +592,8 @@ async function refreshDay(){
     await autoSync();   // finalized board changes go OUT first, then we pull the truth back
     // ALWAYS re-assert the board's per-truck sequence onto NewMile (Juan: "reacomoda SIEMPRE") —
     // not just when something was pushed. Runs BEFORE the pull, so the board's edited seq wins;
-    // reconcile only moves draft/pending/non-hauled rows, pins the rest, and is idempotent.
+    // reconcile only moves draft/pending/non-hauled rows, pins the rest, is idempotent (skips when
+    // newIds==curIds), so it self-heals a manual seq flip and catches seq-ONLY changes too.
     try{
       const seqIntent=(board().__getSeqIntent&&board().__getSeqIntent())||{};
       if(Object.keys(seqIntent).length){

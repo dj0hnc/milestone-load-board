@@ -1458,9 +1458,10 @@ function finalizeAllReady(){
   toast(n?`Finalizing ${n} order${n>1?'s':''} → NewMile${skipped?` · ${skipped} short skipped`:''}`:'Nothing new to finalize',!n);
 }
 /* trucks NewMile still has on the order but the dispatcher took OFF here.
-   Uses the pristine nmAssigns snapshot (local edits never touch it). Only trucks
-   that exist in our roster count — an unmapped truck was never shown on the board,
-   so it can never be "removed" by accident. */
+   Uses the pristine nmAssigns snapshot (local edits never touch it). A coworker's truck added in
+   NewMile AFTER our last pull is NOT in this snapshot, so it can never be removed by accident; only
+   trucks we actually pulled and that are no longer a chip get removed. Only trucks that exist in our
+   roster count — an unmapped truck was never shown on the board. */
 function __removedFor(o,presentNums){
   return (o.nmAssigns||[]).filter(na=>{
     if(!na.aid||!na.num) return false;
