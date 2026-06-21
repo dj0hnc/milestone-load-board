@@ -726,12 +726,18 @@ function clearOrderQuery(){orderQuery='';$('#orderSearch').value='';$('#sclr').s
      → deadhead). Primary sort = your seq (manual intent), tie-break = order start time, then id.
    This feeds __getSeqIntent, so the post-sync reconcile sets NewMile's ordinals to exactly this. */
 function normalizeSeqs(){
-  var byTruck={};
-  orders.forEach(function(o){ (o.assigns||[]).forEach(function(a){ (byTruck[a.truck]=byTruck[a.truck]||[]).push({a:a,hr:(o.startHr||0),oid:String(o.id)}); }); });
-  Object.keys(byTruck).forEach(function(tid){
-    var list=byTruck[tid];
-    list.sort(function(x,y){ return ((x.a.seq||1)-(y.a.seq||1)) || (x.hr-y.hr) || x.oid.localeCompare(y.oid,undefined,{numeric:true}); });
-    list.forEach(function(e,i){ e.a.seq=i+1; });
+  // Rank per (DAY, truck) across ALL loaded days (yesterday/today/tomorrow) — not just the day on
+  // screen. Each day independently gets clean 1..n, so a truck's seq is correct on EVERY day. (Before
+  // this only ranked the viewed day, so tomorrow's seq stayed as raw NewMile ordinals → the reconcile
+  // saw incomplete/wrong intent and left the creation-order in NewMile. THIS is the seq-flip root cause.)
+  [3,4,5].forEach(function(k){
+    var byTruck={};
+    (DAY_ORDERS[k]||[]).forEach(function(o){ (o.assigns||[]).forEach(function(a){ (byTruck[a.truck]=byTruck[a.truck]||[]).push({a:a,hr:(o.startHr||0),oid:String(o.id)}); }); });
+    Object.keys(byTruck).forEach(function(tid){
+      var list=byTruck[tid];
+      list.sort(function(x,y){ return ((x.a.seq||1)-(y.a.seq||1)) || (x.hr-y.hr) || x.oid.localeCompare(y.oid,undefined,{numeric:true}); });
+      list.forEach(function(e,i){ e.a.seq=i+1; });
+    });
   });
 }
 /* Explicit "move this truck's order to position N" — used by the ✏️ edit modal so a MANUAL
@@ -1494,14 +1500,19 @@ window.__clearPendingSync=function(ids){ (ids||[]).forEach(id=>{ window.__pendin
 window.__getSeqIntent=function(){
   normalizeSeqs();                 // intent must be the clean 1..n ranking, not raw ordinals
   const intent={};
-  orders.forEach(o=>{
-    const oid=parseInt((''+o.id).replace(/^o/,''),10); if(isNaN(oid))return;
-    (o.assigns||[]).forEach(a=>{
-      const t=T(a.truck); if(!t)return;
-      const tid=parseInt(String(t.id).replace(/^t/,''),10); if(isNaN(tid))return;
-      // tie-break ties by the order's start hour so equal seqs still get a stable, sane order
-      const seq=(a.seq||1)*100 + Math.min(99,(o.startHr||0));
-      (intent[tid]=intent[tid]||{})[oid]=seq;
+  // Span ALL loaded days (not just the one on screen) so the reconcile always has the COMPLETE
+  // per-truck sequence — otherwise syncing while viewing a different day sent partial intent and
+  // NewMile kept the creation-order ordinals. Key = day*100000 + seq*100 + startHr → orders sort
+  // day-first, then the truck's seq within that day, then start time.
+  [3,4,5].forEach(function(k){
+    (DAY_ORDERS[k]||[]).forEach(o=>{
+      const oid=parseInt((''+o.id).replace(/^o/,''),10); if(isNaN(oid))return;
+      (o.assigns||[]).forEach(a=>{
+        const t=T(a.truck); if(!t)return;
+        const tid=parseInt(String(t.id).replace(/^t/,''),10); if(isNaN(tid))return;
+        const seq=k*100000 + (a.seq||1)*100 + Math.min(99,(o.startHr||0));
+        (intent[tid]=intent[tid]||{})[oid]=seq;
+      });
     });
   });
   return intent;
