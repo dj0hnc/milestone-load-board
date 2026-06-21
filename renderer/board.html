@@ -3264,6 +3264,7 @@ setView('board');
       +'<header><b>🗺 Live Map</b>'
       +'<input id="mapSearch" placeholder="Truck # / driver…" autocomplete="off">'
       +'<input id="mapPlace" placeholder="'+t('📍 Address, city or coordinates — Enter','📍 Dirección, ciudad o coordenadas — Enter')+'" autocomplete="off" style="min-width:230px">'
+      +'<button id="mapUnasg" class="gmap" title="Mostrar solo trocas SIN asignar">⚠ Faltan</button>'
       +'<span id="mapInfo"></span>'
       +'<button id="mapClose">✕</button></header>'
       +'<div id="liveMap"></div></div>';
@@ -3271,6 +3272,7 @@ setView('board');
     d.addEventListener('click',function(ev){ if(ev.target===d) window.closeLiveMap(); });
     $id('mapClose').onclick=function(){ window.closeLiveMap(); };
     $id('mapSearch').addEventListener('input',function(){ renderMapTrucks(this.value); });
+    $id('mapUnasg').onclick=function(){ window.__mapUnasg=!window.__mapUnasg; this.style.background=window.__mapUnasg?'#f59e0b':''; this.style.color=window.__mapUnasg?'#1a1205':''; renderMapTrucks($id('mapSearch').value||''); };
     $id('mapPlace').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); findOnMap(this.value); } });
   }
   window.openLiveMap=function(q){
@@ -3295,17 +3297,31 @@ setView('board');
     if(!_lmap) return;
     q=(q||'').trim().toLowerCase();
     _lmTrucks.clearLayers(); _lmOrder.clearLayers();
-    var shown=0, first=null;
+    var shown=0, first=null, asgN=0, freeN=0;
     trucks.forEach(function(t){
       if(t.lat==null) return;
       if(q && !(t.num.toLowerCase().indexOf(q)>=0||(t.driver||'').toLowerCase().indexOf(q)>=0)) return;
-      shown++;
+      // is this truck assigned to any of the day's (non-completed) orders?
+      var assigned=orders.some(function(o){ return !o.completed && (o.assigns||[]).some(function(a){ return a.truck===t.id; }); });
+      if(window.__mapUnasg && assigned) return;   // "only unassigned" filter
+      shown++; if(assigned)asgN++; else freeN++;
       var moving=(t.mph||0)>=1;
-      var m=L.circleMarker([t.lat,t.lon],{radius:6,color:moving?'#22c55e':'#fbbf24',weight:2,fillColor:moving?'#22c55e':'#fbbf24',fillOpacity:.8});
+      // camioncito 🚛 in a colored pill: green=assigned&moving · blue=assigned&parked · amber=UNASSIGNED.
+      // badge: ✓ green if assigned, ! amber if it still needs assigning (so you spot who's missing).
+      var col=assigned?(moving?'#16a34a':'#2563eb'):'#b45309';
+      var badge=assigned
+        ?'<div style="position:absolute;top:-7px;right:-8px;width:15px;height:15px;border-radius:50%;background:#16a34a;color:#fff;font-size:10px;font-weight:900;line-height:15px;text-align:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.6)">✓</div>'
+        :'<div style="position:absolute;top:-7px;right:-8px;width:15px;height:15px;border-radius:50%;background:#f59e0b;color:#1a1205;font-size:11px;font-weight:900;line-height:14px;text-align:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.6)">!</div>';
+      var ic=L.divIcon({className:'mabtruck',iconSize:[34,28],iconAnchor:[17,14],popupAnchor:[0,-12],
+        html:'<div style="position:relative;width:34px;height:28px;display:flex;align-items:center;justify-content:center">'
+          +'<span style="background:'+col+';border-radius:9px;padding:2px 3px;font-size:17px;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,.5)">🚛</span>'+badge+'</div>'});
+      var m=L.marker([t.lat,t.lon],{icon:ic});
       var du=(window.__dirUsersByTruckId||{})[String(t.id).replace(/^t/,'')];
       var phone=du&&du.phone_number?String(du.phone_number):'';
       var phoneHtml=phone?('<br><a style="color:#5a95f9" href="rcapp://r/call?number=%2B1'+phone.replace(/\D/g,'').slice(-10)+'">📞 '+phone+'</a>'):'';
-      m.bindPopup('<b>'+t.num+'</b> · '+(t.group||'')+'<br>'+(t.driver||'(no driver)')+phoneHtml
+      m.bindPopup('<b>'+t.num+'</b> · '+(t.group||'')
+        +(assigned?'<br><b style="color:#22c55e">✓ Asignado hoy</b>':'<br><b style="color:#f59e0b">⚠ SIN asignar</b>')
+        +'<br>'+(t.driver||'(no driver)')+phoneHtml
         +'<br>'+(moving?('▶ moving · '+Math.round(t.mph)+' mph'):'⏸ parked')
         +(t.gpsTime?('<br><small>GPS '+String(t.gpsTime).replace('T',' ').slice(0,16)+'</small>'):'')
         +'<br><button class="gmap" style="margin:5px 0 0" onclick="reqSnapshot(event,\''+t.num.replace(/'/g,"\\'")+'\')">📷 Dashcam snapshot</button>'
@@ -3321,7 +3337,7 @@ setView('board');
       L.polyline([[o.pickupLat,o.pickupLng],[o.dropLat,o.dropLng]],{color:'#C8991F',weight:3,dashArray:'6 6'}).addTo(_lmOrder);
     }
     var inf=$id('mapInfo');
-    if(inf) inf.textContent=shown+' truck'+(shown!=1?'s':'')+(q?' matching':' with GPS')+(o&&o.pickupLat!=null?' · run: '+o.disp:'');
+    if(inf) inf.innerHTML=(window.__mapUnasg?('<b style="color:#f59e0b">⚠ '+freeN+' sin asignar</b>'):('✓ '+asgN+' asignados · <b style="color:#f59e0b">⚠ '+freeN+' faltan</b>'))+(q?' · filtro':'')+(o&&o.pickupLat!=null?' · '+o.disp:'');
     if(q&&first){ _lmap.setView([first.lat,first.lon],12); first&&_lmTrucks.getLayers()[0]&&_lmTrucks.getLayers()[0].openPopup(); }
     else if(shown){ try{ _lmap.fitBounds(_lmTrucks.getBounds().pad(0.2)); }catch(e){} }
   }
@@ -4549,6 +4565,9 @@ setView('board');
   }
   window.openTab=function(key){
     try{
+      // Hide the Messages webview when navigating ANYWHERE else — it floats over the board (Electron)
+      // and, if left docked, sat on top of the search boxes eating clicks.
+      if(key!=='msg'){ try{ msgDock(false); }catch(e){} }
       if(key==='copilot'){ window.openMileyDrawer(); return; }   // Miley lives in the slide-out drawer, not a modal
       var el=enhTabModal(key);
       el.classList.add('open');
@@ -4590,6 +4609,7 @@ setView('board');
   };
   window.openMileyDrawer=function(){
     try{
+      try{ msgDock(false); }catch(e){}   // hide the Messages webview so it can't float over the drawer/board
       var el=mileyDrawerEl(); var sc=$id('mileyDrawerScrim');
       var disp=$id('mdDispatch'), panel=$id('enhPanel');
       if(panel && disp && panel.parentNode!==disp) disp.appendChild(panel);   // unify: move Smart Dispatch into the drawer

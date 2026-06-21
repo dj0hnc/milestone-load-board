@@ -502,7 +502,10 @@ function ensureWvMsg(){
 }
 function dockMsg(rect){
   ensureWvMsg();
-  if(!rect){ wvMsg.style.left='-12000px'; return; }
+  // HIDE with display:none (not just off-screen) so the webview can NEVER sit on top of the board
+  // eating clicks (the search boxes became unclickable when it stayed docked). Show only when docked.
+  if(!rect){ wvMsg.style.display='none'; wvMsg.style.left='-12000px'; return; }
+  wvMsg.style.display='';
   const off=document.getElementById('board').getBoundingClientRect();
   wvMsg.style.left=Math.round(off.left+rect.left)+'px';
   wvMsg.style.top =Math.round(off.top +rect.top )+'px';
