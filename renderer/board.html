@@ -1412,6 +1412,11 @@ function unassign(e,oid,i){
   if(na&&na.final){ if(!confirm('⚠ '+num+' '+t('is FINALIZED in NewMile (offer sent / active).\n\nRemove it? It will be deleted from NewMile on the next sync.','ya está FINALIZADO en NewMile (oferta enviada / activo).\n\n¿Seguro que lo quitas? Se eliminará de NewMile en la próxima sincronización.')))return; }
   else if(na){ if(!confirm(num+' '+t('is synced in NewMile as DRAFT.\n\nRemove it from the order? It will be deleted from NewMile on sync.','ya está sincronizado en NewMile como DRAFT.\n\n¿Quitarlo de la orden? Se eliminará de NewMile al sincronizar.')))return; }
   // na==null → solo local (aún no sincronizado) → se quita sin confirmar
+  // Capture the removal DIRECTLY from the chip's own aid (or the snapshot's) so the delete sticks
+  // even when the pulled snapshot (nmAssigns) is stale/incomplete — that staleness is what made
+  // deleted trucks "come back" (the delete never reached NewMile).
+  var _rmAid=(a.aid!=null?a.aid:((na&&na.aid!=null)?na.aid:null));
+  if(_rmAid!=null){ (o.removedRows=o.removedRows||[]).push({aid:_rmAid, truck:num, done:(na&&na.done)||0}); }
   o.assigns.splice(i,1);if(truckOrderCount(tid)===0){if(tk&&tk.status==='assigned')tk.status='free';}if(o.finalized)o.modified=true;markDraft(oid);render();
 }
 function flashPending(oid){const el=$('#ord-'+oid);el.style.boxShadow='0 0 0 2px var(--orange)';setTimeout(()=>el.style.boxShadow='',650);}
@@ -1469,11 +1474,23 @@ function finalizeAllReady(){
    trucks we actually pulled and that are no longer a chip get removed. Only trucks that exist in our
    roster count — an unmapped truck was never shown on the board. */
 function __removedFor(o,presentNums){
-  return (o.nmAssigns||[]).filter(na=>{
-    if(!na.aid||!na.num) return false;
-    if(presentNums[na.num.trim().toUpperCase()]) return false;
-    return trucks.some(t=>t.num.toLowerCase()===na.num.trim().toLowerCase());
-  }).map(na=>({aid:na.aid, truck:na.num, done:na.done||0}));
+  const out=[], seen={};
+  // (a) rows the dispatcher EXPLICITLY took off — captured WITH their aid at delete time (unassign /
+  //     planner drop). This works even if the pulled snapshot is stale, which is what made deletes
+  //     "come back". Skip if the truck is back as a chip (re-added after delete).
+  (o.removedRows||[]).forEach(r=>{
+    if(!r||r.aid==null||seen[r.aid]) return;
+    if(r.truck&&presentNums[String(r.truck).trim().toUpperCase()]) return;
+    seen[r.aid]=1; out.push({aid:r.aid, truck:r.truck, done:r.done||0});
+  });
+  // (b) snapshot fallback: pristine nmAssigns rows whose truck is no longer a chip + still in roster
+  (o.nmAssigns||[]).forEach(na=>{
+    if(!na.aid||!na.num||seen[na.aid]) return;
+    if(presentNums[na.num.trim().toUpperCase()]) return;
+    if(!trucks.some(t=>t.num.toLowerCase()===na.num.trim().toLowerCase())) return;
+    seen[na.aid]=1; out.push({aid:na.aid, truck:na.num, done:na.done||0});
+  });
+  return out;
 }
 /* hooks the shell uses to sync finalized changes to NewMile */
 window.__getPendingSync=function(){
@@ -1493,7 +1510,7 @@ window.__getPendingSync=function(){
       assignments, removed:__removedFor(o,present), finalize:window.__finalizeQueue.has(oid) };
   }).filter(o=>o.assignments.length||o.removed.length);
 };
-window.__clearPendingSync=function(ids){ (ids||[]).forEach(id=>{ window.__pendingSync.delete('o'+id); window.__finalizeQueue.delete('o'+id); }); if(!ids){ window.__pendingSync.clear(); window.__finalizeQueue.clear(); } };
+window.__clearPendingSync=function(ids){ (ids||[]).forEach(id=>{ window.__pendingSync.delete('o'+id); window.__finalizeQueue.delete('o'+id); var _o=O('o'+id); if(_o)_o.removedRows=[]; }); if(!ids){ window.__pendingSync.clear(); window.__finalizeQueue.clear(); } };
 /* Day-wide sequence intent for the end-of-sync reconciliation: per truck_id, the order this
    truck should run TODAY'S orders in. a.seq is the truck's sequence position (1st order=1, 2nd=2…).
    The reconcile step uses this to make NewMile's per-truck ordinals match the board exactly. */
