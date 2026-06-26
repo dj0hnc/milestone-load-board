@@ -1,0 +1,65 @@
+name: MAB Reports
+
+# Sends the morning (7am CT) no-show report and the night (8pm CT) fleet-assignment report
+# from GitHub's cloud — never depends on any PC. Reuses the exact app logic (report-engine/).
+# The self-rotating NewMile token is kept in the Actions CACHE (never committed to the repo, so
+# it is NOT readable via the bundled read-only PAT); it is seeded from the MAB_NM_TOKEN secret.
+# Manual runs: Actions tab -> "MAB Reports" -> Run workflow (pick morning/night, set OFF-APP).
+
+on:
+  schedule:
+    - cron: '0 12 * * *'   # ~7:00 AM America/Chicago (CDT) -> morning
+    - cron: '0 1 * * *'    # ~8:00 PM America/Chicago (CDT) -> night
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: 'Report to run'
+        type: choice
+        options: [morning, night]
+        default: night
+      offsubs:
+        description: 'OFF-APP subs count'
+        default: '0'
+
+concurrency:
+  group: mab-reports
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # restore the rotating token/lock from cache (most recent mab-state-* entry)
+      - uses: actions/cache/restore@v4
+        with:
+          path: report-engine/.state
+          key: mab-state-${{ github.run_id }}
+          restore-keys: |
+            mab-state-
+      - name: Generate + send report
+        env:
+          MAB_NM_CONFIG: ${{ secrets.MAB_NM_CONFIG }}
+          MAB_NM_TOKEN: ${{ secrets.MAB_NM_TOKEN }}
+          RESEND_KEY: ${{ secrets.RESEND_KEY }}
+          REPORT_TO: ${{ secrets.REPORT_TO }}
+          MAB_OFFSUBS: ${{ github.event.inputs.offsubs }}
+        run: |
+          set -e
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            node report-engine/report-cli.js "${{ github.event.inputs.kind }}" --send --force
+          else
+            HOUR=$(TZ=America/Chicago date +%H)
+            if [ "$HOUR" -ge 5 ] && [ "$HOUR" -lt 13 ]; then KIND=morning; else KIND=night; fi
+            echo "scheduled run - Central hour $HOUR -> $KIND"
+            node report-engine/report-cli.js "$KIND" --send
+          fi
+      # save the rotated token/lock back to cache for the next run
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: report-engine/.state
+          key: mab-state-${{ github.run_id }}

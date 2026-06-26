@@ -10,3 +10,6 @@ _build.log
 _chk_board.js
 
 .commitmsg.tmp
+
+# cloud report engine: the self-rotating NewMile token lives in Actions cache, NEVER in the repo
+report-engine/.state/
