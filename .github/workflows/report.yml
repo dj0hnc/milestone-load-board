@@ -1,15 +1,26 @@
 name: MAB Reports
 
-# Sends the morning (7am CT) no-show report and the night (8pm CT) fleet-assignment report
+# Sends the morning (7-8am CT) no-show report and the night (8-9pm CT) fleet-assignment report
 # from GitHub's cloud — never depends on any PC. Reuses the exact app logic (report-engine/).
-# The self-rotating NewMile token is kept in the Actions CACHE (never committed to the repo, so
-# it is NOT readable via the bundled read-only PAT); it is seeded from the MAB_NM_TOKEN secret.
+#
+# SCHEDULING: GitHub cron fires with unpredictable delays (observed 2-9 HOURS on this repo),
+# which used to send the night report at 4am and the morning report at noon. Fix: trigger EVERY
+# HOUR and let the run decide by the ACTUAL Central hour — send morning only during 7-8am CT,
+# night only during 8-9pm CT, otherwise exit quietly. The once-per-day lock (report-engine
+# .state/last-sent.json, kept in the Actions cache) guarantees each report goes out at most
+# once per day even if several runs land in the same window.
+#
+# OFF-APP SUBS: scheduled runs read the repo VARIABLE `MAB_OFFSUBS` (Settings -> Secrets and
+# variables -> Actions -> Variables tab). Edit it any time; the next report uses it. Manual runs
+# can override it with the workflow input.
+#
+# The self-rotating NewMile token lives in the Actions CACHE (never committed, so it is NOT
+# readable via the bundled read-only PAT); it is seeded from the MAB_NM_TOKEN secret.
 # Manual runs: Actions tab -> "MAB Reports" -> Run workflow (pick morning/night, set OFF-APP).
 
 on:
   schedule:
-    - cron: '0 12 * * *'   # ~7:00 AM America/Chicago (CDT) -> morning
-    - cron: '0 1 * * *'    # ~8:00 PM America/Chicago (CDT) -> night
+    - cron: '11 * * * *'   # hourly; the job itself gates on the real Central hour
   workflow_dispatch:
     inputs:
       kind:
@@ -18,8 +29,8 @@ on:
         options: [morning, night]
         default: night
       offsubs:
-        description: 'OFF-APP subs count'
-        default: '0'
+        description: 'OFF-APP subs count (blank = use the MAB_OFFSUBS variable)'
+        default: ''
 
 concurrency:
   group: mab-reports
@@ -32,7 +43,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
       # restore the rotating token/lock from cache (most recent mab-state-* entry)
       - uses: actions/cache/restore@v4
         with:
@@ -46,14 +57,22 @@ jobs:
           MAB_NM_TOKEN: ${{ secrets.MAB_NM_TOKEN }}
           RESEND_KEY: ${{ secrets.RESEND_KEY }}
           REPORT_TO: ${{ secrets.REPORT_TO }}
-          MAB_OFFSUBS: ${{ github.event.inputs.offsubs }}
+          MAB_OFFSUBS: ${{ github.event.inputs.offsubs || vars.MAB_OFFSUBS || '0' }}
         run: |
           set -e
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             node report-engine/report-cli.js "${{ github.event.inputs.kind }}" --send --force
           else
             HOUR=$(TZ=America/Chicago date +%H)
-            if [ "$HOUR" -ge 5 ] && [ "$HOUR" -lt 13 ]; then KIND=morning; else KIND=night; fi
+            HOUR=$((10#$HOUR))
+            if [ "$HOUR" -ge 7 ] && [ "$HOUR" -le 8 ]; then
+              KIND=morning
+            elif [ "$HOUR" -ge 20 ] && [ "$HOUR" -le 21 ]; then
+              KIND=night
+            else
+              echo "Central hour $HOUR is outside the send windows (7-8am morning, 8-9pm night) — nothing to do"
+              exit 0
+            fi
             echo "scheduled run - Central hour $HOUR -> $KIND"
             node report-engine/report-cli.js "$KIND" --send
           fi
