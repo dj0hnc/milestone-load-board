@@ -720,6 +720,8 @@ async function refreshDay(force){
     toast('Synced '+date+' · today '+payload.dayMap[4].length+' / tomorrow '+payload.dayMap[5].length+' orders · '+liveAsg+' live assignments · rotation from '+all.priorDay);
     mileyThink(false);
   }catch(e){ setStatus(await window.newmile.status()); mileyThink(false); toast('Refresh failed: '+(e.message||e)); }
+  finally{ __refreshing=false; }   // ALWAYS release the guard — v2.6.54 never reset it, so after the
+                                   // first refresh every later sync/refresh silently did nothing
 }
 
 /* ---------- mappers (NewMile shape -> board shape) ---------- */
