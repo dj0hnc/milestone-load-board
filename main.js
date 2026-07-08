@@ -5,6 +5,11 @@ const fs = require('fs');
 const { NewMileClient } = require('./mcp-client');
 const fuel = require('./fuel');
 const ai = require('./ai');
+const dwell = require('./geo-dwell');   // GPS dwell-clustering → real pickup/drop points
+function gpsLocPath() { return path.join(app.getPath('userData'), 'gps-locations.json'); }
+function gpsLocLoad() { try { return JSON.parse(fs.readFileSync(gpsLocPath(), 'utf8')) || {}; } catch (e) { return {}; } }
+function gpsLocSave(m) { try { fs.writeFileSync(gpsLocPath(), JSON.stringify(m || {}, null, 1)); return true; } catch (e) { return false; } }
+function gpsNorm(s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim(); }
 
 let win, client;
 const recentLogs = [];
@@ -128,8 +133,10 @@ function applySettings(cfg, s) {
   }
   if (s.githubToken) { cfg.github = cfg.github || {}; cfg.github.token = String(s.githubToken).replace(/[^\x21-\x7E]/g, ''); }
   if (s.aiKey != null) cfg.aiKey = s.aiKey;
+  if (s.aiModel) cfg.aiModel = s.aiModel;
+  if (s.googleKey != null) cfg.googleKey = String(s.googleKey || '').trim();   // Google Distance Matrix (real-traffic ETA)
   if (s.market) cfg.marketName = s.market;
-  try { ai.configure({ key: cfg.aiKey || '' }); } catch (e) {}   // 🤖 copilot dormant until a key is set
+  try { ai.configure({ key: cfg.aiKey || '', model: cfg.aiModel || '' }); } catch (e) {}   // 🤖 copilot dormant until a key is set; model is user-pickable in Settings
   return cfg;
 }
 ipcMain.handle('nm:getSettings', () => {
@@ -140,6 +147,8 @@ ipcMain.handle('nm:getSettings', () => {
     bundledTokens: (((loadConfig().samsara || {}).tokens) || []).map(t => ({ name: t.name, has: !!t.token })),
     githubToken: s.githubToken || '',
     aiKey: s.aiKey || '',
+    aiModel: s.aiModel || 'claude-sonnet-4-6',   // Miley's brain — user-pickable
+    googleKey: s.googleKey || '',        // Google Distance Matrix key (real-traffic ETA)
     adminHash: s.adminHash || ''        // empty = default code 0605 (renderer hashes & compares)
   };
 });
@@ -167,6 +176,7 @@ app.whenReady().then(() => {
     config: cfg,
     tokenPath: path.join(app.getPath('userData'), 'newmile-session.json'),
     geoCachePath: path.join(app.getPath('userData'), 'pickup-geocache.json'),
+    gpsLocPath: gpsLocPath(),   // GPS-verified pickup/drop coords (from Samsara dwell), top-priority source
     authorize: authorizeInApp,
     onStatus: (st) => { if (win && !win.isDestroyed()) win.webContents.send('nm:status', st); },
     onLog: pushLog
@@ -361,6 +371,123 @@ ipcMain.handle('nm:samsara', async () => {
   try { return await getSamsara(); }
   catch (e) { pushLog('samsara error: ' + e.message); return {}; }
 });
+
+// ---------- GPS-verified pickup/drop (Samsara history → dwell clusters) ----------
+// Pull a vehicle set's GPS breadcrumbs for a time window. token owns the vehicles; ids are Samsara
+// vehicle ids. Returns { vehicleId: [{lat,lng,speed,time,addr}] }.
+async function vehicleGpsHistory(token, ids, startISO, endISO) {
+  const out = {};
+  if (!ids || !ids.length) return out;
+  let after = '', pg = 0;
+  do {
+    const u = 'https://api.samsara.com/fleet/vehicles/stats/history?types=gps&startTime=' + encodeURIComponent(startISO)
+      + '&endTime=' + encodeURIComponent(endISO) + '&vehicleIds=' + ids.map(encodeURIComponent).join(',') + (after ? '&after=' + encodeURIComponent(after) : '');
+    const r = await fetch(u, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
+    if (!r.ok) { pushLog('gps history HTTP ' + r.status); break; }
+    const j = await r.json();
+    (j.data || []).forEach(v => {
+      const id = String(v.id); out[id] = out[id] || [];
+      (v.gps || []).forEach(g => out[id].push({ lat: g.latitude, lng: g.longitude, speed: g.speedMilesPerHour, time: g.time, addr: (g.reverseGeo && g.reverseGeo.formattedLocation) || '' }));
+    });
+    after = (j.pagination && j.pagination.hasNextPage) ? j.pagination.endCursor : ''; pg++;
+  } while (after && pg < 14);
+  return out;
+}
+// Match a NewMile truck_number to a Samsara snapshot key (handles "KT-7045 P" → "KT-7045", spacing,
+// punctuation). Returns the snapshot entry {id, tok, lat, lon, ...} or null.
+function matchVehicle(snap, num) {
+  const n = String(num || '').toUpperCase().replace(/\s+/g, ' ').trim();
+  if (!n) return null;
+  const cands = [n, n.replace(/\s*[PT]$/, '').trim(), n.replace(/[^A-Z0-9]/g, '')];
+  for (const c of cands) { if (snap[c]) return snap[c]; }
+  const an = n.replace(/[^A-Z0-9]/g, '');
+  const k = Object.keys(snap).find(mn => mn.replace(/[^A-Z0-9]/g, '') === an);
+  return k ? snap[k] : null;
+}
+// Verify an order's real pickup/drop from where its assigned trucks dwelled that day.
+// payload: { truckNums:[], startISO, endISO, pickup:{lat,lng}, drop:{lat,lng} }
+ipcMain.handle('nm:gpsVerify', async (_e, payload) => {
+  try {
+    const p = payload || {};
+    const snap = await getSamsara();
+    const toks = ((appCfg.samsara && appCfg.samsara.tokens) || []).filter(t => t && t.token);
+    const byTok = {}; let matched = 0;
+    (p.truckNums || []).forEach(num => {
+      const v = matchVehicle(snap, num);
+      if (v && v.id != null && v.tok != null) { (byTok[v.tok] = byTok[v.tok] || []).push(String(v.id)); matched++; }
+    });
+    if (!matched) return { error: 'No Samsara match for this order\'s trucks (' + (p.truckNums || []).length + ' assigned)' };
+    let all = [];
+    for (const ti of Object.keys(byTok)) {
+      const t = toks[ti]; if (!t) continue;
+      const hist = await vehicleGpsHistory(t.token, byTok[ti], p.startISO, p.endISO);
+      Object.values(hist).forEach(arr => { all = all.concat(dwell.dwellClusters(arr, { minMin: 10 })); });
+    }
+    const merged = dwell.mergeClusters(all);
+    const stops = dwell.assignStops(merged, p.pickup || null, p.drop || null);
+    pushLog('gpsVerify: ' + matched + ' trucks · ' + merged.length + ' dwell clusters');
+    return { ok: true, pickup: stops.pickup, drop: stops.drop, clusters: merged.slice(0, 8), matched: matched, trucks: (p.truckNums || []).length };
+  } catch (e) { return { error: e.message || String(e) }; }
+});
+// Persist a dispatcher-confirmed real location (by name) so EVERY future order with that name uses
+// the GPS-verified coords (read first by mcp-client.resolvePickupCoords).
+ipcMain.handle('nm:gpsSaveLoc', (_e, payload) => {
+  try {
+    const p = payload || {}; const key = gpsNorm(p.name);
+    if (!key || p.lat == null || p.lng == null) return { error: 'name + coords required' };
+    const m = gpsLocLoad();
+    m[key] = { lat: Number(p.lat), lng: Number(p.lng), addr: p.addr || null, raw: p.name || '', src: 'gps', at: new Date().toISOString() };
+    gpsLocSave(m);
+    pushLog('gps-location saved: "' + (p.name || '') + '" → ' + Number(p.lat).toFixed(4) + ',' + Number(p.lng).toFixed(4));
+    return { ok: true };
+  } catch (e) { return { error: e.message || String(e) }; }
+});
+
+// ---------- real-traffic ETA (Google Distance Matrix) ----------
+// Returns {miles, min, traffic, src:'google'} when the key + billing are live, else null so the
+// caller keeps its OSRM/straight-line estimate. departure_time=now + best_guess = live traffic.
+async function googleEta(from, to) {
+  const key = (appCfg && appCfg.googleKey) || '';
+  if (!key || !from || !to || from.lat == null || to.lat == null) return null;
+  try {
+    const u = 'https://maps.googleapis.com/maps/api/distancematrix/json?origins=' + from.lat + ',' + from.lng
+      + '&destinations=' + to.lat + ',' + to.lng + '&departure_time=now&traffic_model=best_guess&units=imperial&key=' + encodeURIComponent(key);
+    const r = await fetch(u); const j = await r.json();
+    if (j.status !== 'OK') { if (j.status === 'REQUEST_DENIED') pushLog('googleEta denied (enable Billing?): ' + (j.error_message || '').slice(0, 80)); return null; }
+    const e = j.rows && j.rows[0] && j.rows[0].elements && j.rows[0].elements[0];
+    if (!e || e.status !== 'OK') return null;
+    const miles = e.distance ? e.distance.value / 1609.34 : null;
+    const secs = e.duration_in_traffic ? e.duration_in_traffic.value : (e.duration ? e.duration.value : null);
+    return { miles: miles != null ? Math.round(miles * 10) / 10 : null, min: secs != null ? Math.round(secs / 60) : null, traffic: !!e.duration_in_traffic, src: 'google' };
+  } catch (e) { return null; }
+}
+ipcMain.handle('nm:routeEta', async (_e, payload) => {
+  try { const p = payload || {}; return await googleEta(p.from, p.to); }
+  catch (e) { return null; }
+});
+ipcMain.handle('nm:googleReady', () => ({ ready: !!(appCfg && appCfg.googleKey) }));
+// Live status of the Google traffic ETA — so the UI can show "waiting on billing" until it flips
+// green on its own. Caches 'ready' for 5 min; re-checks other states every ~45s so it self-heals.
+let _googStat = { at: 0, state: null };
+async function googleStatus() {
+  const key = (appCfg && appCfg.googleKey) || '';
+  if (!key) return { state: 'off' };
+  const ttl = (_googStat.state === 'ready') ? 300000 : 40000;
+  if (_googStat.state && (Date.now() - _googStat.at) < ttl) return { state: _googStat.state };
+  try {
+    const u = 'https://maps.googleapis.com/maps/api/distancematrix/json?origins=32.78,-96.80&destinations=32.71,-96.70&departure_time=now&key=' + encodeURIComponent(key);
+    const j = await (await fetch(u)).json();
+    const msg = (j.error_message || '');
+    let st = 'denied';
+    if (j.status === 'OK') st = 'ready';
+    else if (j.status === 'REQUEST_DENIED' && /billing/i.test(msg)) st = 'billing';
+    else if (j.status === 'REQUEST_DENIED' && /(not authorized|api .*not|disabled|enable)/i.test(msg)) st = 'apioff';
+    else if (j.status === 'OVER_QUERY_LIMIT') st = 'quota';
+    _googStat = { at: Date.now(), state: st };
+    return { state: st, msg: msg.slice(0, 100) };
+  } catch (e) { return { state: 'err' }; }
+}
+ipcMain.handle('nm:googleStatus', async () => { try { return await googleStatus(); } catch (e) { return { state: 'err' }; } });
 
 /*
  * Dashcam snapshot (road-facing). Verified live flow: POST /cameras/media/retrieval

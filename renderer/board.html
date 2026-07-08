@@ -28,7 +28,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 input{font-family:inherit}
 ::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:#33405A;border-radius:6px}::-webkit-scrollbar-track{background:transparent}
 
-.topbar{height:60px;background:var(--navy);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 16px;position:relative;z-index:30;flex:none}
+.topbar{height:60px;background:var(--navy);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 16px;position:relative;z-index:30;flex:none;overflow:visible}
 .brand{display:flex;align-items:center;gap:12px}
 .brandlogo{height:38px;width:auto;display:block}
 @media(max-width:880px){.brandlogo{height:30px}}
@@ -719,23 +719,36 @@ function clearOrderQuery(){orderQuery='';$('#orderSearch').value='';$('#sclr').s
 
 /* RENDER */
 /* Keep every truck's per-order sequence a CLEAN, CONSISTENT 1..n across the day.
-   - On refresh a.seq = NewMile's raw ordinal (can be 5,7… from the truck's other assignments);
-     ranking it preserves NewMile's RELATIVE order but shows tidy 1,2,3 that match.
-   - When you change the seq on ONE order, the truck's OTHER orders renumber automatically so
-     there are never two "2"s (that ambiguity was scrambling the reconcile → wrong NewMile order
-     → deadhead). Primary sort = your seq (manual intent), tie-break = order start time, then id.
+   RUN-ORDER RULE (matches NewMile + how dispatch actually works): a truck runs its orders in
+   ORDER-START-TIME order — the order that starts earlier is sequence 1. (Almost every order starts
+   at 04:00, but when they differ, e.g. DUNPHEY 04:00 before GREGG 05:00, the earlier one runs first.)
+   - Primary sort = order start time (minutes). This is the fix for "I added it to DUNPHEY and GREGG
+     and the sync put DUNPHEY second": before, the primary sort was the ADD order (a.seq), so whichever
+     order you filled first won — now the earlier-START order wins regardless of add order.
+   - Tie-break (same start time) = the current a.seq, so a manual ✏️ arrangement still decides ties.
+   - Then order id, so it's always deterministic and never flips between renders.
    This feeds __getSeqIntent, so the post-sync reconcile sets NewMile's ordinals to exactly this. */
 function normalizeSeqs(){
   // Rank per (DAY, truck) across ALL loaded days (yesterday/today/tomorrow) — not just the day on
-  // screen. Each day independently gets clean 1..n, so a truck's seq is correct on EVERY day. (Before
-  // this only ranked the viewed day, so tomorrow's seq stayed as raw NewMile ordinals → the reconcile
-  // saw incomplete/wrong intent and left the creation-order in NewMile. THIS is the seq-flip root cause.)
+  // screen — so a truck's seq is correct on EVERY day and the reconcile gets the COMPLETE intent.
   [3,4,5].forEach(function(k){
     var byTruck={};
-    (DAY_ORDERS[k]||[]).forEach(function(o){ (o.assigns||[]).forEach(function(a){ (byTruck[a.truck]=byTruck[a.truck]||[]).push({a:a,hr:(o.startHr||0),oid:String(o.id)}); }); });
+    (DAY_ORDERS[k]||[]).forEach(function(o){ (o.assigns||[]).forEach(function(a){ (byTruck[a.truck]=byTruck[a.truck]||[]).push({a:a,mn:(o.startMin!=null?o.startMin:(o.startHr||0)*60),oid:String(o.id)}); }); });
     Object.keys(byTruck).forEach(function(tid){
       var list=byTruck[tid];
-      list.sort(function(x,y){ return ((x.a.seq||1)-(y.a.seq||1)) || (x.hr-y.hr) || x.oid.localeCompare(y.oid,undefined,{numeric:true}); });
+      var pin=window.__seqPins&&window.__seqPins[tid];
+      if(pin&&typeof pin==='object'){
+        // pinned: the dispatcher's saved arrangement (oid→pos) wins — survives pulls, which
+        // overwrite a.seq with NewMile ordinals. Orders not in the pin fall back after, by start time.
+        list.sort(function(x,y){
+          var px=(pin[x.oid]!=null?pin[x.oid]:999), py=(pin[y.oid]!=null?pin[y.oid]:999);
+          return (px-py) || (x.mn-y.mn) || ((x.a.seq||1)-(y.a.seq||1)) || x.oid.localeCompare(y.oid,undefined,{numeric:true});
+        });
+      } else if(pin){ // legacy boolean pin → trust a.seq
+        list.sort(function(x,y){ return ((x.a.seq||1)-(y.a.seq||1)) || (x.mn-y.mn) || x.oid.localeCompare(y.oid,undefined,{numeric:true}); });
+      } else {
+        list.sort(function(x,y){ return (x.mn-y.mn) || ((x.a.seq||1)-(y.a.seq||1)) || x.oid.localeCompare(y.oid,undefined,{numeric:true}); });
+      }
       list.forEach(function(e,i){ e.a.seq=i+1; });
     });
   });
@@ -754,6 +767,11 @@ function setAssignSeq(truckId, targetOid, newPos){
   var pos=Math.max(0,Math.min(list.length,(parseInt(newPos,10)||1)-1));
   list.splice(pos,0,moved);
   list.forEach(function(e,i){ e.a.seq=i+1; });
+  // MANUAL PIN: store the dispatcher's EXACT arrangement (order-id → position). a.seq alone is not
+  // enough — every pull overwrites a.seq with NewMile's raw ordinals, which silently reverted the
+  // pin. With the map, normalizeSeqs re-asserts the chosen order after every pull.
+  var pin={}; list.forEach(function(e,i){ pin[e.oid]=i+1; });
+  window.__seqPins=window.__seqPins||{}; window.__seqPins[truckId]=pin;
 }
 function render(){normalizeSeqs();renderRibbon();renderFilters();renderTrucks();renderOrders();renderSummary();renderAlerts();}
 
@@ -1064,7 +1082,7 @@ function renderOrders(){
       <div class="ohead"><span class="obadge ob-verified">✓ En NewMile</span>
         <div class="odisp">${o.disp} · ${String(o.startHr).padStart(2,'0')}:00</div>
         <div class="omat">${o.mat}</div><div class="ocust">${o.cust}</div>
-        <div class="oroute"><span class="gm-pt ${o.pickupAddr?'hasaddr':(o.pickupLat!=null?'hascoord':'noaddr')}" onclick="openPinMap(event,'${o.id}','pickup')" title="${ptTitle(o,'pickup')}">${o.pickup}</span> <span class="arr">→</span> <span class="gm-pt ${o.dropAddr?'hasaddr':(o.dropLat!=null?'hascoord':'noaddr')}" onclick="openPinMap(event,'${o.id}','drop')" title="${ptTitle(o,'drop')}">${o.drop}</span> <button class="gmap" onclick="openRouteMap(event,'${o.id}')" title="Open the run point-to-point in Google Maps">🗺</button></div>
+        <div class="oroute"><span class="gm-pt ${o.pickupAddr&&!o.pickupApprox?'hasaddr':(o.pickupAddr?'approxaddr':(o.pickupLat!=null?'hascoord':'noaddr'))}" onclick="openPinMap(event,'${o.id}','pickup')" title="${ptTitle(o,'pickup')}">${o.pickup}${o.pickupApprox?' <span class="apx">≈</span>':''}</span> <span class="arr">→</span> <span class="gm-pt ${o.dropAddr&&!o.dropApprox?'hasaddr':(o.dropAddr?'approxaddr':(o.dropLat!=null?'hascoord':'noaddr'))}" onclick="openPinMap(event,'${o.id}','drop')" title="${ptTitle(o,'drop')}">${o.drop}${o.dropApprox?' <span class="apx">≈</span>':''}</span> <button class="gmap" onclick="openRouteMap(event,'${o.id}')" title="Open the run point-to-point in Google Maps">🗺</button>${(o.assigns&&o.assigns.length)?` <button class="gmap" onclick="gpsVerifyOrder(event,'${o.id}')" title="${t('Find the REAL pickup/drop from where the trucks actually stopped (Samsara GPS)','Saca el pickup/drop REAL de donde pararon los troques de esta orden (GPS Samsara)')}">📍 GPS</button>`:''}</div>
         <div class="osched">🕖 ${o.time||(String(o.startHr).padStart(2,'0')+':00')} ${estRouteHtml(o)}${(o.nmNotes&&o.nmNotes.length)?` <button class="gmap notei" onclick="openOrderNotes(event,'${o.id}')" title="This order has NewMile notes — tap to read">📝 ${o.nmNotes.length}</button>`:''}${o.projectId?` <button class="gmap crewi" onclick="pullCrew(event,'${o.id}')" title="Pull the trucks that recently ran this project → Planner">⟲ Crew</button>`:''} <button class="gmap nearbyi" onclick="findNearbyDesktop(event,'${o.id}')" title="Find trucks near the pickup that are free/finishing, with Samsara drive time left">🎯 Nearby</button> <button class="gmap readi" onclick="readOrderFromSheet(event,'${o.id}')" title="Read THIS order's trucks/loads from the day's Excel sheet (OneDrive) straight into the order">📄 Excel</button></div>
         ${payHtml(o)}
         ${o.notes?`<div class="onotes"><span class="nl">NM</span> ${o.notes}</div>`:''}</div>
@@ -1693,8 +1711,10 @@ function ptTitle(o,which){
   const addr=which==='drop'?o.dropAddr:o.pickupAddr;
   const lat =which==='drop'?o.dropLat :o.pickupLat;
   const name=which==='drop'?o.drop    :o.pickup;
+  const approx=which==='drop'?o.dropApprox:o.pickupApprox;
   let s;
-  if(addr&&addr.trim()) s='📍 '+addr.trim()+' · '+t('tap to open this exact address in Maps','tap para abrir esta dirección exacta en Maps');
+  if(addr&&addr.trim()&&!approx) s='📍 '+addr.trim()+' · '+t('tap to open this exact address in Maps','tap para abrir esta dirección exacta en Maps');
+  else if(addr&&addr.trim())     s='≈ '+addr.trim()+' · '+t('APPROXIMATE — Google only had the town, not the exact street. Save this location in NewMile for a real address. Tap to open.','APROXIMADA — Google solo tenía el pueblo, no la calle exacta. Guarda esta ubicación en NewMile para la dirección real. Tap para abrir.');
   else if(lat!=null)    s='📍 '+(name||'')+' · '+t('exact coordinates (no street address saved in NewMile)','coordenadas exactas (sin dirección guardada en NewMile)');
   else                  s='⚠ '+(name||'')+' · '+t('name only — no saved address/coords in NewMile, Maps will search the name','solo el nombre — sin dirección/coords en NewMile, Maps busca el nombre');
   return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
@@ -1767,6 +1787,64 @@ function openPinMap(e,oid,which){
   const q=which==='drop'?_gmPoint(o.dropLat,o.dropLng,o.drop,o.dropAddr):_gmPoint(o.pickupLat,o.pickupLng,o.pickup,o.pickupAddr);
   window.open('https://www.google.com/maps/search/?api=1&query='+q,'_blank');
 }
+
+/* ===== 📍 GPS-verified pickup/drop — the REAL spots from where this order's trucks dwelled
+   (Samsara history). Auto-suggests pickup/drop; the dispatcher taps to confirm; saved by name so
+   every future order to that place uses the GPS-true coords (top-priority in resolvePickupCoords). */
+function __gpsAddDaysISO(iso,n){ var d=new Date((iso||new Date().toISOString().slice(0,10))+'T12:00:00'); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
+function __gpsOrderDayISO(oid){ var base=window.__boardToday||new Date().toISOString().slice(0,10);
+  try{ for(var k=3;k<=5;k++){ var arr=(DAY_ORDERS&&DAY_ORDERS[k])||[]; if(arr.some(function(o){return String(o.id)===String(oid);})) return __gpsAddDaysISO(base,k-4); } }catch(e){}
+  return base; }
+window.gpsVerifyOrder=async function(e,oid){
+  if(e)e.stopPropagation();
+  var o=O(oid); if(!o)return;
+  var nums=(o.assigns||[]).map(function(a){return a.truck;}).filter(Boolean);
+  if(!nums.length){ toast(t('No assigned trucks on this order','Esta orden no tiene troques asignados'),true); return; }
+  var dayISO=__gpsOrderDayISO(oid);
+  var startISO=dayISO+'T08:00:00Z', endISO=__gpsAddDaysISO(dayISO,1)+'T03:00:00Z';
+  var pickup=(o.pickupLat!=null)?{lat:o.pickupLat,lng:o.pickupLng}:null;
+  var drop=(o.dropLat!=null)?{lat:o.dropLat,lng:o.dropLng}:null;
+  toast(t('📍 Reading Samsara GPS for ','📍 Leyendo GPS Samsara de ')+nums.length+t(' truck(s)…',' troca(s)…'));
+  var r=await window.__nmBridge('gpsVerify',{args:{truckNums:nums,startISO:startISO,endISO:endISO,pickup:pickup,drop:drop}},90000);
+  if(!r||r.error){ toast('✗ '+((r&&r.error)||t('GPS verify failed','falló el GPS')),true); return; }
+  window.__gpsLast=r; window.__gpsOrder=o; __gpsShow(o,r);
+};
+function __gpsStopLine(stop){ if(!stop) return '<span style="color:var(--muted)">'+t('not confident — pick a stop below','sin certeza — elige una parada abajo')+'</span>';
+  var c=stop.conf==='high'?'✅':(stop.conf==='med'?'≈':'⚠');
+  return '📍 '+esc2(stop.addr||(stop.lat.toFixed(4)+','+stop.lng.toFixed(4)))+' · '+stop.min+'min · '+stop.visits+'🚚 · '+stop.distMi+'mi '+c; }
+function __gpsShow(o,r){
+  var title=$id('repTitle'); if(title)title.textContent='📍 GPS real — '+o.disp;
+  var m=document.querySelector('#repScrim .modal'); if(m)m.classList.remove('repwide');
+  var body=$id('repBody'); if(!body)return; body.className='report';
+  var h='<div style="font-size:12px;color:var(--muted);margin-bottom:8px">'+t('Where this order\'s trucks actually stopped. Tap a stop to set it as the real pickup or drop — saved by name and reused for every future order to that place.','Dónde realmente pararon los troques de esta orden. Toca una parada para fijarla como pickup o drop real — se guarda por nombre y se reutiliza en toda orden futura a ese lugar.')+'</div>';
+  h+='<div style="background:var(--navy-2);border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:8px">'
+    +'<div style="font-weight:700;color:var(--gold-soft)">⬆ '+esc2(o.pickup||'pickup')+'</div><div style="font-size:12px;margin:3px 0 6px">'+__gpsStopLine(r.pickup)+'</div>'
+    +(r.pickup?('<button class="finbtn go" style="padding:3px 10px" onclick="__gpsSaveRole(\'p\')">✓ '+t('Use this pickup','Usar este pickup')+'</button>'):'')
+    +'<div style="font-weight:700;color:var(--gold-soft);margin-top:10px">⬇ '+esc2(o.drop||'drop')+'</div><div style="font-size:12px;margin:3px 0 6px">'+__gpsStopLine(r.drop)+'</div>'
+    +(r.drop?('<button class="finbtn go" style="padding:3px 10px" onclick="__gpsSaveRole(\'d\')">✓ '+t('Use this drop','Usar este drop')+'</button>'):'')
+    +'</div>';
+  h+='<div style="font-weight:700;margin:6px 0">'+t('All stops that day','Todas las paradas del día')+':</div>';
+  (r.clusters||[]).forEach(function(c,i){
+    h+='<div style="display:flex;align-items:center;gap:6px;padding:6px 0;border-top:1px solid var(--line)">'
+      +'<div style="flex:1;font-size:12px">'+esc2(c.addr||(c.lat.toFixed(4)+','+c.lng.toFixed(4)))+'<br><span style="color:var(--muted)">'+c.min+'min · '+c.visits+'🚚</span></div>'
+      +'<button class="gmap" onclick="__gpsSaveIdx(\'p\','+i+')">⬆ pickup</button> <button class="gmap" onclick="__gpsSaveIdx(\'d\','+i+')">⬇ drop</button></div>';
+  });
+  if(!(r.clusters||[]).length) h+='<div style="color:var(--muted)">'+t('No GPS stops found for that day (trucks may not have run yet).','Sin paradas GPS ese día (quizá los troques aún no corren).')+'</div>';
+  body.innerHTML=h;
+  $id('repScrim').classList.add('show');
+}
+async function __gpsDoSave(role,c){
+  var o=window.__gpsOrder; if(!o||!c)return;
+  var name=(role==='p')?o.pickup:o.drop;
+  if(!name){ toast(t('No location name on this order','Sin nombre de lugar en la orden'),true); return; }
+  var r=await window.__nmBridge('gpsSaveLoc',{args:{name:name,lat:c.lat,lng:c.lng,addr:c.addr||''}},20000);
+  if(!r||r.error){ toast('✗ '+((r&&r.error)||'error'),true); return; }
+  toast('✅ '+(role==='p'?'Pickup':'Drop')+' '+t('saved from GPS','guardado del GPS')+' — '+(name||''));
+  try{ $id('repScrim').classList.remove('show'); }catch(e){}
+  try{ parent.postMessage({type:'refresh'},'*'); }catch(e){}   // re-pull so the new coords apply
+}
+window.__gpsSaveRole=function(role){ var r=window.__gpsLast||{}; __gpsDoSave(role, role==='p'?r.pickup:r.drop); };
+window.__gpsSaveIdx=function(role,i){ var c=((window.__gpsLast||{}).clusters||[])[i]; __gpsDoSave(role,c); };
 
 /* ⟲ Crew — pull the trucks that recently ran this order's PROJECT (last 14 days,
    via the shell→MCP bridge) and drop them into the Planner draft for fast assigning. */
@@ -2590,7 +2668,9 @@ setView('board');
   .gm-pt{cursor:pointer;border-bottom:1px dotted #3a4763}
   .gm-pt:hover{color:#5a95f9;border-bottom-color:#5a95f9}
   .gm-pt.hasaddr{border-bottom-color:#4f9b6e}        /* real NewMile street address */
+  .gm-pt.approxaddr{border-bottom:1px dotted #d8b45a} /* approximate — town/county only, not exact street */
   .gm-pt.noaddr{border-bottom:1px dashed #e0a04b}     /* name only — no saved address/coords */
+  .apx{color:#d8b45a;font-weight:700;font-size:11px}  /* ≈ marker = approximate address */
   .rmi{font-size:11px;color:#5a95f9;margin-left:8px;white-space:nowrap}
   .rmi.rmiwarn{color:#e0a04b;cursor:help}
   .qedit{cursor:pointer;opacity:.55;margin-left:3px;font-size:11px}
@@ -2644,8 +2724,8 @@ setView('board');
   .toptab{font-size:13px;font-weight:700;padding:7px 11px;border-radius:8px;border:1px solid var(--line);
     background:#23303f;color:var(--text);cursor:pointer;margin-right:6px;position:relative;line-height:1.2}
   .toptab:hover{border-color:var(--teal);background:#2e3a47}
-  .toptab .tbadge{position:absolute;top:-6px;right:-6px;min-width:17px;height:17px;border-radius:9px;
-    background:var(--red);color:#fff;font-size:10px;font-weight:800;display:none;align-items:center;justify-content:center;padding:0 4px}
+  .toptab .tbadge{position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;border-radius:8px;
+    background:var(--red);color:#fff;font-size:10px;font-weight:800;display:none;align-items:center;justify-content:center;padding:0 3px;box-shadow:0 0 0 2px var(--navy)}
   .toptab .tbadge.show{display:flex}
   .tabscrim{position:fixed;inset:0;background:rgba(8,12,18,.74);z-index:64;display:none;align-items:center;justify-content:center}
   .tabscrim.open{display:flex}
@@ -4304,8 +4384,74 @@ setView('board');
     // via tools (list_short_orders, find_free_trucks_near_order, truck_status, …).
     var compl=0, short=[]; orders.forEach(function(o){ if(o.completed){compl++;return;} if(!isCovered(o)) short.push({id:o.id,disp:o.disp,cust:o.cust,mat:o.mat,needLoads:Math.max(0,loadsToCover(o)),start:(o.time||((o.startHr||0)+':00')),pickup:o.pickup,drop:o.drop}); });
     var byGrp={}, freeN=0, blk=0; trucks.forEach(function(tk){ var g=grpLabel(rptGroupOf(tk)); (byGrp[g]=byGrp[g]||{total:0,free:0}); byGrp[g].total++; var isFree=(tk.status!=='assigned'&&tk.status!=='rolling'&&tk.status!=='noshow'); if(isFree)byGrp[g].free++; if(isFree)freeN++; if(window.tnBlocked&&window.tnBlocked(tk.num))blk++; });
-    return JSON.stringify({day:((typeof days!=='undefined'&&days[dIdx])||'today'),date:(window.__boardToday||''),orders:orders.length,completed:compl,shortCount:short.length,shortOrders:short.slice(0,40),fleetCounts:byGrp,trucksTotal:trucks.length,trucksFree:freeN,trucksFlaggedOff:blk});
+    var insights=[]; try{ insights=mileyInsights().slice(0,10).map(function(x){return {sev:x.sev,what:x.title,note:x.msg};}); }catch(e){}
+    return JSON.stringify({day:((typeof days!=='undefined'&&days[dIdx])||'today'),date:(window.__boardToday||''),orders:orders.length,completed:compl,shortCount:short.length,shortOrders:short.slice(0,40),fleetCounts:byGrp,trucksTotal:trucks.length,trucksFree:freeN,trucksFlaggedOff:blk,proactiveInsights:insights});
   }
+
+  /* ===== 🧠 PROACTIVE MILEY — she watches the LIVE board and raises ranked, actionable insights on
+     her own (no need to ask): orders running short on time, the best rested+nearby truck to cover
+     them, idle trucks for fair rotation, and Samsara no-move alerts. All from in-memory data. ===== */
+  function mileyBestTruck(o){
+    var pool; try{ pool=planPool(); }catch(e){ pool=[]; }
+    if(!pool||!pool.length||o.pickupLat==null) return null;
+    var best=null,bestScore=1e9;
+    pool.forEach(function(t){ if(t.lat==null) return; var d=distTo(o,t); if(d==null) return;
+      var score=d-(t.daysIdle||0)*3-(t.onCall?6:0);   // closer + rested + on-call wins
+      if(score<bestScore){ bestScore=score; best={t:t,mi:Math.round(d),rested:(t.daysIdle||0)>=2,onCall:!!t.onCall}; } });
+    return best;
+  }
+  function mileyInsights(){
+    var list=[];
+    var src=(typeof DAY_ORDERS!=='undefined'&&DAY_ORDERS[4]&&DAY_ORDERS[4].length)?DAY_ORDERS[4]:orders;
+    var now=new Date(), nowHr=now.getHours()+now.getMinutes()/60;
+    // 1) short orders — urgency by time left + the BEST rested/nearby truck to send
+    src.forEach(function(o){
+      if(o.completed||o.unit==='hour') return; var need=loadsToCover(o); if(need<=0) return;
+      var endHr=19, hrsLeft=endHr-nowHr, started=nowHr>=((o.startHr||4)-0.5);
+      var sev=0; if(started){ if(hrsLeft<=2.5)sev=2; else if(hrsLeft<=4.5)sev=1; }
+      var bt=mileyBestTruck(o);
+      var msg=need+t(' load(s) short',' carga(s) corto')+(started&&hrsLeft<6?(' · ~'+Math.max(0,Math.round(hrsLeft))+t('h left','h')):'')
+        +(bt?(' · '+t('send ','manda ')+bt.t.num+' (~'+bt.mi+'mi'+(bt.rested?', '+t('rested','descansado'):'')+(bt.onCall?', on-call':'')+')'):'');
+      list.push({sev:sev, icon:(sev===2?'🔴':sev===1?'⏳':'📦'), oid:o.id, title:o.disp+' → '+(o.drop||''), msg:msg, act:'order', truckId:(bt?bt.t.id:null), truckNum:(bt?bt.t.num:null)});
+    });
+    // 2) Samsara no-move alerts the shell already computed (real over-time check, not a snapshot guess)
+    try{ (window.__samsaraAlerts||[]).forEach(function(al){ list.push({sev:1, icon:'🛑', title:(al.truck||al.num||'truck')+' '+t('not moving','no se mueve'), msg:(al.msg||al.d||''), act:'rail'}); }); }catch(e){}
+    // 3) rotation fairness — rested trucks sitting while there's work to give
+    var rested=trucks.filter(function(t){ return t.daysIdle!=null&&t.daysIdle>=3&&!(window.tnBlocked&&window.tnBlocked(t.num))&&t.status!=='assigned'&&t.status!=='rolling'&&t.status!=='noshow'; }).sort(function(a,b){ return (b.daysIdle||0)-(a.daysIdle||0); });
+    if(rested.length) list.push({sev:0, icon:'🔄', title:rested.length+t(' trucks idle 3d+',' trocas sin trabajar 3d+'), msg:t('rotate work to: ','dales rotación: ')+rested.slice(0,5).map(function(t){return t.num+'('+t.daysIdle+'d)';}).join(', '), act:'rail'});
+    list.sort(function(a,b){ return (b.sev||0)-(a.sev||0); });
+    return list;
+  }
+  window.__mileyGoOrder=function(oid){ try{ closeMileyDrawer(); }catch(e){} try{ var el=$id('ord-'+oid); if(el){ el.scrollIntoView({behavior:'smooth',block:'center'}); el.classList.add('flash'); setTimeout(function(){el.classList.remove('flash');},1600); } }catch(e){} };
+  // traffic status legend (flips to green on its own when Google billing confirms)
+  window.__googState=null;
+  function __googChipHtml(){ var s=window.__googState; if(!s||s.state==='off') return '';
+    var map={ready:['🟢',t('Live traffic ETA (Google)','ETA con tráfico en vivo (Google)'),'#4f9b6e'],
+      billing:['⏳',t('Traffic ETA: waiting on Google billing…','ETA tráfico: esperando confirmación de billing…'),'#d8b45a'],
+      apioff:['⚠',t('Enable "Distance Matrix API" in Google','Habilita "Distance Matrix API" en Google'),'#d8b45a'],
+      quota:['⚠',t('Google quota hit','Cuota de Google llena'),'#d8b45a'],
+      denied:['⚠',t('Google key not authorized','Llave de Google no autorizada'),'#e2564d'],
+      err:['⚠',t('Traffic ETA unreachable','ETA tráfico no disponible'),'#e2564d']};
+    var m=map[s.state]||map.err;
+    return '<div style="font-size:11px;color:'+m[2]+';border:1px solid var(--line);border-radius:7px;padding:3px 7px;margin-bottom:7px">'+m[0]+' '+m[1]+'</div>';
+  }
+  window.mileyTrafficRefresh=function(){ try{ window.__nmBridge('googleStatus',{},20000).then(function(r){ window.__googState=r||{state:'err'}; var c=$id('googChip'); if(c)c.innerHTML=__googChipHtml(); }); }catch(e){} };
+  function mileyInsightsRender(){
+    var ins; try{ ins=mileyInsights(); }catch(e){ ins=[]; }
+    var hi=ins.filter(function(x){return (x.sev||0)>=1;}).length;
+    var b=$id('mileyDockBadge'); if(b){ if(hi>0){ b.textContent=hi; b.style.display=''; } else b.style.display='none'; }
+    var box=$id('mileyInsightsBox'); if(!box) return;   // only render the feed when the drawer is open
+    var chip='<div id="googChip">'+__googChipHtml()+'</div>';
+    if(!ins.length){ box.innerHTML=chip+'<div style="color:var(--muted);font-size:12px;padding:6px 2px">✅ '+t('All good — every order covered. Trucks rolling.','Todo en orden — cada orden cubierta. Trocas rodando.')+'</div>'; return; }
+    box.innerHTML=chip+'<div style="font-weight:800;font-size:12px;letter-spacing:.4px;color:var(--gold-soft);margin:2px 0 6px">🧠 '+t('MILEY SEES','MILEY VE')+' ('+ins.length+')</div>'
+      +ins.slice(0,10).map(function(x){
+        var clickO=x.act==='order'?(' onclick="window.__mileyGoOrder(\''+x.oid+'\')" style="cursor:pointer"'):'';
+        var stage=(x.act==='order'&&x.truckId!=null)?('<button class="gmap" style="margin-top:4px" onclick="event.stopPropagation();window.__mileyStage(\''+x.oid+'\','+x.truckId+')">➕ '+t('Stage ','Poner ')+x.truckNum+'</button>'):'';
+        return '<div class="mi-card mi-'+(x.sev||0)+'"'+clickO+'><div class="mi-h">'+x.icon+' <b>'+aiEsc(x.title)+'</b></div><div class="mi-m">'+aiEsc(x.msg)+'</div>'+stage+'</div>';
+      }).join('');
+  }
+  window.__mileyStage=function(oid,truckId){ try{ var o=O(oid); if(o&&typeof dropTruckOnOrder==='function'){ dropTruckOnOrder(truckId,o.id); render(); toast('➕ '+t('Staged on ','Puesto en ')+(o.disp||oid)+' — '+t('review & push','revisa y manda')); mileyInsightsRender(); } }catch(e){} };
+  try{ if(!window.__mileyWatchTimer) window.__mileyWatchTimer=setInterval(function(){ try{ mileyInsightsRender(); if(window.__googState&&window.__googState.state!=='ready')mileyTrafficRefresh(); }catch(e){} }, 45000); }catch(e){}
 
   /* ===== 🤝 AGENTIC MILEY — Claude tool-use. READ tools auto-run; WRITE tools need Miley.canAct
      (default OFF) + a per-action confirm card. All reuse existing engine functions; the only tool
@@ -4325,6 +4471,28 @@ setView('board');
     list_idle_trucks:function(input){ var d=parseInt(input&&input.days,10); if(isNaN(d))d=2; var rows=trucks.filter(function(t){return t.daysIdle!=null&&t.daysIdle>=d&&!(window.tnBlocked&&window.tnBlocked(t.num));}).sort(function(a,b){return (b.daysIdle||0)-(a.daysIdle||0);}).map(function(t){return {num:t.num,daysIdle:t.daysIdle,onCall:!!t.onCall,fleet:_fleet(t),lastWorked:t.lastWorked||null};}); return JSON.stringify({minDays:d,count:rows.length,idle:rows.slice(0,40)}); },
     truck_status:async function(input){ var t=T(input.num); if(!t)return 'Truck not found: '+(input.num||''); var hos=await _hosMap(); var h=hos[(t.driver||'').toLowerCase()]; var f=(window.tnGet&&window.tnGet(t.num))||null; return JSON.stringify({num:t.num,driver:t.driver||'',fleet:_fleet(t),status:t.status,onCall:!!t.onCall,daysIdle:(t.daysIdle!=null?t.daysIdle:null),lat:(t.lat!=null?t.lat:null),lon:(t.lon!=null?t.lon:null),mph:(t.mph!=null?t.mph:null),gpsTime:t.gpsTime||null,driveMinLeft:(h?h.driveMin:null),flag:f?{status:f.status,reason:f.reason}:null}); },
     samsara_locations:function(input){ var nums=(input&&input.nums)||null,set=null; if(nums&&nums.length){set={};nums.forEach(function(n){set[String(n).trim().toLowerCase()]=1;});} var list=trucks.filter(function(t){return t.lat!=null&&(!set||set[t.num.trim().toLowerCase()]);}); return JSON.stringify({count:list.length,trucks:list.slice(0,60).map(function(t){return {num:t.num,lat:t.lat,lon:t.lon,mph:(t.mph!=null?t.mph:null),gpsTime:t.gpsTime||null,driver:t.driver||''};})}); },
+    search_trucks:function(input){
+      var raw=String(input.query||input.num||'').trim(); var q=raw.toUpperCase().replace(/[^A-Z0-9]/g,'');
+      if(!q&&!raw) return JSON.stringify({error:'query required'});
+      var ru=raw.toUpperCase();
+      var matches=trucks.filter(function(tk){
+        var n=String(tk.num||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+        var ow=String(tk.owner||'').toUpperCase(), dr=String(tk.driver||'').toUpperCase();
+        return (q && (n.indexOf(q)>=0||q.indexOf(n)>=0)) || ow.indexOf(ru)>=0 || dr.indexOf(ru)>=0;
+      }).slice(0,20).map(function(tk){ var f=(window.tnGet&&window.tnGet(tk.num))||null;
+        return {num:tk.num,driver:tk.driver||'',owner:tk.owner||'',fleet:_fleet(tk),onCall:!!tk.onCall,status:tk.status,daysIdle:(tk.daysIdle!=null?tk.daysIdle:null),hasGps:(tk.lat!=null),subhauler:!tk.fleet&&!/KT|CKJ|CACTUS/i.test(_fleet(tk)||''),flag:f?f.status:null}; });
+      return JSON.stringify({query:raw,count:matches.length,trucks:matches,note:(matches.length?'':'no roster match — check spelling or it may not be in NewMile')});
+    },
+    route_eta:async function(input){
+      var o=input.orderId?_ord(input.orderId):null; var tk=input.truckNum?T(input.truckNum):null;
+      var from=(tk&&tk.lat!=null)?{lat:tk.lat,lng:tk.lon}:(input.from||null);
+      var to=(o&&o.pickupLat!=null)?{lat:o.pickupLat,lng:o.pickupLng}:(input.to||null);
+      if(!from||!to) return JSON.stringify({error:'need a truck with GPS + an order with pickup coords'});
+      var r=null; try{ r=await window.__nmBridge('routeEta',{args:{from:from,to:to}},20000); }catch(e){}
+      if(r&&r.min!=null) return JSON.stringify({truck:(tk?tk.num:null),order:(o?o.disp:null),miles:r.miles,minutes:r.min,withTraffic:!!r.traffic,src:'google'});
+      var mi=Math.round(enhHavMi(from.lat,from.lng,to.lat,to.lng)*1.27);
+      return JSON.stringify({truck:(tk?tk.num:null),order:(o?o.disp:null),miles:mi,minutes:_etaMin(mi),withTraffic:false,src:'estimate (no Google billing yet)'});
+    },
     suggest_plan:function(){ var pool=_truckPool(),avoid={},out=[]; orders.filter(function(o){return !o.completed&&!isCovered(o);}).forEach(function(o){ var need=Math.max(1,loadsToCover(o)); var ranked=pool.filter(function(t){return !avoid[t.num];}).map(function(t){return {t:t,mi:_mi(o,t)};}).sort(function(a,b){var am=a.mi==null?9e9:a.mi,bm=b.mi==null?9e9:b.mi;return am-bm||((b.t.daysIdle||0)-(a.t.daysIdle||0));}); var picks=ranked.slice(0,need).map(function(r){avoid[r.t.num]=1;return {num:r.t.num,miles:r.mi};}); if(picks.length)out.push({disp:o.disp,need:need,suggest:picks}); }); return JSON.stringify({preview:out}); }
   };
   var MILEY_WRITE={
@@ -4332,6 +4500,7 @@ setView('board');
     add_truck_log:{desc:function(i){return t('Add note on ','Nota en ')+i.num+': '+(i.text||'');}, fn:async function(i){ if(!i.num||!i.text)return 'num+text required'; await window.tnAddLog(i.num,i.text); return 'OK — logged on '+i.num; }},
     run_autoplan:{desc:function(){return t('Run auto-plan (fills the planner; nothing pushed to NewMile)','Correr auto-plan (llena el planner; no manda a NewMile)');}, fn:function(){ try{ autoPlan(); return 'OK — auto-plan staged into the planner. Review & push when ready.'; }catch(e){ return 'auto-plan error: '+(e.message||e); } }},
     assign_truck:{desc:function(i){return t('Stage ','Poner ')+i.truckNum+' → '+(i.orderId||i.disp||'order');}, fn:function(i){ var o=_ord(i.orderId||i.disp); if(!o)return 'Order not found'; var t2=T(i.truckNum); if(!t2)return 'Truck not found: '+i.truckNum; if(window.tnBlocked&&window.tnBlocked(t2.num))return t2.num+' is flagged unavailable — clear the flag first'; try{ dropTruckOnOrder(t2.id,o.id); if(typeof i.loads==='number'&&i.loads>0&&o.assigns){ var a=o.assigns.filter(function(x){return x.truck===t2.id;}).pop(); if(a)a.ll=i.loads; } render(); return 'OK — '+t2.num+' staged on '+(o.disp||o.id)+' (review & push)'; }catch(e){ return 'assign error: '+(e.message||e); } }},
+    unassign_truck:{desc:function(i){return t('Remove ','Quitar ')+i.truckNum+' '+t('from ','de ')+(i.orderId||i.disp||'order');}, fn:function(i){ var o=_ord(i.orderId||i.disp); if(!o)return 'Order not found'; var t2=T(i.truckNum); var aq=String(i.truckNum||'').toUpperCase().replace(/[^A-Z0-9]/g,''); var idx=(o.assigns||[]).findIndex(function(a){ if(t2&&a.truck===t2.id)return true; var an=String((T(a.truck)||{}).num||a.truck||'').toUpperCase().replace(/[^A-Z0-9]/g,''); return an===aq; }); if(idx<0)return i.truckNum+' is not on '+(o.disp||o.id); try{ unassign(null,o.id,idx); render(); return 'OK — removed '+i.truckNum+' from '+(o.disp||o.id)+' (review & push)'; }catch(e){ return 'unassign error: '+(e.message||e); } }},
     finalize_and_push:{desc:function(i){return '⚠ '+t('FINALIZE & PUSH to NewMile: order ','FINALIZAR y MANDAR a NewMile: orden ')+(i.orderId||i.disp||'');}, fn:function(i){ var o=_ord(i.orderId||i.disp); if(!o)return 'Order not found'; try{ if(window.finalizeOrder)window.finalizeOrder(null,o.id); else if(typeof markDraft==='function')markDraft(o.id); parent.postMessage({type:'refresh'},'*'); return 'OK — '+(o.disp||o.id)+' finalized & syncing to NewMile now.'; }catch(e){ return 'push error: '+(e.message||e); } }}
   };
   function mileyConfirm(desc){ return new Promise(function(resolve){ var box=$id('aiMsgs'); if(!box){ resolve(false); return; }
@@ -4356,10 +4525,13 @@ setView('board');
     {name:'truck_status',description:'A truck\'s live Samsara GPS (lat/lon/mph/time), HOS drive minutes left, on-call, days idle, fleet, and any shop/off flag.',input_schema:{type:'object',properties:{num:{type:'string'}},required:['num']}},
     {name:'samsara_locations',description:'Live Samsara GPS positions (all trucks with GPS, or a given list of truck numbers).',input_schema:{type:'object',properties:{nums:{type:'array',items:{type:'string'}}}}},
     {name:'suggest_plan',description:'Dry-run plan preview: best truck pick(s) per uncovered order by distance + rotation. Changes NOTHING.',input_schema:{type:'object',properties:{}}},
+    {name:'route_eta',description:'REAL drive distance + minutes WITH live traffic (Google) between a truck and an order\'s pickup. Falls back to a straight-line estimate if no Google key/billing. Use to compare how long trucks would really take.',input_schema:{type:'object',properties:{truckNum:{type:'string'},orderId:{type:'string',description:'order id or disp'}},required:['truckNum','orderId']}},
+    {name:'search_trucks',description:'Search the FULL truck roster (every truck in NewMile incl. SUBHAULERS that have no Samsara GPS) by number, owner, or driver. Handles formats like BT02 / BT-02 / BT002. USE THIS to find/look up any truck — samsara_locations is GPS-only and subhaulers won\'t appear there.',input_schema:{type:'object',properties:{query:{type:'string',description:'truck number, owner, or driver name (partial ok)'}},required:['query']}},
     {name:'set_truck_status',description:'Set a truck availability flag shared with everyone: status "off" (no-work), "shop" (in shop), or "ok" (available), with a reason. Needs dispatcher confirm.',input_schema:{type:'object',properties:{num:{type:'string'},status:{type:'string',enum:['off','shop','ok']},reason:{type:'string'}},required:['num','status']}},
     {name:'add_truck_log',description:'Add a dated call-log note to a truck (shared). Needs dispatcher confirm.',input_schema:{type:'object',properties:{num:{type:'string'},text:{type:'string'}},required:['num','text']}},
     {name:'run_autoplan',description:'Run auto-plan to fill uncovered orders in the PLANNER (stages locally; nothing sent to NewMile). Needs dispatcher confirm.',input_schema:{type:'object',properties:{}}},
-    {name:'assign_truck',description:'Stage a truck onto an order in the planner (local; not pushed). Needs dispatcher confirm.',input_schema:{type:'object',properties:{orderId:{type:'string'},truckNum:{type:'string'},loads:{type:'number'}},required:['orderId','truckNum']}},
+    {name:'assign_truck',description:'Stage a truck onto an order in the planner (local; not pushed). Works with any roster truck incl. subhaulers. Needs dispatcher confirm.',input_schema:{type:'object',properties:{orderId:{type:'string'},truckNum:{type:'string'},loads:{type:'number'}},required:['orderId','truckNum']}},
+    {name:'unassign_truck',description:'Remove a truck from an order in the planner (local; not pushed). Needs dispatcher confirm.',input_schema:{type:'object',properties:{orderId:{type:'string'},truckNum:{type:'string'}},required:['orderId','truckNum']}},
     {name:'finalize_and_push',description:'Finalize an order and PUSH it to NewMile — the ONLY tool that writes to NewMile. Needs dispatcher confirm.',input_schema:{type:'object',properties:{orderId:{type:'string'}},required:['orderId']}}
   ];
   /* ----- Capataz mascot v2: the 3-stone Milestone logo brought to life (gold body + taupe/grey
@@ -4464,8 +4636,55 @@ setView('board');
     @keyframes tmBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
     @keyframes tmBlink{0%,92%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
     @keyframes tmWob{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
-    @keyframes tmDots{0%,100%{opacity:.25}50%{opacity:1}}`;
+    @keyframes tmDots{0%,100%{opacity:.25}50%{opacity:1}}
+    /* ===== standalone Miley dock (lives free in the topbar, not a tab box) — BIG capataz with arms,
+       calm (she never spins); only the countdown ring OUTSIDE her moves. Click → Smart Dispatch. ===== */
+    #mileyDock{display:inline-flex;align-items:center;gap:9px;cursor:pointer;padding:0 10px 0 2px;border-radius:16px;transition:background .15s,box-shadow .15s;user-select:none;-webkit-app-region:no-drag;overflow:visible}
+    #mileyDock:hover{background:rgba(196,154,75,.14);box-shadow:0 0 0 1px rgba(196,154,75,.25) inset}
+    #mileyDock:active{transform:translateY(1px)}
+    /* the ring (the "relojito") is the ONLY thing that moves — it fills toward the next sync and
+       SPINS during one. The spin lives on ::before so the mascot (a sibling on top) never turns. */
+    #mileyDockRing{position:relative;width:56px;height:56px;flex:none;display:grid;place-items:center;overflow:visible}
+    #mileyDockRing::before{content:"";position:absolute;inset:0;border-radius:50%;background:conic-gradient(var(--gold-soft) calc(var(--p,0)*1%),rgba(255,255,255,.08) 0)}
+    #mileyDockRing::after{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--navy)}
+    #mileyDock.syncing #mileyDockRing::before{animation:mdSpin 1.05s linear infinite;background:conic-gradient(var(--teal) 30%,rgba(255,255,255,.08) 0)}
+    #mileyDockSvg{position:relative;z-index:1;width:52px;height:54px;overflow:visible;filter:drop-shadow(0 2px 5px rgba(0,0,0,.4))}
+    #mileyDockTxt{display:flex;flex-direction:column;line-height:1.05;min-width:30px}
+    #mileyClockTime{font-family:'Barlow Condensed';font-weight:800;font-size:18px;color:var(--gold-soft);letter-spacing:.3px}
+    #mileyClockLbl{font-size:10px;color:var(--muted);letter-spacing:.4px;text-transform:uppercase}
+    #mileyDock.syncing #mileyClockLbl{color:var(--gold-soft);animation:mdNameBlink 1s ease-in-out infinite}
+    @keyframes mdSpin{to{transform:rotate(360deg)}}
+    @keyframes mdNameBlink{0%,100%{opacity:1}50%{opacity:.2}}
+    #mileyDockBadge{position:absolute;top:0;right:0;z-index:2;min-width:16px;height:16px;border-radius:8px;background:var(--red,#e2564d);color:#fff;font-size:10px;font-weight:800;line-height:16px;text-align:center;padding:0 3px;box-shadow:0 0 0 2px var(--navy);animation:mdNameBlink 1.4s ease-in-out infinite}
+    /* proactive insight cards in Miley's drawer */
+    #mileyInsightsBox{margin:0 0 10px}
+    .mi-card{background:var(--navy-3,#0e1a2e);border:1px solid var(--line);border-left-width:3px;border-radius:8px;padding:7px 9px;margin-bottom:6px}
+    .mi-card .mi-h{font-size:13px} .mi-card .mi-m{font-size:12px;color:var(--muted);margin-top:2px}
+    .mi-2{border-left-color:#e2564d} .mi-1{border-left-color:#d8b45a} .mi-0{border-left-color:#4f9b6e}
+    .order.flash{animation:ordFlash 1.6s ease}
+    @keyframes ordFlash{0%,100%{box-shadow:none}30%{box-shadow:0 0 0 2px var(--gold-soft)}}`;
     document.head.appendChild(st);
+  }
+  /* BIG dock capataz WITH arms — reuses the .miley CSS (bob + blink + gentle arm sway, NO rotation).
+     Distinct id from the chat mascot (#mileySvg) so both can render at once. Arms get rounded "mitten"
+     hands grouped so they sway as one. She is deliberately NOT put into thinking/talking states here. */
+  function mileyDockSvg(){
+    return '<svg id="mileyDockSvg" class="miley" viewBox="0 0 200 210" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
+      +'<ellipse class="m-sh" cx="100" cy="198" rx="46" ry="7"/>'
+      +'<g class="m-char">'
+        +'<ellipse class="m-grey" cx="78" cy="178" rx="22" ry="15" transform="rotate(-12 78 178)"/>'
+        +'<ellipse class="m-tan" cx="122" cy="178" rx="22" ry="15" transform="rotate(12 122 178)"/>'
+        +'<g class="m-arml"><path class="m-gold" d="M60 126 C42 132 33 152 41 167 C45 174 54 172 55 162 C56 151 60 140 67 136 Z"/><circle class="m-gold" cx="41" cy="165" r="8.5"/></g>'
+        +'<g class="m-armr"><path class="m-gold" d="M140 126 C158 132 167 152 159 167 C155 174 146 172 145 162 C144 151 140 140 133 136 Z"/><circle class="m-gold" cx="159" cy="165" r="8.5"/></g>'
+        +'<path class="m-gold" d="M50 112 C46 78 78 56 104 58 C146 60 158 86 154 116 C151 146 132 168 100 168 C66 168 54 144 50 112 Z"/>'
+        +'<path class="m-brow" d="M68 104 q13 -8 26 -2"/><path class="m-brow" d="M106 102 q13 -7 26 1"/>'
+        +'<g class="m-eyes"><ellipse class="m-eyew" cx="82" cy="120" rx="11" ry="12.5"/><ellipse class="m-eyew" cx="118" cy="120" rx="11" ry="12.5"/>'
+          +'<circle class="m-pupil" cx="84" cy="122" r="5"/><circle class="m-pupil" cx="120" cy="122" r="5"/></g>'
+        +'<path class="m-mouth" d="M84 146 Q100 158 118 144"/>'
+        +'<ellipse class="m-hatb" cx="100" cy="70" rx="62" ry="11"/><path class="m-hatd" d="M55 70 C60 30 140 30 145 70 Z"/>'
+        +(window.__NM_FAN?'<image href="'+window.__NM_FAN+'" x="86" y="38" width="28" height="28" preserveAspectRatio="xMidYMid meet"/>':'')
+      +'</g>'
+      +'</svg>';
   }
   function tabMileySvg(){
     return '<svg id="tabMileySvg" viewBox="0 0 200 210" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
@@ -4482,7 +4701,33 @@ setView('board');
       +'<g class="mm-think" fill="#9fb2c9"><circle cx="160" cy="60" r="4"/><circle cx="176" cy="48" r="5"/><circle cx="192" cy="38" r="6"/></g>'
       +'</svg>';
   }
-  window.__mileyThinking=function(on){ var s=$id('tabMileySvg'); if(s) s.setAttribute('class', on?'thinking':''); };
+  // While the shell syncs, ONLY the ring spins — Miley herself stays calm (Juan: she must not turn).
+  window.__mileyThinking=function(on){ var d=$id('mileyDock'); if(d) d.classList.toggle('syncing',!!on); var lb=$id('mileyClockLbl'); if(lb&&on) lb.textContent='Miley'; };
+  // Build the standalone Miley dock in the topbar (right after the LIVE badge). Replaces the old
+  // flat "Miley" tab box: she lives free, bobs/sways while idle, and shows the countdown to the
+  // next auto-sync. Click → the Smart Dispatch drawer.
+  function mileyDockBuild(){
+    if($id('mileyDock')) return;
+    tabMileyCss(); mileyEnsureCss();   // mileyEnsureCss holds the .miley arm-sway / bob / blink rules
+    var anchor=$id('liveBadge'); if(!anchor||!anchor.parentNode) anchor=$id('pushBtn'); if(!anchor||!anchor.parentNode) return;
+    var d=document.createElement('div'); d.id='mileyDock';
+    d.title=t('Miley — tap to chat / Smart Dispatch','Miley — tap para chatear / Smart Dispatch');
+    d.innerHTML='<div id="mileyDockRing">'+mileyDockSvg()+'<span id="mileyDockBadge" style="display:none">0</span></div><div id="mileyDockTxt"><span id="mileyClockTime">•</span><span id="mileyClockLbl">Miley</span></div>';
+    d.onclick=function(){ try{ openMileyDrawer(); }catch(e){ try{ window.openTab('copilot'); }catch(_e){} } };
+    anchor.parentNode.insertBefore(d, anchor.nextSibling);
+  }
+  // Fed every second by the shell's auto-refresh timer: left = seconds to next sync (null = paused
+  // / no auto-refresh), total = the interval. Drives the ring fill + the countdown label.
+  window.__mileySync=function(left,total){
+    var d=$id('mileyDock'); if(!d) return;
+    var tEl=$id('mileyClockTime'), lEl=$id('mileyClockLbl');
+    if(d.classList.contains('syncing')) return;   // mid-sync: the spinner owns the ring
+    if(left==null||!total){ d.style.setProperty('--p',0); if(tEl)tEl.textContent='•'; if(lEl)lEl.textContent='Miley'; return; }
+    var m=Math.floor(left/60), s=left%60;
+    if(tEl)tEl.textContent=(m? (m+':'+String(s).padStart(2,'0')) : (s+'s'));
+    if(lEl)lEl.textContent=t('next sync','próx. sync');
+    d.style.setProperty('--p', Math.max(0,Math.min(100, Math.round((1-left/total)*100))));
+  };
   var Miley={ state:'idle', _t:0, canAct:false,   // canAct = master switch for WRITE tools (default OFF)
     cap:function(s){ var en={idle:"Ready. Don't keep the trucks waiting.",thinking:'Reading the board…',talking:"Here's the deal.",alert:'Heads up, jefe.',celebrate:'Boom — done.'},
                      es={idle:'Listo. No dejes esperando a las trocas.',thinking:'Leyendo el tablero…',talking:'Aquí está la cosa.',alert:'Aguas, jefe.',celebrate:'¡Listo, a rodar!'};
@@ -4616,6 +4861,7 @@ setView('board');
       if(sc)sc.classList.add('open'); el.classList.add('open');
       Miley.state='idle'; Miley.apply();
       window.mileyTab('dispatch');   // auto-plan is Miley's primary job
+      try{ var dd=$id('mdDispatch'); if(dd && !$id('mileyInsightsBox')){ var ib=document.createElement('div'); ib.id='mileyInsightsBox'; dd.insertBefore(ib, dd.firstChild); } mileyInsightsRender(); mileyTrafficRefresh(); }catch(_e){}
       try{ if(typeof refresh==='function') refresh(); }catch(_e){}   // freshen KPIs/issues
       try{ parent.postMessage({type:'mileyDrawer',open:true},'*'); }catch(_e){}
     }catch(e){ console.error('openMileyDrawer',e); }
@@ -4701,15 +4947,11 @@ setView('board');
   };
   function fscRender(){
     var b=$id('tabBody-fsc'); if(!b) return;
-    if(!FSC.admin){
-      b.innerHTML='<div style="max-width:360px;margin:40px auto;text-align:center">'
-        +'<div style="font-size:34px">🔒</div><div style="font-weight:800;font-size:16px;margin:6px 0">'+t('Locked','Bloqueado')+'</div>'
-        +'<div style="color:var(--muted);font-size:13px;margin-bottom:12px">'+t('Pricing, FSC and order editing unlock from ⚙ Settings by entering your code.','Precios, FSC y edición de órdenes se habilitan en ⚙ Settings al ingresar tu clave.')+'</div></div>';
-      return;
-    }
+    // Viewing is open to everyone; a banner reminds non-admins that CHANGING prices needs the code.
+    var banner=FSC.admin?'':'<div style="background:var(--navy-2);border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-bottom:8px;color:var(--muted);font-size:12px">👁 '+t('View only — to CHANGE prices/FSC, enter your code in ⚙ Settings.','Solo lectura — para CAMBIAR precios/FSC, ingresa tu clave en ⚙ Settings.')+'</div>';
     var segs=[['dash','📈 '+t('Diesel','Diésel')],['prog','📋 '+t('Programs','Programas')],['po','🧾 '+t('PO Editor','Editor PO')]]
       .map(function(x){return '<button class="fchip '+(FSC.tab===x[0]?'on':'')+'" onclick="fscTab(\''+x[0]+'\')">'+x[1]+'</button>';}).join('');
-    b.innerHTML='<div class="ef-sec" style="margin-bottom:10px">'+segs+'</div><div id="fscBody"><div style="color:var(--muted);padding:20px;text-align:center">'+t('Loading…','Cargando…')+'</div></div>';
+    b.innerHTML=banner+'<div class="ef-sec" style="margin-bottom:10px">'+segs+'</div><div id="fscBody"><div style="color:var(--muted);padding:20px;text-align:center">'+t('Loading…','Cargando…')+'</div></div>';
     if(FSC.tab==='dash')fscDash(); else if(FSC.tab==='prog')fscPrograms(); else fscPO();
   }
   window.fscTab=function(t){ FSC.tab=t; fscRender(); };
@@ -4759,7 +5001,9 @@ setView('board');
   };
   function fscRowHtml(t){ return '<div class="fsc-steprow"><input type="number" step="0.01" value="'+(t.diesel!=null?t.diesel:'')+'" placeholder="'+window.t('diesel','diésel')+'" style="width:90px"> → <input type="number" step="0.1" value="'+(t.surcharge!=null?t.surcharge:'')+'" placeholder="%" style="width:70px">% <b class="x" onclick="this.closest(\'.fsc-steprow\').remove()">✕</b></div>'; }
   window.fscAddRow=function(){ var c=$id('fscRows'); if(c)c.insertAdjacentHTML('beforeend',fscRowHtml({diesel:'',surcharge:''})); };
+  function fscReqAdmin(){ if(!FSC.admin){ toast(t('🔒 To change prices, enter your code in ⚙ Settings','🔒 Para cambiar precios, ingresa tu clave en ⚙ Settings'),true); return false; } return true; }
   window.fscSaveProgram=async function(name){
+    if(!fscReqAdmin())return;
     var cust=name||(($id('fscName')||{}).value||'').trim();
     if(!cust){ toast(t('Type the customer name','Escribe el nombre del cliente'),true); return; }
     var rows=[].slice.call(document.querySelectorAll('#fscRows .fsc-steprow')).map(function(r){ var ins=r.querySelectorAll('input'); return {diesel:parseFloat(ins[0].value),surcharge:parseFloat(ins[1].value)}; }).filter(function(t){return isFinite(t.diesel)&&isFinite(t.surcharge);});
@@ -4768,7 +5012,7 @@ setView('board');
     toast(r&&r.error?('✗ '+r.error):t('✓ Program saved','✓ Programa guardado'),r&&!!r.error);
     if(!(r&&r.error)){ FSC.tab='prog'; fscRender(); }
   };
-  window.fscDelProgram=async function(name){ if(!confirm(t('Delete the FSC program for ','¿Borrar el programa FSC de ')+name+'?'))return; await fscBridge('deleteProgram',{customer:name}); toast(t('Program deleted','Programa borrado')); FSC.tab='prog'; fscRender(); };
+  window.fscDelProgram=async function(name){ if(!fscReqAdmin())return; if(!confirm(t('Delete the FSC program for ','¿Borrar el programa FSC de ')+name+'?'))return; await fscBridge('deleteProgram',{customer:name}); toast(t('Program deleted','Programa borrado')); FSC.tab='prog'; fscRender(); };
 
   function fscMonthStart(){ var t=(window.__boardToday||new Date().toISOString().slice(0,10)); return t.slice(0,8)+'01'; }
   function fscPO(){
@@ -4811,6 +5055,7 @@ setView('board');
   window.fscReorder=function(i){ if(FSC.orders[i]){ FSC.orders.forEach(function(o){o._reorder=false;}); FSC.orders[i]._reorder=true; fscRenderList(); } };
   window.fscCancelReorder=function(i){ if(FSC.orders[i]){ FSC.orders[i]._reorder=false; fscRenderList(); } };
   window.fscDoReorder=async function(i){
+    if(!fscReqAdmin())return;
     var o=FSC.orders[i]; if(!o)return;
     var q=parseFloat(($id('roQ'+i)||{}).value); var dISO=($id('roD'+i)||{}).value;
     if(!isFinite(q)||q<=0){ toast(t('Enter a valid quantity','Pon una cantidad válida'),true); return; }
@@ -4847,24 +5092,22 @@ setView('board');
     var anchor=$id('enhMapBtn')||$id('pushBtn');
     if(!anchor||!anchor.parentNode||$id('toptab-msg')) return;
     TABS.forEach(function(d){
-      var b=document.createElement('button'); b.id='toptab-'+d.key; b.className='toptab'+(d.key==='copilot'?' toptab-miley':'');
-      if(d.key==='copilot'){ tabMileyCss(); b.innerHTML=tabMileySvg()+'<span class="tmlabel">Miley</span>'; }
-      else b.innerHTML=d.icon+' '+d.label+(d.key==='msg'?'<span class="tbadge" id="msgBadge">0</span>':'');
+      if(d.key==='copilot') return;   // Miley is no longer a tab box — she's the standalone dock (mileyDockBuild)
+      var b=document.createElement('button'); b.id='toptab-'+d.key; b.className='toptab';
+      b.innerHTML=d.icon+' '+d.label+(d.key==='msg'?'<span class="tbadge" id="msgBadge">0</span>':'');
       b.title=d.title;
       b.onclick=function(){ window.openTab(d.key); };
-      if(d.key==='fsc') b.style.display='none';   // FSC tab hidden until the global admin code is entered
+      // FSC tab is now VISIBLE to everyone (Juan 2026-06-21): viewing diesel/programs/PO is open;
+      // CHANGING prices stays gated by the admin code (fscApply prompts; saveProgram/reorder guard).
       anchor.parentNode.insertBefore(b,anchor);
     });
+    mileyDockBuild();   // standalone, "alive" Miley + sync countdown, near the LIVE badge
     // NOTE: there is NO visible global-admin button. The global admin unlocks via the SAME code field
     // in ⚙ Settings — Juan's code opens everything; any other (0605) only opens Settings. Hidden trick.
-    window.__fscTabVis();   // reflect current unlock state (FSC tab hidden until unlocked)
+    window.__fscTabVis();
   }
-  // show/hide the 💲 FSC topbar button based on the global-admin unlock (queried live)
-  window.__fscTabVis=async function(){
-    var btn=$id('toptab-fsc'); if(!btn) return;
-    try{ var st=await window.__nmBridge('fuel',{op:'status'},15000); btn.style.display=(st&&st.priceAdmin)?'':'none'; }
-    catch(e){ btn.style.display='none'; }
-  };
+  // FSC topbar button is always shown now; kept as a no-op so existing callers stay valid.
+  window.__fscTabVis=function(){ var btn=$id('toptab-fsc'); if(btn) btn.style.display=''; };
 
   function addMapBtn(){
     if($id('enhMapBtn')) return;

@@ -23,7 +23,7 @@ function _write(f, d) { try { fs.writeFileSync(f, JSON.stringify(d, null, 1)); r
 async function fetchOnce() {
   if (!EIA_KEY) throw new Error('no EIA key configured');
   const url = 'https://api.eia.gov/v2/petroleum/pri/gnd/data/?api_key=' + encodeURIComponent(EIA_KEY)
-    + '&frequency=weekly&data[0]=value&facets[product][]=EPD2D&facets[process][]=PTE&facets[duoarea][]=NUS'
+    + '&frequency=weekly&data[0]=value&facets[product][]=EPD2D&facets[process][]=PTE&facets[duoarea][]=R30'   // R30 = PADD 3 Gulf Coast (Juan: this is the index they base FSC on, checked Tuesdays)
     + '&sort[0][column]=period&sort[0][direction]=desc&offset=0&length=1';
   const r = await fetch(url, { headers: { Accept: 'application/json' } });
   if (!r.ok) throw new Error('EIA HTTP ' + r.status);
@@ -44,9 +44,16 @@ async function refreshDieselIndex() {
   try {
     const d = await fetchLatestDiesel();
     const idx = _read(_idx(), []);
-    if (!idx.some(x => x.week_date === d.week_date)) {
-      idx.push({ week_date: d.week_date, diesel_price: d.diesel_price, source: 'EIA weekly on-highway diesel (US avg)', created_at: new Date().toISOString() });
+    const SRC = 'EIA weekly on-highway diesel (PADD 3 - Gulf Coast)';
+    // UPSERT by week: new week → append; existing week whose price/source changed (e.g. the
+    // US-avg → Gulf Coast switch) → correct in place so the latest never shows a stale value.
+    const ex = idx.find(x => x.week_date === d.week_date);
+    if (!ex) {
+      idx.push({ week_date: d.week_date, diesel_price: d.diesel_price, source: SRC, created_at: new Date().toISOString() });
       idx.sort((a, b) => (a.week_date < b.week_date ? -1 : 1)); _write(_idx(), idx); out.added = true;
+    } else if (ex.diesel_price !== d.diesel_price || ex.source !== SRC) {
+      ex.diesel_price = d.diesel_price; ex.source = SRC; ex.created_at = new Date().toISOString();
+      _write(_idx(), idx); out.added = true;
     }
     out.latest = latestDiesel();
   } catch (e) { out.error = e.message || String(e); }

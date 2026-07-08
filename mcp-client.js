@@ -62,6 +62,7 @@ class NewMileClient {
     this.clientSecret = saved.clientSecret || null;
     this.geoCachePath = opts.geoCachePath || null;   // persistent pickup-name → coords cache
     this._geoCache = null;
+    this.gpsLocPath = opts.gpsLocPath || null;       // GPS-verified location coords (from Samsara dwell) — top priority
     this.meta = null;                            // discovered AS metadata
     this.sessionId = null;                       // MCP session id
     this.connected = false;
@@ -491,15 +492,23 @@ class NewMileClient {
     try { fs.writeFileSync(this.geoCachePath, JSON.stringify(this._geoCache || {}, null, 1)); } catch (e) {}
   }
   _geoNorm(s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim(); }
+  // GPS-verified locations (written by the desktop's nm:gpsSaveLoc after a dispatcher confirms where
+  // the trucks actually loaded/unloaded). Keyed by the SAME _geoNorm name. Highest-trust source.
+  _gpsLocLoad() { if (!this.gpsLocPath) return {}; try { return JSON.parse(fs.readFileSync(this.gpsLocPath, 'utf8')) || {}; } catch (e) { return {}; } }
 
   // A NewMile geocode result is TRUSTWORTHY only if it resolved BELOW state level (has a city,
   // street, zip, or county). A bare {state, country} response is Google's "I only found the
   // state" centroid — using it would drop the pin in the middle of TX and invent a bogus route.
   // We reject those outright so the tool NEVER sends a truck to a guessed location.
-  _geoQualityOK(g) {
-    if (!g) return false;
+  _geoQualityOK(g) { return !!this._geoTier(g); }
+  // Tier a geocode result: 'street' (route/number/zip — a REAL pin) > 'city' (city/locality/county
+  // only — Google's town centroid, usable but APPROXIMATE) > null (bare state → reject, never a pin).
+  _geoTier(g) {
+    if (!g) return null;
     const ac = g.address_components || g.components || {};
-    return !!(ac.city || ac.locality || ac.route || ac.street_number || ac.zip || ac.postal_code || ac.county);
+    if (ac.route || ac.street_number || ac.zip || ac.postal_code) return 'street';
+    if (ac.city || ac.locality || ac.county) return 'city';
+    return null;
   }
   // The location string often embeds the real place after "@" or "-"
   // (e.g. "Del Zotto @ Gladewater", "Hiland Dairy - Little Rock",
@@ -516,11 +525,14 @@ class NewMileClient {
     if (!addr) return null;
     try {
       const g = await this.callTool('call_utility', { utility_name: 'geocode_address', args: { address: addr } });
-      if (!this._geoQualityOK(g)) return null;
+      const tier = this._geoTier(g);
+      if (!tier) return null;
       const lat = Number(g.lat != null ? g.lat : g.latitude);
       const lng = Number(g.lng != null ? g.lng : g.longitude);
       if (!isFinite(lat) || !isFinite(lng)) return null;
-      return { lat, lng, addr: (g.formatted_address || '').trim() || null };
+      // approx = Google only knew the town/county, not a street — UI flags it with ≈ so the
+      // dispatcher never mistakes a centroid for the real plant address.
+      return { lat, lng, addr: (g.formatted_address || '').trim() || null, approx: tier !== 'street' };
     } catch (e) { return null; }
   }
 
@@ -558,11 +570,22 @@ class NewMileClient {
     const locKeys = Object.keys(locIdx);
 
     const cache = this._geoLoad();
-    let geocoded = 0, dirty = false, unresolved = 0;
+    const gpsLoc = this._gpsLocLoad();   // GPS-verified (Samsara dwell) — beats everything below
+    // Resolve the FULL day's distinct locations in one pass (each is then cached permanently, so the
+    // cost doesn't repeat). GEO_CAP only guards a runaway. Audit buckets every name by how it resolved
+    // so the UI can list which order locations still need a real address saved in NewMile.
+    const GEO_CAP = 80;
+    let geocoded = 0, dirty = false, unresolved = 0, approxN = 0, gpsN = 0;
+    const audit = { saved: [], street: [], approx: [], missing: [], gps: [] };
     for (const k of keys) {
-      // cache _v<2 = legacy entries geocoded the OLD (",TX"-forced, no quality gate) way — distrust
-      // and re-resolve them so previously-wrong pins get corrected.
-      const cached = (cache[k] && cache[k]._v >= 2) ? cache[k] : null;
+      const raw = names[k].raw;
+      // (0) GPS-VERIFIED — where this order's trucks actually loaded/unloaded. Trumps geocode + book.
+      const gv = gpsLoc[k];
+      if (gv && gv.lat != null && gv.lng != null) {
+        const hitG = { lat: Number(gv.lat), lng: Number(gv.lng), addr: gv.addr || null, src: 'gps', approx: false };
+        names[k].ids.forEach(id => { out[id] = hitG; }); gpsN++; audit.gps.push(raw);
+        continue;
+      }
       // CANDIDATE names to match against the Locations tab (org_location). Dispatchers abbreviate
       // (RKH→R K HALL, QK→QUIKRETE, TXMAT→TEXAS MATERIALS). And Martin Marietta REBRANDED to Quikrete
       // for most plants (Juan 2026-06-17) — but a few stayed MM and the saved Location may use either
@@ -576,26 +599,37 @@ class NewMileClient {
         cands.push(base.replace(/ MM /g, ' MARTIN MARIETTA ').trim());
         cands.push(base.replace(/ (MM|MARTIN MARIETTA) /g, ' QUIKRETE ').trim());
       }
-      let hit = cached || null;
+      // (1) saved org_location book — MOST trusted (verified lat/lng + gate-code notes). Checked
+      //     FIRST so adding a Location in NewMile instantly overrides any cached geocode guess.
+      let hit = null, fromBook = false;
       for (let ci = 0; ci < cands.length && !hit; ci++) {
         const ck = cands[ci];
         if (locIdx[ck]) { hit = locIdx[ck]; break; }
         const fk = locKeys.find(lk => lk.length > 6 && (ck.includes(lk) || lk.includes(ck)));   // substring either way
         if (fk) { hit = locIdx[fk]; break; }
       }
-      if (!hit && geocoded < 25) {   // geocode fallback, capped per refresh, only quality hits cached
-        const raw = names[k].raw;
-        // (3) full string as-is — often carries the embedded street address
+      if (hit) { fromBook = true; audit.saved.push(raw); }
+      // (2) persistent geocode cache. _v<3 = legacy entries (no quality tier) — distrust and
+      //     re-resolve so previously-wrong / city-only pins get corrected and tier-flagged.
+      if (!hit && cache[k] && cache[k]._v >= 3) hit = cache[k];
+      // (3) live geocode — full string first (often carries the street address), then the embedded
+      //     city/address hint after "@" / "-". Quality-gated; NEVER a fabricated ", TX" or a bare
+      //     state centroid. Caps a runaway but covers a full day's distinct locations.
+      if (!hit && geocoded < GEO_CAP) {
         hit = await this._geocodeTrusted(raw); geocoded++;
-        // (4) fall back to the embedded city/address hint after "@" / "-"
-        if (!hit) { const h = this._locHint(raw); if (h) { hit = await this._geocodeTrusted(h); geocoded++; } }
-        if (hit) { cache[k] = Object.assign({ _v: 2 }, hit); dirty = true; }
-        else { unresolved++; this.log('location UNRESOLVED (no trusted coords): "' + raw + '"'); }
+        if (!hit) { const h = this._locHint(raw); if (h && geocoded < GEO_CAP) { hit = await this._geocodeTrusted(h); geocoded++; } }
+        if (hit) { cache[k] = Object.assign({ _v: 3 }, hit); dirty = true; }
       }
-      if (hit) names[k].ids.forEach(id => { out[id] = hit; });
+      if (hit) {
+        names[k].ids.forEach(id => { out[id] = hit; });
+        if (!fromBook) { if (hit.approx) { approxN++; audit.approx.push(raw); } else audit.street.push(raw); }
+      } else { unresolved++; audit.missing.push(raw); this.log('location UNRESOLVED (no trusted coords): "' + raw + '"'); }
     }
     if (dirty) this._geoSave();
-    this.log('location coords: ' + Object.keys(out).length + ' resolved across ' + orders.length + ' orders (' + geocoded + ' geocode calls, ' + unresolved + ' left unresolved)');
+    this._lastLocAudit = audit;
+    this.log('location coords: ' + Object.keys(out).length + ' resolved across ' + orders.length + ' orders ('
+      + gpsN + ' GPS-verified, ' + audit.saved.length + ' saved-book, ' + audit.street.length + ' street, ' + approxN + ' approx, '
+      + unresolved + ' unresolved; ' + geocoded + ' geocode calls)');
     return out;
   }
 
@@ -612,23 +646,29 @@ class NewMileClient {
       this.listOrdersAllPages(yISO), this.listOrdersAllPages(dateISO), this.listOrdersAllPages(tmISO)
     ]);
 
-    // roster (paged)
-    let trucks = [], page = 1, totalPages = 1;
-    do {
-      const r = await this.listTrucks(page);
-      trucks = trucks.concat((r && (r.trucks || r.results || r.rows)) || []);
-      totalPages = (r && (r.total_pages || r.pages)) || 1; page++;
-    } while (page <= totalPages && page <= 20);
+    // roster (paged) — page 1 tells us the count, then pull the rest IN PARALLEL (was serial = slow)
+    let trucks = [];
+    {
+      const r1 = await this.listTrucks(1);
+      trucks = (r1 && (r1.trucks || r1.results || r1.rows)) || [];
+      const tp = Math.min((r1 && (r1.total_pages || r1.pages)) || 1, 20);
+      if (tp > 1) {
+        const pages = []; for (let p = 2; p <= tp; p++) pages.push(p);
+        const more = await this._pool(pages, 6, (p) => this.listTrucks(p));
+        more.forEach(r => { trucks = trucks.concat((r && (r.trucks || r.results || r.rows)) || []); });
+      }
+    }
 
-    // rotation tickets (prior working day, all pages)
+    // rotation tickets (prior working day, all pages) — same parallel-after-first-page pattern
     let tickets = [];
     try {
       const first = await this.loadTickets(prior, 1);
-      let tp = (first && (first.total_pages || first.pages)) || 1;
+      const tp = Math.min((first && (first.total_pages || first.pages)) || 1, 10);
       tickets = (first && (first.rows || first.results)) || [];
-      for (let pg = 2; pg <= tp && pg <= 10; pg++) {
-        const more = await this.loadTickets(prior, pg);
-        tickets = tickets.concat((more && (more.rows || more.results)) || []);
+      if (tp > 1) {
+        const pages = []; for (let pg = 2; pg <= tp; pg++) pages.push(pg);
+        const more = await this._pool(pages, 6, (pg) => this.loadTickets(prior, pg));
+        more.forEach(r => { tickets = tickets.concat((r && (r.rows || r.results)) || []); });
       }
     } catch (e) { this.log('rotation pull skipped: ' + e.message); }
 
@@ -679,7 +719,7 @@ class NewMileClient {
     } catch (e) { this.log('location coords skipped: ' + e.message); }
 
     this.log('refreshAll done: ' + oy.length + '/' + ot.length + '/' + otm.length + ' orders · ' + trucks.length + ' trucks · ' + tickets.length + ' tickets · ' + asgCount + ' live assignments');
-    return { date: dateISO, priorDay: prior, orders: { y: oy, t: ot, tm: otm }, assignments, trucks, tickets, pickupCoords, dropCoords, orderNotes, orderMeta };
+    return { date: dateISO, priorDay: prior, orders: { y: oy, t: ot, tm: otm }, assignments, trucks, tickets, pickupCoords, dropCoords, orderNotes, orderMeta, locAudit: this._lastLocAudit || null };
   }
 
   // ---------- multi-day rotation ("días sin trabajar") ----------
@@ -976,17 +1016,31 @@ class NewMileClient {
       }
     }
     if (res && res.error) {
-      const msg = (res.errors && res.errors[0] && res.errors[0].error) || res.error;
-      out.error = msg;
-      toCreate.forEach(t => out.skipped.push({ truck: t.truck, reason: msg }));
-      this.log('push FAILED order ' + orderId + ': ' + msg);
-      return out;   // surface the real reason instead of silently creating nothing
+      // bulk_create is ATOMIC: one bad truck (e.g. no rate contract) sinks the WHOLE batch and
+      // NOTHING gets added. Rather than drop everyone, create each truck on its OWN — the good ones
+      // still go in, and only the real offender(s) fail, with the reason surfaced per-truck.
+      const firstMsg = (res.errors && res.errors[0] && res.errors[0].error) || res.error;
+      this.log('push: batch create failed (' + firstMsg + ') — adding ' + toCreate.length + ' truck(s) one by one so the good ones still enter');
+      const oneObj = (t, rate) => { const o = Object.assign({ order_id: orderId, truck_id: t.truck_id }, rate); if (typeof t.loads === 'number' && t.loads > 0) o.load_limit = t.loads; return o; };
+      const createOne = async (t, rate) => {
+        const r = await this.callTool('call_utility', { utility_name: 'bulk_create_assignments', args: { assignments: [oneObj(t, rate)] } });
+        const rows = (r && (r.assignments || r.created || r.results)) || [];
+        return { ok: !(r && r.error) && rows.length > 0, row: rows[0] || null, err: (r && r.errors && r.errors[0] && r.errors[0].error) || (r && r.error) || null };
+      };
+      for (const t of toCreate) {
+        let attempt = await createOne(t, t.rate);
+        // auto truck on contracted_rate that got rejected → one fallback to order_default (same as the batch flip)
+        if (!attempt.ok && !t.rateForce && t.rate === CONTRACTED) attempt = await createOne(t, ORDER_DEFAULT);
+        if (attempt.ok) { out.created.push(attempt.row.id); t.assignment_id = attempt.row.id; }
+        else { out.skipped.push({ truck: t.truck, reason: attempt.err || 'create rejected' }); out.error = out.error || firstMsg; this.log('order ' + orderId + ': ' + t.truck + ' could NOT be added — ' + (attempt.err || firstMsg)); }
+      }
+    } else {
+      const createdRows = (res && (res.assignments || res.created || res.results)) || [];
+      const createdIds = createdRows.map(a => a.id).filter(Boolean);
+      out.created = createdIds.length ? createdIds : (Array.isArray(res) ? res.map(a => a.id).filter(Boolean) : []);
+      // map created ids back to trucks (by order) for reorder
+      toCreate.forEach((t, i) => { t.assignment_id = createdRows[i] ? createdRows[i].id : out.created[i]; });
     }
-    const createdRows = (res && (res.assignments || res.created || res.results)) || [];
-    const createdIds = createdRows.map(a => a.id).filter(Boolean);
-    out.created = createdIds.length ? createdIds : (Array.isArray(res) ? res.map(a => a.id).filter(Boolean) : []);
-    // map created ids back to trucks (by order) for reorder
-    toCreate.forEach((t, i) => { t.assignment_id = createdRows[i] ? createdRows[i].id : out.created[i]; });
 
     // 4) confirm — ONLY when finalizing. confirm_assignments is the finalize (draft -> pending)
     // and triggers the driver auto-offer. When syncing as draft we deliberately skip it so the
@@ -1157,44 +1211,65 @@ class NewMileClient {
     const reorderable = (r) => (r.load_count || 0) === 0 && REORDERABLE.indexOf(statusOf(r)) >= 0;
     // safe to actually REPOSITION (don't shuffle an active/in-progress truck — only fresh rows)
     const movable = (r) => (r.load_count || 0) === 0 && (statusOf(r) === 'draft' || statusOf(r) === 'pending');
-    for (const [tidStr, orderSeq] of entries) {
+    const oidOf = (r) => (r.order_id != null ? r.order_id : (r.order && r.order.id));
+    // only trucks the tool put on 2+ orders can have a sequence to fix
+    const candidates = entries.filter(([, orderSeq]) => orderSeq && Object.keys(orderSeq).length >= 2);
+    out.skipped += entries.length - candidates.length;
+    // PHASE 1 — list each candidate truck's CURRENT assignments IN PARALLEL. CRITICAL: filter by
+    // assignment_status. A heavy truck can carry 800+ COMPLETED assignments; an unfiltered
+    // page_size:100 list returned old/completed rows and BURIED the 2 current ones, so reconcile
+    // never found them and silently did nothing (the "sequence won't change on push" bug). We only
+    // ever reposition draft/pending and keep active in place, so fetch exactly those statuses —
+    // that returns a handful of rows, never the whole history. (assignment_status takes ONE value
+    // per call — array filters error — so fetch each and merge.)
+    // MUST match REORDERABLE above: fetching fewer statuses than we reorder means a truck with a
+    // missing_driver/pending_removal row gets an INCOMPLETE id list (or is silently skipped).
+    const REO_STATUSES = ['pending', 'draft', 'active', 'missing_driver', 'pending_removal'];
+    const listed = await this._pool(candidates, 6, async ([tidStr, orderSeq]) => {
       const tid = Number(tidStr);
-      if (!tid || !orderSeq) continue;
-      // a truck that the tool only puts on ONE order can't have an order to fix
-      if (Object.keys(orderSeq).length < 2) { out.skipped++; continue; }
-      let rows = [];
+      if (!tid) return null;
       try {
-        const all = await this.callTool('list_resources', { resource_type: 'order_assignment', filters: { truck_id: tid, page_size: 100 } });
-        rows = (all && (all.order_assignments || all.results || all.rows)) || [];
-      } catch (e) { out.failed.push({ truck_id: tid, reason: e.message }); continue; }
+        let rows = [];
+        for (const st of REO_STATUSES) {
+          const r = await this.callTool('list_resources', { resource_type: 'order_assignment', filters: { truck_id: tid, assignment_status: st, page_size: 100 } });
+          rows = rows.concat((r && (r.order_assignments || r.results || r.rows)) || []);
+        }
+        return { tid, orderSeq, rows };
+      } catch (e) { out.failed.push({ truck_id: tid, reason: e.message }); return null; }
+    });
+    // PHASE 2 — decide the desired order locally (no API), collect only the trucks that need a change
+    const reorders = [];
+    for (const item of listed) {
+      if (!item) continue;
+      const { tid, orderSeq, rows } = item;
       if (rows.length < 2) { out.skipped++; continue; }
-      const oidOf = (r) => (r.order_id != null ? r.order_id : (r.order && r.order.id));
       // ONLY reorderable rows go in the list — a busy truck can carry dozens of completed loads
       // and including even one makes reorder_assignments reject the whole call.
       const ro = rows.filter(reorderable).sort((a, b) => ((a.ordinal || 0) - (b.ordinal || 0)));
       if (ro.length < 2) { out.skipped++; continue; }
-      // of those, which are tool-managed (in the day's intent) AND safe to reposition
       const managedIdx = [];
       ro.forEach((r, i) => { if (orderSeq[oidOf(r)] != null && movable(r)) managedIdx.push(i); });
       if (managedIdx.length < 2) { out.skipped++; continue; }   // need ≥2 managed to define an order
-      // desired order of just the managed rows: by intended sequence, tie-break by current ordinal
       const managedSorted = managedIdx.map(i => ro[i]).sort((a, b) => {
         const d = (orderSeq[oidOf(a)] - orderSeq[oidOf(b)]);
         return d || ((a.ordinal || 0) - (b.ordinal || 0));
       });
-      // reposition only the managed rows; keep the other reorderable rows (other-day pending, active) in place
       const result = ro.slice();
       managedIdx.forEach((slot, k) => { result[slot] = managedSorted[k]; });
       const newIds = result.map(r => r.id);
       const curIds = ro.map(r => r.id);
       out.checked++;
       if (newIds.join(',') === curIds.join(',')) { out.skipped++; continue; }   // already correct — no API call
-      try {
-        await this.callTool('call_utility', { utility_name: 'reorder_assignments', args: { truck_id: tid, assignment_ids: newIds } });
-        out.reordered.push(tid);
-        this.log('reconcile: truck ' + tid + ' resequenced to match the tool (' + curIds.join(',') + ' → ' + newIds.join(',') + ')');
-      } catch (e) { out.failed.push({ truck_id: tid, reason: e.message }); }
+      reorders.push({ tid, newIds, curIds });
     }
+    // PHASE 3 — apply the reorders IN PARALLEL
+    await this._pool(reorders, 6, async (rq) => {
+      try {
+        await this.callTool('call_utility', { utility_name: 'reorder_assignments', args: { truck_id: rq.tid, assignment_ids: rq.newIds } });
+        out.reordered.push(rq.tid);
+        this.log('reconcile: truck ' + rq.tid + ' resequenced to match the tool (' + rq.curIds.join(',') + ' → ' + rq.newIds.join(',') + ')');
+      } catch (e) { out.failed.push({ truck_id: rq.tid, reason: e.message }); }
+    });
     return out;
   }
 }
