@@ -138,9 +138,11 @@ function buildBoard(raw, sam, groupsCfg) {
   const numToId = {}; trucksRaw.forEach(t => { numToId[(t.truck_number || '').trim().toLowerCase()] = 't' + t.id; });
   const worked = workedSet(raw.tickets);
 
-  // rolling = any assignment with a live load_status or loads hauled
+  // rolling = a live load_status or loads hauled on a TODAY assignment ONLY (matches desktop
+  // shell.js). Scanning y/t/tm marked trucks that hauled YESTERDAY as "rolling" today → the 7 AM
+  // no-show report classified parked trucks as working and undercounted no-shows.
   const rolling = {};
-  Object.values(assignments).forEach(rows => (rows || []).forEach(r => {
+  (orders.t || []).forEach(o => ((assignments[o.id]) || []).forEach(r => {
     if (r.load_status || (r.load_count || 0) > 0) rolling[(r.truck_number || '').trim().toLowerCase()] = 1;
   }));
 
