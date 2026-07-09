@@ -82,7 +82,22 @@ jobs:
               echo "Central hour $HOUR is outside the send windows (7-8am morning, 8-9pm night) — nothing to do"
               exit 0
             fi
-            echo "scheduled run - Central hour $HOUR -> $KIND"
+            # OFFICE PC IS THE PUNCTUAL PRIMARY (sends 7:00/20:00 CT on the minute). The cloud is the
+            # BACKUP: ask the office first. Already sent -> stay quiet. Office UP but not sent yet
+            # during the primary hour (7/20) -> give it the hour. Office DOWN (unreachable) or still
+            # unsent in the backup hour (8/21) -> the cloud sends. The once-per-day cache lock still
+            # dedupes multiple backup runs.
+            STATE=$(curl -s -m 12 -H 'ngrok-skip-browser-warning: true' "https://bullion-magician-prancing.ngrok-free.dev/reportstate?kind=$KIND" || true)
+            echo "office state: ${STATE:-unreachable}"
+            if echo "$STATE" | grep -q '"sentToday":true'; then
+              echo "office already sent the $KIND report today — cloud stays quiet"
+              exit 0
+            fi
+            if { [ "$HOUR" -eq 7 ] || [ "$HOUR" -eq 20 ]; } && echo "$STATE" | grep -q '"emailConfigured":true'; then
+              echo "office is UP and will send within its hour — cloud waits (backup hour is next)"
+              exit 0
+            fi
+            echo "scheduled run - Central hour $HOUR -> $KIND (cloud covering: office down or unsent)"
             node report-engine/report-cli.js "$KIND" --send
           fi
       # save the rotated token/lock back to cache for the next run
