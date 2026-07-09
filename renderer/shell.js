@@ -8,10 +8,11 @@
 
 const $ = s => document.querySelector(s);
 const board = () => document.getElementById('board').contentWindow;
-function toast(t){ const m=$('#msg'); m.textContent=t; m.classList.add('show'); clearTimeout(m._t); m._t=setTimeout(()=>m.classList.remove('show'),3000); }
+function toast(t,ms){ const m=$('#msg'); m.textContent=t; m.classList.add('show'); clearTimeout(m._t); m._t=setTimeout(()=>m.classList.remove('show'),ms||3000); }
 /* Miley lives in the board's tab row (the animated 🤝 button) — see board.html addTopTabs.
    The shell just tells him to "think" while we sync NewMile, via board().__mileyThinking(). */
 function mileyThink(on){ try{ board().__mileyThinking && board().__mileyThinking(!!on); }catch(e){} }
+function mileySync(left,total){ try{ board().__mileySync && board().__mileySync(left,total); }catch(e){} }
 
 /* ---------- status ---------- */
 function setStatus(st){
@@ -183,6 +184,13 @@ async function renderAdmin(){
     +'<h4>🤖 AI Copilot key (Anthropic)</h4>'
     +'<div class="hint">Anthropic API key (console.anthropic.com). Turns on the 🤖 Copilot tab — read-only chat over your live board. Pay-per-use. Leave empty to keep it off.</div>'
     +'<input id="admAi" type="password" placeholder="sk-ant-…" value="'+(s.aiKey||'').replace(/"/g,'&quot;')+'">'
+    +'<div class="hint" style="margin-top:8px">Miley\'s brain — pick the Claude model. Opus = smartest (pricier), Sonnet = balanced (default), Haiku = fastest/cheapest, Fable = newest.</div>'
+    +'<select id="admAiModel" style="width:100%">'
+    +(function(){ var cur=s.aiModel||'claude-sonnet-4-6'; var opts=[['claude-opus-4-8','Opus 4.8 — smartest'],['claude-sonnet-4-6','Sonnet 4.6 — balanced (default)'],['claude-haiku-4-5-20251001','Haiku 4.5 — fastest / cheapest'],['claude-fable-5','Fable 5 — newest']]; return opts.map(function(o){ return '<option value="'+o[0]+'"'+(o[0]===cur?' selected':'')+'>'+o[1]+'</option>'; }).join(''); })()
+    +'</select>'
+    +'<h4>🗺 Google Maps key (real-traffic ETA)</h4>'
+    +'<div class="hint">Distance Matrix API key (AIza…) + Billing enabled. Gives Miley REAL drive minutes with traffic. Leave empty to use straight-line estimates.</div>'
+    +'<input id="admGoog" type="password" placeholder="AIza…" value="'+(s.googleKey||'').replace(/"/g,'&quot;')+'">'
     +'<h4>🔑 Change admin code</h4>'
     +'<input id="admNewCode" type="password" placeholder="New code (leave empty to keep current)">'
     +'<button class="warn" id="admSave" style="width:100%;margin-top:8px">💾 Save settings</button>'
@@ -193,7 +201,7 @@ async function renderAdmin(){
     const toks=Array.from(document.querySelectorAll('#admToks .tokrow')).map(r=>({
       name:r.querySelector('.tname').value.trim(), token:r.querySelector('.ttok').value.trim()
     })).filter(t=>t.name||t.token);
-    const out={ market:$('#admMarket').value.trim(), samsaraTokens:toks, githubToken:$('#admGh').value.trim(), aiKey:$('#admAi').value.trim(), adminHash:s.adminHash||'' };
+    const out={ market:$('#admMarket').value.trim(), samsaraTokens:toks, githubToken:$('#admGh').value.trim(), aiKey:$('#admAi').value.trim(), aiModel:($('#admAiModel')||{}).value||'claude-sonnet-4-6', googleKey:($('#admGoog')||{}).value.trim(), adminHash:s.adminHash||'' };
     const nc=$('#admNewCode').value.trim();
     if(nc) out.adminHash=await sha256(nc);
     const res=await window.newmile.saveSettings(out);
@@ -247,16 +255,17 @@ function wireTokRows(){
 
 /* ---------- auto-refresh ---------- */
 let autoSecs=0, autoLeft=0, autoTimer=null;
-function stopAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=null; } $('#next').textContent=''; }
+function stopAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=null; } $('#next').textContent=''; mileySync(null,0); }
 function startAuto(){
   stopAuto(); if(!autoSecs) return; autoLeft=autoSecs;
   autoTimer=setInterval(async()=>{
     const st=await window.newmile.status();
-    if(!st.connected){ $('#next').textContent='paused'; return; }
+    if(!st.connected){ $('#next').textContent='paused'; mileySync(null,autoSecs); return; }
     autoLeft--;
     if(autoLeft<=0){ autoLeft=autoSecs; snapToday(); await refreshDay(); }
     const m=Math.floor(autoLeft/60), s=autoLeft%60;
     $('#next').textContent='next '+(m?m+'m':'')+(s<10?'0':'')+s+'s';
+    mileySync(autoLeft,autoSecs);   // feed the standalone Miley countdown ring in the board
   },1000);
 }
 function setAuto(secs){ autoSecs=secs|0; try{localStorage.setItem('nm_auto',String(autoSecs));}catch(e){} if(autoSecs) startAuto(); else stopAuto(); }
@@ -301,7 +310,7 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     catch(e){ setStatus(await window.newmile.status()); toast('Connect failed: '+(e.message||e)); }
   };
   $('#btnDisconnect').onclick=async()=>{ stopAuto(); setStatus(await window.newmile.disconnect()); toast('Disconnected.'); };
-  $('#btnRefresh').onclick=refreshDay;
+  $('#btnRefresh').onclick=()=>refreshDay(true);   // manual click forces a sequence re-assert
 
   // Board → shell bridge: push handoff + dashcam snapshot requests.
   window.addEventListener('message', async (e)=>{
@@ -399,6 +408,26 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     if(e.data.type==='updateOrderQty' && e.data.reqId){
       try{ const res=await window.newmile.updateOrderQty(e.data.orderId,e.data.quantity,e.data.flex); board().__nmResult && board().__nmResult(e.data.reqId,res); }
       catch(err){ board().__nmResult && board().__nmResult(e.data.reqId,{error:String(err&&err.message||err)}); }
+      return;
+    }
+    if(e.data.type==='gpsVerify' && e.data.reqId){
+      try{ const res=await window.newmile.gpsVerify(e.data.args||{}); board().__nmResult && board().__nmResult(e.data.reqId,res); }
+      catch(err){ board().__nmResult && board().__nmResult(e.data.reqId,{error:String(err&&err.message||err)}); }
+      return;
+    }
+    if(e.data.type==='gpsSaveLoc' && e.data.reqId){
+      try{ const res=await window.newmile.gpsSaveLoc(e.data.args||{}); board().__nmResult && board().__nmResult(e.data.reqId,res); }
+      catch(err){ board().__nmResult && board().__nmResult(e.data.reqId,{error:String(err&&err.message||err)}); }
+      return;
+    }
+    if(e.data.type==='routeEta' && e.data.reqId){
+      try{ const res=await window.newmile.routeEta(e.data.args||{}); board().__nmResult && board().__nmResult(e.data.reqId,res); }
+      catch(err){ board().__nmResult && board().__nmResult(e.data.reqId,null); }
+      return;
+    }
+    if(e.data.type==='googleStatus' && e.data.reqId){
+      try{ const res=await window.newmile.googleStatus(); board().__nmResult && board().__nmResult(e.data.reqId,res); }
+      catch(err){ board().__nmResult && board().__nmResult(e.data.reqId,{state:'err'}); }
       return;
     }
     if(e.data.type==='fuel' && e.data.reqId){
@@ -553,6 +582,32 @@ function getPendingSync(){
 }
 function clearPendingSync(ids){ try{ board().__clearPendingSync && board().__clearPendingSync(ids); }catch(e){} }
 
+// Reconcile NewMile's per-truck sequence to the board — but ONLY when the board's intent actually
+// CHANGED since the last reconcile. Every refresh used to fire this (twice), hammering the API per
+// truck = the slowness. Now an unchanged board (e.g. the auto-refresh timer) does ZERO reconcile
+// calls; a real sequence change still re-asserts. Because autoSync() runs first and stamps the hash,
+// refreshDay()'s own reconcile sees the same hash and skips — killing the old double-call too.
+let __lastSeqHash='';
+async function reconcileIfChanged(){
+  let intent={}; try{ intent=(board().__getSeqIntent&&board().__getSeqIntent())||{}; }catch(e){ return null; }
+  if(!Object.keys(intent).length) return null;
+  const hash=JSON.stringify(intent);
+  if(hash===__lastSeqHash) return null;   // unchanged → skip the per-truck API calls (the big speedup)
+  let rc=null;
+  try{
+    rc=await window.newmile.reconcileSeq(intent);
+    // only stamp the hash when NOTHING failed — a partial failure (one truck's reorder 500'd)
+    // must retry on the next refresh, not be remembered as "done"
+    if(!(rc&&rc.failed&&rc.failed.length)) __lastSeqHash=hash;
+  }
+  catch(e){ appendLog('reconcile skipped: '+(e.message||e)); return null; }
+  if(rc&&rc.reordered&&rc.reordered.length) appendLog('reconcile: fixed sequence for '+rc.reordered.length+' truck(s) → '+rc.reordered.join(', '));
+  else if(rc&&rc.failed&&rc.failed.length) appendLog('reconcile: '+rc.failed.length+' failed — '+rc.failed.map(f=>f.truck_id+':'+f.reason).join('; '));
+  return rc;
+}
+// benign skip reasons that are NOT failures the dispatcher needs to see
+function __benignSkip(reason){ const r=String(reason||'').toLowerCase(); return r.indexOf('unchanged')>=0 || r.indexOf('no longer on the order')>=0; }
+
 async function autoSync(){
   const pend=getPendingSync();
   if(!pend.length) return 0;
@@ -560,51 +615,51 @@ async function autoSync(){
   // The auto-sync NEVER finalizes on its own — drafts stay drafts until the dispatcher clicks Finalize.
   const draftN=pend.filter(o=>!o.finalize).length, finN=pend.length-draftN;
   $('#stat').textContent='Syncing '+draftN+' draft'+(finN?' + '+finN+' finalize':'')+' → NewMile…';
-  let done=0, fin=0; const doneIds=[];
+  let done=0, fin=0; const failed=[];   // failed = trucks that did NOT make it in
   for(const o of pend){
     try{
       const useDefault=isOrderDefault(o);
       const asg=o.assignments.filter(a=>!/ATX Bluewing/i.test(a.truck));
       const r=await window.newmile.pushOrder({orderId:o.order_id, assignments:asg, useOrderDefault:useDefault, removed:(o.removed||[]), finalize:!!o.finalize});
-      done++; if(o.finalize)fin++; doneIds.push(o.order_id);
+      done++; if(o.finalize)fin++;
+      // clear THIS order immediately (not batched at the end) — an edit made to a later order
+      // while this loop is still running must not be wiped without ever syncing
+      clearPendingSync([o.order_id]);
       appendLog('auto-sync '+o.order_id+' ('+(o.disp||'')+') '+(o.finalize?'[FINALIZE]':'[draft]')+': +'+(r.created||[]).length+' new · ~'+(r.updated||[]).length+' updated · −'+(r.removed||[]).length+' removed · ='+(r.skipped||[]).length+' untouched');
-    }catch(e){ toast('Auto-sync order '+o.order_id+' failed: '+(e.message||e)); appendLog('auto-sync '+o.order_id+' FAILED: '+(e.message||e)); }
+      // surface real failures: unresolved truck numbers + non-benign skips (rate rejected, etc.)
+      (r.unresolved||[]).forEach(n=>{ failed.push({order:(o.disp||o.order_id), truck:n, why:'truck not found in NewMile'}); });
+      (r.skipped||[]).forEach(s=>{ if(!__benignSkip(s.reason)) failed.push({order:(o.disp||o.order_id), truck:s.truck, why:s.reason}); });
+    }catch(e){ failed.push({order:(o.disp||o.order_id), truck:'(order)', why:(e.message||e)}); toast('Auto-sync order '+o.order_id+' failed: '+(e.message||e)); appendLog('auto-sync '+o.order_id+' FAILED: '+(e.message||e)); }
   }
-  clearPendingSync(doneIds);
-  // end-of-sync: make NewMile's per-truck sequence match the board exactly (creates can't set
-  // ordinal, so this corrects any drift). Best-effort — never blocks or fails the sync.
-  if(done){
-    try{
-      const intent=(board().__getSeqIntent&&board().__getSeqIntent())||{};
-      if(Object.keys(intent).length){
-        const rc=await window.newmile.reconcileSeq(intent);
-        if(rc&&rc.reordered&&rc.reordered.length) appendLog('reconcile: fixed sequence for '+rc.reordered.length+' truck(s) → '+rc.reordered.join(', '));
-      }
-    }catch(e){ appendLog('reconcile skipped: '+(e.message||e)); }
-  }
+  // re-assert sequence only if the board changed (see reconcileIfChanged) — best-effort, never blocks
+  if(done) await reconcileIfChanged();
   if(done) toast('✓ Synced '+(done-fin)+' draft'+(fin?' · finalized '+fin:'')+' to NewMile');
+  // LOUD: never let an add silently fail again — tell the dispatcher exactly which trucks didn't enter
+  if(failed.length){
+    const lines=failed.map(f=>'• '+f.truck+' ('+f.order+') — '+f.why);
+    appendLog('⚠️ '+failed.length+' truck(s) did NOT enter:\n'+lines.join('\n'));
+    toast('⚠️ '+failed.length+' truck(s) did NOT enter — '+failed.slice(0,3).map(f=>f.truck).join(', ')+(failed.length>3?'…':'')+' (see log)', 9000);
+  }
   return done;
 }
 
 /* ---------- live full sync -> board ---------- */
-async function refreshDay(){
-  const date=$('#day').value; if(!date) return;
+let __refreshing=false;   // reentrancy guard: overlapping refreshes ran autoSync twice on the same
+                          // pending queue → duplicate assignment creates (focus/timer/manual overlap)
+async function refreshDay(force){
+  if(__refreshing) return;
+  __refreshing=true;
+  const date=$('#day').value; if(!date){ __refreshing=false; return; }
+  if(force) __lastSeqHash='';   // manual Refresh button → force a re-assert of the sequence even if unchanged
   $('#dot').className='dot busy'; $('#stat').textContent='Syncing '+date+' with NewMile…';
   mileyThink(true);
   try{
     await autoSync();   // finalized board changes go OUT first, then we pull the truth back
-    // ALWAYS re-assert the board's per-truck sequence onto NewMile (Juan: "reacomoda SIEMPRE") —
-    // not just when something was pushed. Runs BEFORE the pull, so the board's edited seq wins;
-    // reconcile only moves draft/pending/non-hauled rows, pins the rest, is idempotent (skips when
-    // newIds==curIds), so it self-heals a manual seq flip and catches seq-ONLY changes too.
-    try{
-      const seqIntent=(board().__getSeqIntent&&board().__getSeqIntent())||{};
-      if(Object.keys(seqIntent).length){
-        const rc=await window.newmile.reconcileSeq(seqIntent);
-        if(rc&&rc.reordered&&rc.reordered.length) appendLog('reconcile: fixed sequence for '+rc.reordered.length+' truck(s) → '+rc.reordered.join(', '));
-        else if(rc&&rc.failed&&rc.failed.length) appendLog('reconcile: '+rc.failed.length+' failed — '+rc.failed.map(f=>f.truck_id+':'+f.reason).join('; '));
-      }
-    }catch(e){ appendLog('reconcile (refresh) skipped: '+(e.message||e)); }
+    // Re-assert the board's per-truck sequence onto NewMile — but ONLY when it changed (autoSync
+    // already stamped the hash if it pushed, so this skips the duplicate call). Catches seq-ONLY
+    // changes and (on a forced manual Refresh) self-heals a manual flip, without hammering the API
+    // on every auto-refresh.
+    await reconcileIfChanged();
     const all=await window.newmile.refreshAll(date);   // Y/T/Tm orders + roster + rotation + live assignments
     const worked=workedSet(all.tickets||[]);
     const trucksMapped=dedupeTrucks(all.trucks||[]).map(t=>mapTruck(t,worked));
@@ -625,8 +680,8 @@ async function refreshDay(){
     const pc=all.pickupCoords||{}, dc=all.dropCoords||{}, om=all.orderMeta||{};
     [4,5].forEach(k=>payload.dayMap[k].forEach(o=>{
       const id=parseInt((''+o.id).replace(/^o/,''),10);
-      const c=pc[id]; if(c){ o.pickupLat=c.lat; o.pickupLng=c.lng; if(c.addr)o.pickupAddr=c.addr; }
-      const d=dc[id]; if(d){ o.dropLat=d.lat; o.dropLng=d.lng; if(d.addr)o.dropAddr=d.addr; }
+      const c=pc[id]; if(c){ o.pickupLat=c.lat; o.pickupLng=c.lng; if(c.addr)o.pickupAddr=c.addr; o.pickupApprox=!!c.approx; }
+      const d=dc[id]; if(d){ o.dropLat=d.lat; o.dropLng=d.lng; if(d.addr)o.dropAddr=d.addr; o.dropApprox=!!d.approx; }
       const m=om[id]; if(m&&m.project_id){ o.projectId=m.project_id; }
     }));
     try{
@@ -665,11 +720,15 @@ async function refreshDay(){
     toast('Synced '+date+' · today '+payload.dayMap[4].length+' / tomorrow '+payload.dayMap[5].length+' orders · '+liveAsg+' live assignments · rotation from '+all.priorDay);
     mileyThink(false);
   }catch(e){ setStatus(await window.newmile.status()); mileyThink(false); toast('Refresh failed: '+(e.message||e)); }
+  finally{ __refreshing=false; }   // ALWAYS release the guard — v2.6.54 never reset it, so after the
+                                   // first refresh every later sync/refresh silently did nothing
 }
 
 /* ---------- mappers (NewMile shape -> board shape) ---------- */
 function num(v){ const n=parseFloat(v); return isNaN(n)?0:n; }
 function hourFromStart(s){ try{ const h=parseInt(String(s).slice(11,13),10); return isNaN(h)?4:h; }catch(e){return 4;} }
+// full start-of-day in MINUTES (hour*60+min) — drives the day-wide run-order (earlier start = runs first)
+function minFromStart(s){ try{ const h=parseInt(String(s).slice(11,13),10), m=parseInt(String(s).slice(14,16),10); return (isNaN(h)?4:h)*60+(isNaN(m)?0:m); }catch(e){return 240;} }
 function ampm(h){ const x=h%12||12; return x+':00 '+(h<12?'AM':'PM'); }
 function unitOf(o){
   const u=(o.quantity_measurement_unit||'').toLowerCase();
@@ -714,7 +773,7 @@ function mapOrder(o, asgRows, numToId, nmNotes){
     fsc:(()=>{const f=(o.payable_fees||[]).find(x=>x.fee_type_id===2);return f?{rate:num(f.rate),unit:f.measurement_unit||'',id:f.id}:null;})(),
     fscRecv:(()=>{const f=(o.receivable_fees||[]).find(x=>x.fee_type_id===2);return f?{rate:num(f.rate),unit:f.measurement_unit||'',id:f.id}:null;})(),
     payableFees:(o.payable_fees||[]), receivableFees:(o.receivable_fees||[]),
-    status:statusOf(o.status), nmStatus:o.status, completed:completed, startHr:h, time:ampm(h),
+    status:statusOf(o.status), nmStatus:o.status, completed:completed, startHr:h, startMin:minFromStart(o.start_date), time:ampm(h),
     nm:nm, deliv:deliv, loadsDone:o.load_count||0,
     minTrucks:o.minimum_truck_count||0, planTrucks:o.planned_truck_count||0, priority:o.priority||'medium',
     notes: completed ? '✓ Order COMPLETE in NewMile — do not assign'
@@ -879,8 +938,11 @@ async function runPush(onlyOrderId){
       pushed++;
       clearPendingSync([o.order_id]);
       const made=(r.created||[]).length, upd=(r.updated||[]).length, rm=(r.removed||[]).length, sk=(r.skipped||[]).length, un=(r.unresolved||[]).length;
-      let summary=`+${made} new`+(upd?` · ~${upd} updated`:'')+(rm?` · −${rm} removed`:'')+(sk?` · ${sk} untouched`:'')+(un?` · ?${un}`:'');
-      if(card){ card.textContent=(r.confirmed||made||upd?'✓ ':'')+summary; card.className=un?'res-bad':'res-ok'; }
+      // real failures hidden inside "skipped" (rate rejected, create failed) must NOT read as benign
+      const bad=(r.skipped||[]).filter(s=>!__benignSkip(s.reason));
+      let summary=`+${made} new`+(upd?` · ~${upd} updated`:'')+(rm?` · −${rm} removed`:'')+(sk?` · ${sk} untouched`:'')+(un?` · ?${un}`:'')+(bad.length?` · ⚠️${bad.length} FAILED`:'');
+      if(card){ card.textContent=(r.confirmed||made||upd?'✓ ':'')+summary; card.className=(un||bad.length)?'res-bad':'res-ok'; }
+      if(bad.length) toast('⚠️ Order '+o.order_id+': '+bad.length+' truck(s) did NOT enter — '+bad.slice(0,3).map(s=>s.truck).join(', ')+' ('+bad[0].reason+')',9000);
       if(un) toast(`Order ${o.order_id}: ${un} truck(s) not found in NewMile: ${(r.unresolved||[]).join(', ')}`);
     }catch(e){ if(card){ card.disabled=false; card.textContent='retry'; } toast('Order '+o.order_id+' failed: '+(e.message||e)); }
   }
