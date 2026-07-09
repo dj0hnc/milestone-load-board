@@ -31,6 +31,9 @@ on:
       offsubs:
         description: 'OFF-APP subs count (blank = use the MAB_OFFSUBS variable)'
         default: ''
+      force:
+        description: 'true = resend even if already sent today (manual tests). External pingers leave this blank so the once-per-day lock dedupes.'
+        default: ''
 
 concurrency:
   group: mab-reports
@@ -61,7 +64,13 @@ jobs:
         run: |
           set -e
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            node report-engine/report-cli.js "${{ github.event.inputs.kind }}" --send --force
+            # external pingers (cron-job.org at 7:00am/8:00pm CT) leave force blank → the once-per-day
+            # lock still dedupes against the hourly GitHub-cron backup. Set force=true only for tests.
+            if [ "${{ github.event.inputs.force }}" = "true" ]; then
+              node report-engine/report-cli.js "${{ github.event.inputs.kind }}" --send --force
+            else
+              node report-engine/report-cli.js "${{ github.event.inputs.kind }}" --send
+            fi
           else
             HOUR=$(TZ=America/Chicago date +%H)
             HOUR=$((10#$HOUR))
