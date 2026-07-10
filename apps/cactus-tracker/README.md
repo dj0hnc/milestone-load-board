@@ -45,6 +45,10 @@ refresh token mantiene la sesión sola (los jobs corren sin intervención).
 
 ## Qué hace solo
 
+**Abrir la app es el sync**: si el board tiene más de 20 min sin actualizar, el server
+sincroniza solo en segundo plano al abrirlo y la pantalla se refresca sola. Los jobs
+de abajo son el respaldo para cuando el server vive prendido:
+
 | Cuándo (CT) | Job | Qué |
 |---|---|---|
 | 4:30 AM | Roster (NewMile fleet 5) | drivers/trailer types actualizados; badge 48 h si cambió driver; truck nuevo → banner rojo ⚑ NUEVO; truck desaparecido → ¿de baja? (nada se borra solo) |

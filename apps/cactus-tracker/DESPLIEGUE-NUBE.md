@@ -29,15 +29,15 @@ az webapp config set --name cactus-tracker --resource-group MAB-Tracker \
   env) pon `publicBase: "https://cactus-tracker.azurewebsites.net"` para el OAuth de
   NewMile, y los tokens de Samsara en `samsara.tokens` (en la nube no hay tokensFile
   del desktop).
-- **El F1 gratis duerme tras ~20 min sin visitas.** Dos arreglos:
-  1. El catch-up ya hace que ninguna sync se pierda: tu primera visita de la mañana
-     la dispara.
-  2. Para que el roster de las 4:30 corra solito aunque nadie haya entrado: ponle un
-     pinger gratis en cron-job.org (el mismo servicio que ya usan para los reportes
-     del Load Board) a `https://cactus-tracker.azurewebsites.net/cactus-tracker/api/health`
-     a las 4:10 y 4:30 AM CT.
-  3. Si un día quieren cero siestas: subir al plan B1 (o colgarlo del plan donde ya
-     vive el bridge = costo marginal $0) y prender Always On.
+- **El F1 gratis duerme tras ~20 min sin visitas, y no importa**: abrir la app ES el
+  sync. Al pedir el board, si la actividad tiene más de 20 min el server sincroniza
+  solo en segundo plano y la pantalla se refresca solita ("⟳ actualizando…"). Tu
+  visita de la mañana despierta el host, corre el catch-up de los jobs del día Y trae
+  los datos frescos. El botón "Sync ahora" queda para forzarlo.
+- Opcional (solo si quieres el board ya listo ANTES de abrirlo): pinger gratis en
+  cron-job.org (el mismo que ya usan para reportes) a
+  `https://cactus-tracker.azurewebsites.net/cactus-tracker/api/health` a las 4:10 y
+  4:30 AM CT. O plan B1 / el plan del bridge con Always On para cero siestas.
 
 ## Alternativa 100% gratis para siempre: Oracle Cloud
 

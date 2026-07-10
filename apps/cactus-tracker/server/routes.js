@@ -22,6 +22,32 @@ function createRouter({ config, newmile, log }) {
   router.use(express.json());
   const say = log || (() => {});
 
+  // Abrir la app ES el sync: si al pedir el board la actividad tiene más de 20 min,
+  // se dispara un sync en segundo plano (el board responde al instante con lo que hay
+  // y la UI se refresca sola cuando termina). Así no hace falta pinger ni cron: la
+  // visita de la mañana despierta el host Y trae los datos frescos.
+  let syncInflight = false;
+  function maybeBackgroundSync() {
+    if (!newmile) return false;
+    if (syncInflight) return true;
+    const last = metaGet('last_sync_newmile_activity');
+    if (last && (Date.now() - Date.parse(last)) < 20 * 60 * 1000) return false;
+    syncInflight = true;
+    (async () => {
+      try {
+        if (newmile.connected || await newmile.resume()) {
+          await syncActivity(newmile);
+          say('auto-sync al abrir: actividad actualizada');
+        }
+      } catch (e) {
+        say('auto-sync al abrir falló: ' + (e.message || e));
+      } finally {
+        syncInflight = false;
+      }
+    })();
+    return true;
+  }
+
   // ---------- board ----------
   router.get('/api/board', (req, res) => {
     const orgId = normNum(req.query.org || 'CACTUS');
@@ -73,6 +99,7 @@ function createRouter({ config, newmile, log }) {
         last_sync_activity: metaGet('last_sync_newmile_activity'),
         last_sync_samsara: metaGet('last_sync_samsara'),
         auto_mark: metaGet('auto_mark', '1') !== '0',
+        syncing: maybeBackgroundSync(),
         newmile: newmile ? newmile.status() : { connected: false }
       }
     });
