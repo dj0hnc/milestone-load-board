@@ -28,7 +28,24 @@ const { ctParts } = require('./util');
 
 function loadConfig() {
   const p = process.env.CACTUS_CONFIG || path.join(DATA_DIR, 'config.json');
-  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return {}; }
+  let cfg = {};
+  try { cfg = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { /* sin archivo: puro env */ }
+  // Variables de entorno (App Settings en Azure) — pisan al archivo. Así todo se
+  // configura copy-paste en el portal, sin editar archivos en el servidor:
+  //   PUBLIC_BASE            https://cactus-tracker.azurewebsites.net
+  //   SAMSARA_TOKEN_CACTUS   token read-only del org Cactus Express
+  //   SAMSARA_TOKEN_CKJ      token read-only del org CKJ Transport
+  if (process.env.PUBLIC_BASE) cfg.publicBase = process.env.PUBLIC_BASE;
+  const envToks = [
+    ['SAMSARA_TOKEN_CACTUS', 'Cactus Express'],
+    ['SAMSARA_TOKEN_CKJ', 'CKJ Transport']
+  ].filter(([k]) => process.env[k]);
+  if (envToks.length) {
+    cfg.samsara = cfg.samsara || {};
+    const toks = (cfg.samsara.tokens || []).filter(t => t && !envToks.some(([, name]) => t.name === name));
+    cfg.samsara.tokens = [...envToks.map(([k, name]) => ({ name, token: process.env[k] })), ...toks];
+  }
+  return cfg;
 }
 
 function createTracker(opts) {
