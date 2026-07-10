@@ -425,7 +425,7 @@ function chipHtml(t){
     ${actHtml(t)}
     ${rest?'<span class="badge status">OFF TODAY</span>':""}
     ${(()=>{const o=offOf(t);return o?`<span class="badge status" style="background:#fdeedd;color:#a8622f;">${OFF_LBL[o.reason]||o.reason} ${mdy(o.from_date)}–${mdy(o.to_date)}</span>`:"";})()}
-    ${(()=>{const u=!offOf(t)&&upcomingOff(t);return u?`<span class="badge status" title="scheduled">🗓 ${esc(u.reason)} ${mdy(u.from_date)}–${mdy(u.to_date)}</span>`:"";})()}
+    ${(()=>{const u=!offOf(t)&&upcomingOff(t);return u?`<span class="badge" style="background:#fdf3e3;border:1px solid #c98a2f;color:#8a5a10;" title="scheduled — goes off on ${u.from_date}">${OFF_EMOJI[u.reason]||"🗓"} ${esc(u.reason).toUpperCase()} STARTS ${mdy(u.from_date)}</span>`:"";})()}
     ${off&&!offOf(t)?`<span class="badge status">${STATUS_LBL[t.status]||esc(t.status)}${t.return_date?" · "+esc(t.return_date):""}</span>`:""}
     ${drvChg?`<span class="badge drvchg" title="driver changed">driver changed: was ${esc(drvChg.prev||"?")}</span>`:""}
     ${flag?`<span class="badge flag" onclick="event.stopPropagation();openFlag('${t.org_id}','${esc(t.number)}')">⚑ ${esc(flag)}</span>`:""}
