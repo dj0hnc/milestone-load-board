@@ -83,6 +83,11 @@ function migrate(d) {
     last_load_date TEXT,              -- ISO
     last_load_driver TEXT,            -- driver of the latest load (rotations: beats static driver)
     loads_today INTEGER DEFAULT 0,
+    rip_suggested INTEGER DEFAULT 0,  -- hauled RIP RAP in NewMile but not marked rip_rap; I confirm
+    rip_evidence TEXT DEFAULT '',     -- JSON {loads, first, last, materials}
+    parked_city TEXT DEFAULT '',      -- last Samsara position (reverse-geo city)
+    parked_at TEXT DEFAULT '',
+    suggested_area TEXT DEFAULT '',   -- from overnight GPS majority; I accept/dismiss
     updated_at TEXT,
     PRIMARY KEY (org_id, number)
   );
@@ -92,6 +97,7 @@ function migrate(d) {
     number TEXT NOT NULL,
     state TEXT NOT NULL CHECK (state IN ('p','a','d')),
     source TEXT DEFAULT 'manual',     -- 'manual' | 'auto' (from NewMile loads today)
+    marked_by TEXT DEFAULT '',        -- multi-user: who tapped it
     marked_at TEXT,
     PRIMARY KEY (date, org_id, number)
   );
@@ -107,8 +113,46 @@ function migrate(d) {
     key TEXT PRIMARY KEY,
     value TEXT
   );
+  CREATE TABLE IF NOT EXISTS truck_log (   -- audit: every edit, who and when
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    org_id TEXT NOT NULL,
+    number TEXT NOT NULL,
+    field TEXT NOT NULL,
+    old_value TEXT DEFAULT '',
+    new_value TEXT DEFAULT '',
+    changed_by TEXT DEFAULT ''
+  );
+  CREATE TABLE IF NOT EXISTS truck_days (  -- daily snapshot: how the truck WAS that day
+    date TEXT NOT NULL,
+    org_id TEXT NOT NULL,
+    number TEXT NOT NULL,
+    status TEXT, status_note TEXT, return_date TEXT,
+    note TEXT, driver TEXT, division TEXT, area TEXT, rip_rap INTEGER,
+    PRIMARY KEY (date, org_id, number)
+  );
+  CREATE TABLE IF NOT EXISTS parking_log ( -- where the truck slept (3-5 AM GPS point)
+    org_id TEXT NOT NULL,
+    number TEXT NOT NULL,
+    date TEXT NOT NULL,
+    city TEXT DEFAULT '',
+    lat REAL, lon REAL,
+    PRIMARY KEY (org_id, number, date)
+  );
   CREATE INDEX IF NOT EXISTS idx_activity_num ON activity_log (org_id, number, load_date DESC);
+  CREATE INDEX IF NOT EXISTS idx_truck_log ON truck_log (org_id, number, ts DESC);
   `);
+  // additive migrations for DBs created before these columns existed
+  addCol(d, 'trucks', 'rip_suggested', 'INTEGER DEFAULT 0');
+  addCol(d, 'trucks', 'rip_evidence', "TEXT DEFAULT ''");
+  addCol(d, 'trucks', 'parked_city', "TEXT DEFAULT ''");
+  addCol(d, 'trucks', 'parked_at', "TEXT DEFAULT ''");
+  addCol(d, 'trucks', 'suggested_area', "TEXT DEFAULT ''");
+  addCol(d, 'dispatch_state', 'marked_by', "TEXT DEFAULT ''");
+}
+
+function addCol(d, table, col, decl) {
+  try { d.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${decl}`); } catch (e) { /* already there */ }
 }
 
 // ---------- tiny helpers ----------

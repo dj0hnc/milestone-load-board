@@ -232,4 +232,66 @@ async function syncActivity(client) {
   return summary;
 }
 
-module.exports = { syncRoster, syncActivity };
+// ---------- RIP RAP capability scan ----------
+// "¿Qué trucks SÍ pueden cargar rip rap?" — la evidencia más dura es que ya lo cargaron.
+// Scans load_tickets materials over a window; a roster truck that hauled rip rap but is
+// not marked rip_rap gets rip_suggested + evidence (loads, dates, material names). I
+// confirm from the UI (my rip-rap flag is the truth; this only proposes, never marks).
+const RIP_RE = /rip\s*-?\s*rap|riprap/i;
+
+async function scanRipRap(client, days) {
+  const today = todayCT();
+  const from = shiftISO(today, -(days || 30));
+  const rows = await client.loadTicketsMaterialsAll(from, today);
+  const orgs = enabledOrgs();
+  const cactus = orgs.find(o => o.id === 'CACTUS');
+  const subNames = subFleetNames();
+
+  const evidence = new Map(); // org|num -> {loads, first, last, materials:Set}
+  for (const r of rows) {
+    const mat = String(r.material || '') + ' | ' + String(r.alternative_material_name || '');
+    if (!RIP_RE.test(mat)) continue;
+    const fleetName = (typeof r.fleet === 'string' ? r.fleet : (r.fleet && r.fleet.name)) || '';
+    let num;
+    if (cactus && cactus.fleetNames.some(n => normNum(n) === normNum(fleetName))) {
+      num = normLoadTruck(r.truck_number, fleetName, cactus.fleetNames, cactus.truck_prefix);
+    } else if (subNames.some(n => normNum(n) === normNum(fleetName))) {
+      num = normNum(r.truck_number);
+    } else {
+      continue; // other fleets (CKJ etc.) enter when their org is enabled
+    }
+    const iso = reportDateToISO(r.order_date) || today;
+    const key = 'CACTUS|' + num;
+    const e = evidence.get(key) || { loads: 0, first: iso, last: iso, materials: new Set() };
+    e.loads++;
+    if (iso < e.first) e.first = iso;
+    if (iso > e.last) e.last = iso;
+    e.materials.add((r.material || r.alternative_material_name || '').trim());
+    evidence.set(key, e);
+  }
+
+  const summary = { window_days: days || 30, rip_loads: 0, trucks: [], suggested: 0, already_marked: 0, unknown: [] };
+  for (const [key, e] of evidence) {
+    const [orgId, num] = key.split('|');
+    summary.rip_loads += e.loads;
+    const t = { number: num, loads: e.loads, first: e.first, last: e.last, materials: [...e.materials] };
+    summary.trucks.push(t);
+    const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ? AND archived = 0', orgId, num);
+    if (!row) { summary.unknown.push(num); continue; }
+    const ev = JSON.stringify({ loads: e.loads, first: e.first, last: e.last, materials: [...e.materials] });
+    if (row.rip_rap) {
+      summary.already_marked++;
+      run(`UPDATE trucks SET rip_evidence = ? WHERE org_id = ? AND number = ?`, ev, orgId, num);
+    } else {
+      run(`UPDATE trucks SET rip_suggested = 1, rip_evidence = ?, updated_at = ? WHERE org_id = ? AND number = ?`,
+        ev, nowISO(), orgId, num);
+      summary.suggested++;
+    }
+  }
+  summary.trucks.sort((a, b) => b.loads - a.loads);
+  metaSet('last_scan_riprap', nowISO());
+  metaSet('last_scan_riprap_summary', JSON.stringify(summary));
+  return summary;
+}
+
+module.exports = { syncRoster, syncActivity, scanRipRap };

@@ -10,8 +10,9 @@ const express = require('express');
 const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
 const { todayCT, weekDatesCT, daysBetween, normNum } = require('./util');
-const { syncRoster, syncActivity } = require('./sync-newmile');
+const { syncRoster, syncActivity, scanRipRap } = require('./sync-newmile');
 const { syncSamsara } = require('./sync-samsara');
+const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
 
 const VALID_STATUS = ['ok', 'shop', 'down', 'no_driver', 'vacation', 'deleased'];
 const EDITABLE = ['note', 'status', 'status_note', 'return_date', 'rest_days', 'area', 'division', 'rip_rap', 'phone', 'tags', 'driver'];
@@ -33,14 +34,25 @@ function createRouter({ config, newmile, log }) {
     const states = all('SELECT * FROM dispatch_state WHERE date = ? AND org_id = ?', date, orgId);
     const stMap = new Map(states.map(s => [s.number, s]));
     const today = todayCT();
+    // past date → overlay how each truck WAS that day (status/notas de ese día)
+    const historical = date < today;
+    const snaps = historical ? daySnapshots(orgId, date) : null;
 
     const outTrucks = trucks.map(t => {
       const s = stMap.get(t.number);
       const driverChangedRecent = t.driver_changed_at && (Date.now() - Date.parse(t.driver_changed_at)) < 48 * 3600 * 1000;
+      const snap = snaps ? snaps.get(t.number) : null;
       return {
         ...t,
+        ...(snap ? {
+          status: snap.status, status_note: snap.status_note, return_date: snap.return_date,
+          note: snap.note, driver: snap.driver, division: snap.division || t.division,
+          area: snap.area || t.area, rip_rap: snap.rip_rap != null ? snap.rip_rap : t.rip_rap,
+          from_snapshot: 1
+        } : {}),
         state: s ? s.state : 'p',
         state_source: s ? s.source : null,
+        state_by: s ? s.marked_by : null,
         days_since_last_load: t.last_load_date ? daysBetween(t.last_load_date, today) : null,
         driver_changed_recent: driverChangedRecent ? { prev: t.driver_prev, at: t.driver_changed_at } : null
       };
@@ -50,7 +62,7 @@ function createRouter({ config, newmile, log }) {
       org: { id: org.id, label: org.label },
       orgs: all('SELECT id, label, enabled FROM orgs ORDER BY sort'),
       divisions,
-      date, today,
+      date, today, historical,
       week: weekDatesCT(date),
       trucks: outTrucks,
       meta: {
@@ -65,13 +77,13 @@ function createRouter({ config, newmile, log }) {
 
   // ---------- dispatch state ----------
   router.post('/api/state', (req, res) => {
-    const { date, org, number, state } = req.body || {};
+    const { date, org, number, state, by } = req.body || {};
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !org || !number || !['p', 'a', 'd'].includes(state)) {
       return res.status(400).json({ error: 'body: {date ISO, org, number, state p|a|d}' });
     }
-    run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_at) VALUES (?,?,?,?,'manual',?)
-         ON CONFLICT(date, org_id, number) DO UPDATE SET state = excluded.state, source = 'manual', marked_at = excluded.marked_at`,
-      date, normNum(org), normNum(number), state, nowISO());
+    run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_by, marked_at) VALUES (?,?,?,?,'manual',?,?)
+         ON CONFLICT(date, org_id, number) DO UPDATE SET state = excluded.state, source = 'manual', marked_by = excluded.marked_by, marked_at = excluded.marked_at`,
+      date, normNum(org), normNum(number), state, String(by || '').slice(0, 40), nowISO());
     res.json({ ok: true });
   });
 
@@ -109,7 +121,63 @@ function createRouter({ config, newmile, log }) {
     if (!sets.length) return res.status(400).json({ error: 'nada que actualizar' });
     sets.push('updated_at = ?'); vals.push(nowISO());
     run(`UPDATE trucks SET ${sets.join(', ')} WHERE org_id = ? AND number = ?`, ...vals, orgId, number);
-    res.json({ ok: true, truck: get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number) });
+    const updated = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number);
+    // multi-user audit + today's snapshot (quién cambió qué, y cómo quedó el día)
+    const by = String((req.body || {}).by || '').slice(0, 40);
+    for (const f of EDITABLE) if (f in (req.body || {})) logChange(orgId, number, f, row[f], updated[f], by);
+    snapshotTruckDay(updated);
+    res.json({ ok: true, truck: updated });
+  });
+
+  // Historial por truck: cambios (quién/cuándo), cargas y dónde durmió.
+  router.get('/api/truck/:org/:number/history', (req, res) => {
+    res.json(historyOf(normNum(req.params.org), normNum(req.params.number)));
+  });
+
+  // RIP RAP: aceptar/descartar la sugerencia detectada en las órdenes de NewMile.
+  router.post('/api/truck/:org/:number/rip', (req, res) => {
+    const orgId = normNum(req.params.org), number = normNum(req.params.number);
+    const { action, by } = req.body || {};
+    const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number);
+    if (!row) return res.status(404).json({ error: 'truck no existe' });
+    if (action === 'accept') {
+      run(`UPDATE trucks SET rip_rap = 1, rip_suggested = 0, updated_at = ? WHERE org_id = ? AND number = ?`, nowISO(), orgId, number);
+      logChange(orgId, number, 'rip_rap', row.rip_rap, 1, by);
+      snapshotTruckDay(get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number));
+    } else {
+      run(`UPDATE trucks SET rip_suggested = 0 WHERE org_id = ? AND number = ?`, orgId, number);
+    }
+    res.json({ ok: true });
+  });
+
+  // Área sugerida por GPS nocturno: aceptar mueve el truck a esa área; descartar la limpia.
+  router.post('/api/truck/:org/:number/area-suggest', (req, res) => {
+    const orgId = normNum(req.params.org), number = normNum(req.params.number);
+    const { action, by } = req.body || {};
+    const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number);
+    if (!row) return res.status(404).json({ error: 'truck no existe' });
+    if (action === 'accept' && row.suggested_area) {
+      run(`UPDATE trucks SET area = ?, suggested_area = '', updated_at = ? WHERE org_id = ? AND number = ?`,
+        row.suggested_area, nowISO(), orgId, number);
+      logChange(orgId, number, 'area', row.area, row.suggested_area, by);
+      snapshotTruckDay(get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number));
+    } else {
+      run(`UPDATE trucks SET suggested_area = '' WHERE org_id = ? AND number = ?`, orgId, number);
+    }
+    res.json({ ok: true });
+  });
+
+  // Escaneo manual de RIP RAP sobre una ventana de días (default 30).
+  router.post('/api/scan/riprap', async (req, res) => {
+    if (!newmile) return res.status(503).json({ error: 'NewMile no configurado' });
+    try {
+      if (!newmile.connected && !(await newmile.resume())) {
+        return res.status(401).json({ error: 'NOT_CONNECTED', hint: 'abre /api/newmile/connect' });
+      }
+      res.json({ ok: true, ...(await scanRipRap(newmile, Number((req.body || {}).days) || 30)) });
+    } catch (e) {
+      res.status(500).json({ error: String(e.message || e) });
+    }
   });
 
   // Confirm a ⚑ NUEVO: place it (division + area) and clear the flag.

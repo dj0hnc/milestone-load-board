@@ -185,6 +185,15 @@ let date=null;           // ISO date being viewed
 let typeFilter=""; let showFaltan=false;
 let offline=false;
 
+// multi-usuario: cada quien pone su nombre una vez; viaja en cada cambio (auditoría)
+let WHO=localStorage.getItem("cactus-who")||"";
+function ensureWho(){
+  if(WHO)return;
+  const n=prompt("¿Quién eres? (tu nombre queda en cada cambio que hagas)")||"";
+  WHO=n.trim().slice(0,40);
+  if(WHO)localStorage.setItem("cactus-who",WHO);
+}
+
 const $=id=>document.getElementById(id);
 const CACHE_KEY="cactus-tracker-cache-v1";
 const QUEUE_KEY="cactus-tracker-queue-v1";
@@ -237,8 +246,9 @@ window.addEventListener("online",()=>{flushQueue();fetchBoard();});
 // ---------- state taps ----------
 function truckOf(num){return (board.trucks||[]).find(t=>t.number===num);}
 function setSt(t,s){
-  t.state=s; t.state_source="manual";
-  queuePush({path:"/api/state",body:{date,org:"CACTUS",number:t.number,state:s}});
+  ensureWho();
+  t.state=s; t.state_source="manual"; t.state_by=WHO;
+  queuePush({path:"/api/state",body:{date,org:"CACTUS",number:t.number,state:s,by:WHO}});
   render();
 }
 function tapChip(num){const t=truckOf(num);if(!t)return; setSt(t,t.state==="a"?"p":"a");}
@@ -358,12 +368,16 @@ function chipHtml(t){
     ${off?`<span class="badge status">${STATUS_LBL[t.status]||esc(t.status)}${t.return_date?" · "+esc(t.return_date):""}</span>`:""}
     ${drvChg?`<span class="badge drvchg" title="driver cambió">driver cambió: antes ${esc(drvChg.prev||"?")}</span>`:""}
     ${flag?`<span class="badge flag" onclick="event.stopPropagation();openFlag('${esc(t.number)}')">⚑ ${esc(flag)}</span>`:""}
+    ${t.suggested_area&&!board.historical?`<span class="badge" style="background:var(--blue-bg);color:var(--blue);cursor:pointer;" onclick="event.stopPropagation();openAreaSuggest('${esc(t.number)}')">📍 duerme en ${esc(t.suggested_area)}</span>`:""}
     ${t.note?`<div class="note">${esc(t.note)}</div>`:""}
   </div>`;
 }
 
 function renderBanners(){
   let html="";
+  if(board.historical){
+    html+=`<div class="banner off"><b>📅 VISTA HISTÓRICA — ${date}</b> — status y notas como estaban ese día. Las ediciones ✎ aplican al truck de HOY.</div>`;
+  }
   if(offline){
     const c=localStorage.getItem(CACHE_KEY);
     const at=c?new Date(JSON.parse(c).at):null;
@@ -379,8 +393,15 @@ function renderBanners(){
     html+=`<div class="banner baja"><b>¿DE BAJA? — ya no aparecen en el fleet de NewMile</b><div>`+
       bajas.map(t=>`<span class="chip-mini" onclick="openResolveRemoved('${esc(t.number)}')">${esc(t.number)}</span>`).join("")+`</div></div>`;
   }
+  // cargaron RIP RAP en NewMile pero no están marcados como RIP — confirmar con un tap
+  const ripSug=(board.trucks||[]).filter(t=>t.rip_suggested&&!t.rip_rap&&!t.archived);
+  if(ripSug.length){
+    html+=`<div class="banner" style="background:var(--blue-bg);border:1.5px solid var(--blue);"><b style="color:var(--blue);">🪨 ${ripSug.length} CARGARON RIP RAP (NewMile) — ¿marcarlos como RIP?</b><div>`+
+      ripSug.map(t=>{const ev=ripEv(t);return `<span class="chip-mini" style="border-color:var(--blue);color:var(--blue);" onclick="openRipSuggest('${esc(t.number)}')">${esc(t.number)}${ev?` · ${ev.loads} carga${ev.loads>1?"s":""}`:""}</span>`;}).join("")+`</div></div>`;
+  }
   $("banners").innerHTML=html;
 }
+function ripEv(t){try{return JSON.parse(t.rip_evidence||"");}catch(e){return null;}}
 
 function renderStatusbar(){
   const m=(board&&board.meta)||{};
@@ -399,10 +420,19 @@ function buildHeader(){
   const divs=(board&&board.divisions)||[];
   $("fleets").innerHTML=divs.map(d=>`<button class="fleet-tab ${d.id===division?"on":""}" onclick="setDivision('${d.id}')">${esc(d.label)}</button>`).join("");
   const week=(board&&board.week)||{};
-  $("days").innerHTML=DAYS.map(dd=>{
-    const iso=week[dd];
-    return `<button class="day ${iso===date?"on":""} ${iso===board.today?"today":""}" onclick="setDate('${iso}')" title="${iso||""}">${dd}</button>`;
-  }).join("");
+  // ◀ ▶ = semana anterior / siguiente (historial del mes: cualquier fecha guarda su propio día)
+  $("days").innerHTML=
+    `<button class="day" onclick="shiftWeek(-7)" title="Semana anterior">◀</button>`+
+    DAYS.map(dd=>{
+      const iso=week[dd];
+      return `<button class="day ${iso===date?"on":""} ${iso===board.today?"today":""}" onclick="setDate('${iso}')" title="${iso||""}">${dd}</button>`;
+    }).join("")+
+    `<button class="day" onclick="shiftWeek(7)" title="Semana siguiente">▶</button>`+
+    (date!==board.today?`<button class="day" style="width:auto;padding:0 10px" onclick="setDate('${board.today}')" title="Regresar a hoy">HOY</button>`:"");
+}
+function shiftWeek(days){
+  const d=new Date(date+"T12:00:00Z"); d.setUTCDate(d.getUTCDate()+days);
+  setDate(d.toISOString().slice(0,10));
 }
 
 function setType(t){typeFilter=t;render();}
@@ -457,21 +487,84 @@ function openEdit(num){
       <div><label>Tags (3X8, SUBHAULER…)</label><input type="text" id="eTags" value="${esc(t.tags)}"></div>
     </div>
     <div class="chk"><input type="checkbox" id="eRip" ${t.rip_rap?"checked":""}><label for="eRip" style="margin:0;text-transform:none;color:var(--ink);font-size:14px;">Puede RIP RAP (franja azul)</label></div>
+    ${t.parked_city?`<p style="font-size:12px;color:var(--mut);margin-top:10px;">📍 última posición (Samsara): <b>${esc(t.parked_city)}</b>${t.parked_at?" · "+new Date(t.parked_at).toLocaleString("es-MX",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}):""}</p>`:""}
     <div class="actions">
+      <button class="b-cancel" onclick="openHistory('${esc(t.number)}')">Historial</button>
       <button class="b-cancel" onclick="closeModal()">Cancelar</button>
       <button class="b-save" onclick="saveEdit('${esc(t.number)}')">Guardar</button>
     </div>`);
 }
 function saveEdit(num){
   const t=truckOf(num);if(!t)return;
+  ensureWho();
   const rest=[...document.querySelectorAll("#eRest label.on input")].map(i=>i.value).join(",");
   const body={
     note:$("eNote").value, status:$("eStatus").value, return_date:$("eReturn").value,
     rest_days:rest, division:$("eDiv").value, area:$("eArea").value.toUpperCase(),
-    phone:$("ePhone").value, tags:$("eTags").value.toUpperCase(), rip_rap:$("eRip").checked?1:0
+    phone:$("ePhone").value, tags:$("eTags").value.toUpperCase(), rip_rap:$("eRip").checked?1:0,
+    by:WHO
   };
   Object.assign(t,body,{rip_rap:body.rip_rap});
   queuePush({path:`/api/truck/CACTUS/${encodeURIComponent(num)}`,body});
+  closeModal();render();
+}
+
+async function openHistory(num){
+  const t=truckOf(num);if(!t)return;
+  let h={changes:[],activity:[],parking:[]};
+  try{h=await(await fetch(`${API}/api/truck/CACTUS/${encodeURIComponent(num)}/history`)).json();}catch(e){}
+  const fmt=ts=>new Date(ts).toLocaleString("es-MX",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
+  openModal(`
+    <h3>Historial — Truck ${esc(num)}</h3>
+    ${h.parking.length?`<label>Dónde durmió (GPS)</label><div style="font-size:13px;">${h.parking.map(p=>`${p.date.slice(5)}: <b>${esc(p.city)}</b>`).join(" · ")}</div>`:""}
+    <label>Cambios (quién y cuándo)</label>
+    <div style="font-size:13px;max-height:200px;overflow:auto;">
+      ${h.changes.length?h.changes.map(c=>`<div style="padding:3px 0;border-bottom:1px solid #eef0f5;">${fmt(c.ts)} · <b>${esc(c.field)}</b>: "${esc(c.old_value)}" → "${esc(c.new_value)}"${c.changed_by?` · <span style="color:var(--blue)">${esc(c.changed_by)}</span>`:""}</div>`).join(""):"<span style='color:var(--mut)'>sin cambios registrados</span>"}
+    </div>
+    <label>Últimas cargas</label>
+    <div style="font-size:13px;max-height:140px;overflow:auto;">
+      ${h.activity.length?h.activity.map(a=>`<div>${a.load_date.slice(5)}: ${a.loads} carga${a.loads>1?"s":""}${a.driver?" · "+esc(a.driver):""}</div>`).join(""):"<span style='color:var(--mut)'>sin cargas</span>"}
+    </div>
+    <div class="actions"><button class="b-cancel" onclick="openEdit('${esc(num)}')">← Editar</button><button class="b-save" onclick="closeModal()">Cerrar</button></div>`);
+}
+
+function openRipSuggest(num){
+  const t=truckOf(num);if(!t)return;
+  const ev=ripEv(t);
+  openModal(`
+    <h3>🪨 RIP RAP — Truck ${esc(num)}</h3>
+    <p style="font-size:14px;">Según NewMile cargó rip rap${ev?`: <b>${ev.loads} carga${ev.loads>1?"s":""}</b> entre ${ev.first} y ${ev.last} (${(ev.materials||[]).map(esc).join(", ")})`:""}.</p>
+    <p style="font-size:13px;color:var(--mut);">Aceptar lo marca RIP (franja azul + cuenta en "RIP libres"). Tu marca manda: esto solo propone.</p>
+    <div class="actions">
+      <button class="b-cancel" onclick="applyRip('${esc(num)}','dismiss')">No puede / descartar</button>
+      <button class="b-save" style="background:var(--blue)" onclick="applyRip('${esc(num)}','accept')">Sí, marcar RIP</button>
+    </div>`);
+}
+function applyRip(num,action){
+  const t=truckOf(num);if(!t)return;
+  ensureWho();
+  if(action==="accept"){t.rip_rap=1;}
+  t.rip_suggested=0;
+  queuePush({path:`/api/truck/CACTUS/${encodeURIComponent(num)}/rip`,body:{action,by:WHO}});
+  closeModal();render();
+}
+
+function openAreaSuggest(num){
+  const t=truckOf(num);if(!t)return;
+  openModal(`
+    <h3>📍 Truck ${esc(num)} duerme en ${esc(t.suggested_area)}</h3>
+    <p style="font-size:14px;">GPS de Samsara (madrugadas): está estacionando en <b>${esc(t.suggested_area)}</b>, pero lo tienes en <b>${esc(t.area||"(SIN YARD)")}</b>.</p>
+    <div class="actions">
+      <button class="b-cancel" onclick="applyAreaSuggest('${esc(num)}','dismiss')">Dejarlo donde está</button>
+      <button class="b-save" onclick="applyAreaSuggest('${esc(num)}','accept')">Moverlo a ${esc(t.suggested_area)}</button>
+    </div>`);
+}
+function applyAreaSuggest(num,action){
+  const t=truckOf(num);if(!t)return;
+  ensureWho();
+  if(action==="accept"){t.area=t.suggested_area;}
+  t.suggested_area="";
+  queuePush({path:`/api/truck/CACTUS/${encodeURIComponent(num)}/area-suggest`,body:{action,by:WHO}});
   closeModal();render();
 }
 
@@ -490,9 +583,10 @@ function openConfirmNew(num){
 }
 function confirmNew(num){
   const t=truckOf(num);if(!t)return;
+  ensureWho();
   const division_=$("cnDiv").value, area=$("cnArea").value.toUpperCase();
   Object.assign(t,{is_new:0,division:division_,area:area||t.area});
-  queuePush({path:`/api/truck/CACTUS/${encodeURIComponent(num)}/confirm-new`,body:{division:division_,area}});
+  queuePush({path:`/api/truck/CACTUS/${encodeURIComponent(num)}/confirm-new`,body:{division:division_,area,by:WHO}});
   closeModal();render();
 }
 

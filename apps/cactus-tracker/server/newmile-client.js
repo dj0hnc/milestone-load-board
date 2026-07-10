@@ -369,6 +369,24 @@ class NewMileClient {
     return lists.filter(Boolean).flat();
   }
 
+  // Load tickets WITH material columns (keys verified live via describe_report 2026-07-10:
+  // 'material' + 'alternative_material_name') — powers the RIP RAP capability scan.
+  async loadTicketsMaterialsAll(fromISO, toISO) {
+    let rows = [], page = 1, totalPages = 1;
+    do {
+      const r = await this.callTool('query_report', {
+        report_name: 'load_tickets',
+        filters: { order_date_from: fromISO, order_date_to: toISO },
+        columns: ['truck_number', 'fleet', 'material', 'alternative_material_name', 'order_date'],
+        page_size: 200, page
+      });
+      rows = rows.concat((r && (r.rows || r.results || r.data)) || []);
+      totalPages = (r && (r.total_pages || r.pages)) || 1;
+      page++;
+    } while (page <= totalPages && page <= 40);
+    return rows;
+  }
+
   // Multi-day load_tickets with order_date (returns MM/DD/YY) — activity + rotation driver.
   async loadTicketsRangeAll(fromISO, toISO) {
     let rows = [], page = 1, totalPages = 1;

@@ -21,8 +21,9 @@ const { open } = require('./db');
 const seed = require('./seed');
 const { createRouter } = require('./routes');
 const { NewMileClient } = require('./newmile-client');
-const { syncRoster, syncActivity } = require('./sync-newmile');
+const { syncRoster, syncActivity, scanRipRap } = require('./sync-newmile');
 const { syncSamsara } = require('./sync-samsara');
+const { snapshotAllToday } = require('./history');
 const { ctParts } = require('./util');
 
 function loadConfig() {
@@ -36,6 +37,7 @@ function createTracker(opts) {
 
   open();
   seed.main(false); // idempotent first-boot seed
+  try { snapshotAllToday(); } catch (e) { log('snapshot inicial falló: ' + e.message); }
 
   const newmile = new NewMileClient({
     config: { mcpUrl: (config.newmile && config.newmile.mcpUrl) || 'https://app.newmile.com/mcp', oauth: (config.newmile && config.newmile.oauth) || {} },
@@ -57,9 +59,12 @@ function createTracker(opts) {
         lastRosterDay = dateISO;
         if (newmile.connected || await newmile.resume()) {
           log('roster sync 4:30 → ' + JSON.stringify(await syncRoster(newmile)));
+          // rip-rap scan diario (ventana corta; el backfill largo se corre manual)
+          try { log('riprap scan → ' + JSON.stringify(await scanRipRap(newmile, 14))); } catch (e) { log('riprap scan error: ' + e.message); }
         } else log('roster sync saltado: NewMile sin sesión');
       }
-      if (hour === 5 && minute >= 0 && lastSamsaraDay !== dateISO) {
+      // 4:10 AM: dentro de la ventana 3-6 en que los trucks duermen — captura el parking GPS
+      if (hour === 4 && minute >= 10 && lastSamsaraDay !== dateISO) {
         lastSamsaraDay = dateISO;
         log('samsara sync → ' + JSON.stringify(await syncSamsara(config)));
       }
@@ -69,6 +74,7 @@ function createTracker(opts) {
         if (newmile.connected || await newmile.resume()) {
           log('activity sync ' + hour + ':00 → ' + JSON.stringify(await syncActivity(newmile)));
         }
+        snapshotAllToday(); // el estado del día queda guardado conforme avanza (historial)
       }
     } catch (e) {
       log('scheduler error: ' + (e.message || e));

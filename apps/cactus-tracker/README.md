@@ -47,7 +47,8 @@ refresh token mantiene la sesión sola (los jobs corren sin intervención).
 |---|---|---|
 | 4:30 AM | Roster (NewMile fleet 5) | drivers/trailer types actualizados; badge 48 h si cambió driver; truck nuevo → banner rojo ⚑ NUEVO; truck desaparecido → ¿de baja? (nada se borra solo) |
 | cada hora 4 AM–7 PM | Actividad (load_tickets + assignments de hoy) | última carga, días sin carga (⚠ ≥5, ⛔ ≥14), driver real de hoy; **auto-cover**: truck con carga hoy O ya asignado en NewMile (plan empujado desde el desktop) se marca ⚡ azul solo — FALTAN se vuelve el hueco real |
-| 5:00 AM | Samsara (solo Cactus) | flags en nombres de vehículo ("IN SHOP…", "Deleased…") propuestos para confirmar; tags de terminal (Paris=North, Lufkin=South) sugieren división a los NUEVOS |
+| 4:10 AM | Samsara (solo Cactus) | **GPS de dónde duerme cada truck** (ventana 3–6 AM): la mayoría de las últimas 7 noches sugiere el área correcta ("📍 duerme en TYLER", tú aceptas o descartas — nada se mueve solo); además flags en nombres de vehículo y tags de terminal para los NUEVOS |
+| 4:30 AM | Scan RIP RAP (NewMile) | trucks que cargaron material rip rap en los últimos 14 días y no están marcados RIP → banner azul con evidencia (cargas, fechas, material); backfill manual: `POST /api/scan/riprap {days:30}`. Verificado en vivo 7/10/26: materiales "12\" Rip Rap" / "24\" Rip Rap" |
 
 **Subhaulers: NO están en Samsara.** Todo lo de subs (BT, BW, HS, AE, Livingston) sale
 exclusivamente de NewMile; el sync de Samsara los salta por diseño (`is_sub = 1`).
@@ -61,6 +62,19 @@ exclusivamente de NewMile; el sync de Samsara los salta por diseño (`is_sub = 1
    notas, status y días de descanso (el sync jamás pisa tus campos).
 4. Estado por fecha real (no por día de semana): el jueves pasado nunca se hereda; no
    hace falta job de reset a las 3 AM.
+
+## Multi-usuario e historial
+
+- **Cualquiera del equipo entra a la misma URL** y ve el mismo board vivo (notas, bajas,
+  vacaciones, marcas). Al primer uso la app pregunta "¿quién eres?" y ese nombre viaja
+  con cada cambio: el historial por truck (botón Historial en ✎) muestra quién cambió
+  qué y cuándo. La conexión a NewMile es una sola (del server, para los syncs); no hace
+  falta que cada usuario tenga cuenta.
+- **Historial diario**: cada hora se guarda un snapshot de cómo quedó cada truck ese
+  día. Con las flechas ◀ ▶ navegas semanas hacia atrás y al abrir un día pasado ves el
+  board COMO ESTABA ese día (quién estaba down, qué nota tenía), no el estado de hoy.
+- Auditoría completa en `truck_log` (cambios), `truck_days` (snapshots), `parking_log`
+  (dónde durmió) y `dispatch_state.marked_by` (quién marcó cada truck).
 
 ## Fase 2 (ya preparada en el schema)
 
