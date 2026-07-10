@@ -451,7 +451,8 @@ function renderBanners(){
     ["removed","❓ REMOVED",rv.bajas.length,"#8a5a10","#fdf3e3"],
     ["rip","🪨 RIP",rv.rip.length,"var(--blue)","var(--blue-bg)"],
     ["area","📍 AREA",rv.areas.length,"var(--blue)","var(--blue-bg)"],
-    ["flag","⚑ FLAGS",rv.flags.length,"#7a2fa8","#f3e8fb"]
+    ["flag","⚑ FLAGS",rv.flags.length,"#7a2fa8","#f3e8fb"],
+    ["off","🌴 TIME OFF",rv.offs.length,"#c98a2f","#fdf3e3"]
   ].filter(c=>c[2]>0);
   if(chips.length){
     html+=`<div class="banner" style="background:#fff;border:1.5px solid #cdd3df;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px;">
@@ -464,16 +465,34 @@ function renderBanners(){
 function ripEv(t){try{return JSON.parse(t.rip_evidence||"");}catch(e){return null;}}
 function reviewSets(){
   const ts=(board&&board.trucks||[]).filter(t=>!t.archived);
+  const offs=[];
+  for(const t of ts)for(const o of (t.time_off||[]))offs.push({t,o});
+  offs.sort((a,b)=>a.o.from_date<b.o.from_date?-1:1);
   return {
     nuevos:ts.filter(t=>t.is_new),
     bajas:ts.filter(t=>t.maybe_removed&&!t.is_new),
     rip:ts.filter(t=>t.rip_suggested&&!t.rip_rap),
     areas:ts.filter(t=>t.suggested_area&&!t.is_new),
-    flags:ts.filter(t=>(t.samsara_flag||t.detected_flag)&&!t.is_new)
+    flags:ts.filter(t=>(t.samsara_flag||t.detected_flag)&&!t.is_new),
+    offs
   };
 }
 function openReview(cat){
   const rv=reviewSets();
+  if(cat==="off"){ // agenda de descansos: quién está o estará fuera, en orden de fecha
+    openModal(`
+      <h3>🌴 Scheduled time off</h3>
+      <div style="max-height:60vh;overflow:auto;">
+        ${rv.offs.map(({t,o})=>`
+          <div style="display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid #eef0f5;">
+            <span style="font-family:'Barlow Condensed';font-weight:800;font-size:20px;min-width:86px;">${esc(dnum(t))}</span>
+            <span style="flex:1;font-size:13px;color:#4a5164;">${OFF_EMOJI[o.reason]||""} <b>${esc(o.reason.toUpperCase())}</b> ${mdy(o.from_date)} – ${mdy(o.to_date)}${o.created_by?` · by ${esc(o.created_by)}`:""}</span>
+            <button class="b-save" style="flex:none;padding:8px 14px;font-size:14px;" onclick="openEdit('${t.org_id}','${esc(t.number)}')">Edit</button>
+          </div>`).join("")||"<p style='color:var(--mut)'>Nothing scheduled.</p>"}
+      </div>
+      <div class="actions"><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
+    return;
+  }
   const cfg={
     new:{title:"⚑ NEW trucks — assign division + area",list:rv.nuevos,info:t=>`${esc(t.driver||"no driver")}${t.trailer_type?" · "+esc(t.trailer_type):""}${t.suggested_division?" · suggested: <b>"+esc(t.suggested_division)+"</b>":""}`,fn:"openConfirmNew"},
     removed:{title:"❓ Removed? — no longer in the NewMile fleet",list:rv.bajas,info:t=>`${esc(t.driver||"")} · ${esc(tabLbl(t))}`,fn:"openResolveRemoved"},
@@ -523,7 +542,14 @@ function buildHeader(){
       return `<button class="day ${iso===date?"on":""} ${iso===board.today?"today":""}" onclick="setDate('${iso}')" title="${iso||""}">${dd}</button>`;
     }).join("")+
     `<button class="day" onclick="shiftWeek(7)" title="Next week">▶</button>`+
+    `<button class="day" style="width:auto;padding:0 9px" onclick="openCal()" title="Jump to any date">📅</button>`+
+    `<input type="date" id="calJump" style="position:absolute;width:1px;height:1px;opacity:0;" onchange="if(this.value)setDate(this.value)">`+
     (date!==board.today?`<button class="day" style="width:auto;padding:0 10px" onclick="setDate('${board.today}')" title="Back to today">TODAY</button>`:"");
+}
+function openCal(){
+  const c=$("calJump");c.value=date;
+  if(c.showPicker)try{c.showPicker();return;}catch(e){}
+  c.focus();c.click();
 }
 function shiftWeek(days){
   const d=new Date(date+"T12:00:00Z"); d.setUTCDate(d.getUTCDate()+days);
