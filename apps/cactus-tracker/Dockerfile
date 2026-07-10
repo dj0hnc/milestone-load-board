@@ -15,6 +15,8 @@ RUN npm install --omit=dev --no-audit --no-fund
 COPY server ./server
 COPY public ./public
 COPY data/roster_seed.json data/config.template.json ./data/
+# copia extra fuera del volumen: si /app/data se monta vacío, el seed sigue disponible
+COPY data/roster_seed.json ./seed-data/
 VOLUME /app/data
 EXPOSE 8791
 ENV PORT=8791

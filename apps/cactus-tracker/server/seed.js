@@ -19,7 +19,12 @@ const path = require('path');
 const { open, run, get, nowISO } = require('./db');
 const { normNum, splitNameFlag } = require('./util');
 
-const SEED_PATH = path.join(__dirname, '..', 'data', 'roster_seed.json');
+// data/ puede estar tapado por un volumen en la nube — el seed también vive en seed-data/
+const SEED_PATH = [
+  process.env.CACTUS_SEED,
+  path.join(__dirname, '..', 'data', 'roster_seed.json'),
+  path.join(__dirname, '..', 'seed-data', 'roster_seed.json')
+].filter(Boolean).find(p => { try { return fs.existsSync(p); } catch (e) { return false; } });
 
 // Areas that are actually subhauler groups parked inside the Cactus board today.
 const SUB_AREAS = ['BUTLER / WALKER / LIVINGSTON', 'RKH SAWYER'];
@@ -145,6 +150,7 @@ function main(force) {
     console.log(`seed: DB already has ${existing} trucks — skipping (use --force to reload)`);
     return;
   }
+  if (!SEED_PATH) { console.log('seed: no encontré roster_seed.json — arranco vacío (el sync de NewMile puebla el board)'); return; }
   const seed = JSON.parse(fs.readFileSync(SEED_PATH, 'utf8'));
   const t = seedTrucks(seed);
   const a = seedActivity(seed);

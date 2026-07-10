@@ -19,7 +19,9 @@ const path = require('path');
 const fs = require('fs');
 const { DatabaseSync } = require('node:sqlite');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+// CACTUS_DATA_DIR: en la nube apúntalo al disco persistente (p.ej. /home/data en
+// Azure App Service) para que DB, config y tokens sobrevivan reinicios y deploys.
+const DATA_DIR = process.env.CACTUS_DATA_DIR || path.join(__dirname, '..', 'data');
 const DB_PATH = process.env.CACTUS_DB || path.join(DATA_DIR, 'cactus.db');
 
 let db = null;
@@ -170,4 +172,4 @@ function metaSet(key, value) {
 
 function nowISO() { return new Date().toISOString(); }
 
-module.exports = { open, get, all, run, metaGet, metaSet, nowISO, DB_PATH };
+module.exports = { open, get, all, run, metaGet, metaSet, nowISO, DB_PATH, DATA_DIR };
