@@ -34,6 +34,18 @@ function ktDivisionHint(raw) {
   return { P: 'POWDERLY', R: 'RHOME', W: 'WHITEWRIGHT' }[m[1]] || null;
 }
 
+// NewMile trailer names → los códigos cortos de las listas de despacho (SPEC §2).
+const TRAILER_SHORT = {
+  'ALUMINUM END DUMP': 'AL-ED', 'END DUMP': 'ED', 'STEEL END DUMP': 'ST-ED',
+  'ROUND BODY END DUMP': 'RB-ED', 'SUPER DUMP W/ STEEL BED': 'SD Steel',
+  'SUPER DUMP W/ DEMO BED': 'SD Demo', 'BELLY DUMP': 'BD',
+  'ALUMINUM TRACTOR TRAILER': 'AL-TT', 'DEMO': 'Demo'
+};
+function shortTrailer(t) {
+  const k = normNum(t);
+  return TRAILER_SHORT[k] || String(t || '').trim();
+}
+
 // The number AS NEWMILE SHOWS IT: keeps prefixes and terminal letters ("KT-7040 P"),
 // only drops status suffixes ("1082-DOWN 12/12/2024" → "1082").
 function displayTruckNumber(raw) {
@@ -122,4 +134,4 @@ function reportDateToISO(s) {
   return `${y}-${String(m[1]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`;
 }
 
-module.exports = { normNum, splitNameFlag, canonicalTruckNumber, displayTruckNumber, ktDivisionHint, normLoadTruck, ctParts, todayCT, shiftISO, daysBetween, weekDatesCT, reportDateToISO, CT };
+module.exports = { normNum, splitNameFlag, canonicalTruckNumber, displayTruckNumber, ktDivisionHint, shortTrailer, normLoadTruck, ctParts, todayCT, shiftISO, daysBetween, weekDatesCT, reportDateToISO, CT };

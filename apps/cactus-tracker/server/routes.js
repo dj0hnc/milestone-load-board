@@ -425,7 +425,13 @@ function createRouter({ config, newmile, log }) {
   router.get('/api/health', (req, res) => res.json({ ok: true, today: todayCT() }));
 
   // ---------- static frontend ----------
-  router.use(express.static(path.join(__dirname, '..', 'public')));
+  // el HTML nunca se cachea (cada deploy llega al instante al cel); los iconos sí
+  router.use(express.static(path.join(__dirname, '..', 'public'), {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+      else if (/\.(png|webmanifest)$/.test(filePath)) res.setHeader('Cache-Control', 'public, max-age=86400');
+    }
+  }));
 
   return router;
 }

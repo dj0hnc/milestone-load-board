@@ -16,7 +16,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { open, run, get, nowISO } = require('./db');
+const { open, run, get, metaGet, metaSet, nowISO } = require('./db');
 const { normNum, splitNameFlag } = require('./util');
 
 // data/ puede estar tapado por un volumen en la nube — el seed también vive en seed-data/
@@ -149,6 +149,25 @@ function main(force) {
   run(`INSERT INTO divisions (org_id,id,label,samsara_tag_id,sort) VALUES ('KT','ICS','KT ICS',NULL,4) ON CONFLICT(org_id,id) DO NOTHING`);
   // display_number para DBs anteriores a la columna
   run(`UPDATE trucks SET display_number = number WHERE display_number IS NULL OR display_number = ''`);
+  // one-time: aplicar los tipos de trailer DE LAS LISTAS del despacho como base blindada
+  // (trailer_override=1: el sync de NewMile ya no los pisa). Corre también en producción.
+  if (!metaGet('mig_seed_trailers') && SEED_PATH) {
+    try {
+      const seed = JSON.parse(fs.readFileSync(SEED_PATH, 'utf8'));
+      let n = 0;
+      for (const list of [seed.north, seed.south]) {
+        for (const t of list || []) {
+          if (!t.tt) continue;
+          const r = run(`UPDATE trucks SET trailer_type = ?, trailer_override = 1, updated_at = ?
+                         WHERE org_id = 'CACTUS' AND number = ? AND trailer_override = 0`,
+            t.tt, nowISO(), normNum(t.t));
+          n += r.changes;
+        }
+      }
+      metaSet('mig_seed_trailers', '1');
+      console.log(`seed: trailer types de la lista aplicados a ${n} trucks (blindados)`);
+    } catch (e) { console.log('seed trailers migration falló: ' + e.message); }
+  }
   const existing = get('SELECT COUNT(*) AS c FROM trucks').c;
   if (existing > 0) {
     console.log(`seed: DB already has ${existing} trucks — skipping (use --force to reload)`);

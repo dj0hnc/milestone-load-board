@@ -25,7 +25,7 @@
  *     first load lands — no double-marking a truck that is already dispatched.
  */
 const { all, get, run, metaSet, nowISO } = require('./db');
-const { normNum, splitNameFlag, canonicalTruckNumber, displayTruckNumber, ktDivisionHint, normLoadTruck, todayCT, shiftISO, reportDateToISO } = require('./util');
+const { normNum, splitNameFlag, canonicalTruckNumber, displayTruckNumber, ktDivisionHint, shortTrailer, normLoadTruck, todayCT, shiftISO, reportDateToISO } = require('./util');
 
 const ACTIVITY_WINDOW_DAYS = 21;   // enough history to compute "X días sin carga" up to red (>=14)
 
@@ -102,7 +102,7 @@ async function syncRoster(client) {
       if (!number) continue;
       seen.add(number);
       const driver = (t.driver_name || t.driver || '').trim();
-      const trailer = (t.truck_type || t.trailer_type || '').trim();
+      const trailer = shortTrailer(t.truck_type || t.trailer_type || ''); // "Aluminum End Dump" → AL-ED
       const nmId = t.id != null ? t.id : (t.truck_id != null ? t.truck_id : null);
 
       const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', org.id, number);
