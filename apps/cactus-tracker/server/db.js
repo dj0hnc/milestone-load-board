@@ -19,9 +19,11 @@ const path = require('path');
 const fs = require('fs');
 const { DatabaseSync } = require('node:sqlite');
 
-// CACTUS_DATA_DIR: en la nube apúntalo al disco persistente (p.ej. /home/data en
-// Azure App Service) para que DB, config y tokens sobrevivan reinicios y deploys.
-const DATA_DIR = process.env.CACTUS_DATA_DIR || path.join(__dirname, '..', 'data');
+// CACTUS_DATA_DIR: en la nube apúntalo al disco persistente. En Azure App Service ni
+// hace falta: se detecta solo (WEBSITE_INSTANCE_ID) y usa /home/data, que sobrevive
+// reinicios y redeploys (wwwroot se reemplaza en cada zip deploy; /home/data no).
+const onAzure = !!process.env.WEBSITE_INSTANCE_ID;
+const DATA_DIR = process.env.CACTUS_DATA_DIR || (onAzure ? '/home/data' : path.join(__dirname, '..', 'data'));
 const DB_PATH = process.env.CACTUS_DB || path.join(DATA_DIR, 'cactus.db');
 
 let db = null;
