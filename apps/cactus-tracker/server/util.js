@@ -16,12 +16,28 @@ function normNum(s) {
 // Split a NewMile/Samsara vehicle name into { number, flag }.
 // "1082-DOWN 12/12/2024" → { number:'1082', flag:'DOWN 12/12/2024' }
 // "553 Deleased Need Camera" → { number:'553', flag:'Deleased Need Camera' }
-// "BW813" → { number:'BW813', flag:'' }
+// "BW813" → { number:'BW813', flag:'' } · "KT-7045 P" → { number:'KT-7045', flag:'' }
 function splitNameFlag(raw) {
   const s = normNum(raw);
-  const m = /^([A-Z]*\d+[A-Z]*)[\s\-–—]*(.*)$/.exec(s);
+  const m = /^([A-Z]{0,4}[\s-]*\d+[A-Z]*)[\s\-–—]*(.*)$/.exec(s);
   if (!m) return { number: s, flag: '' };
-  return { number: m[1], flag: (m[2] || '').trim() };
+  let flag = (m[2] || '').trim();
+  if (flag.length <= 1) flag = ''; // "KT-7045 P": the trailing letter is a type marker, not a flag
+  return { number: m[1].replace(/\s+/g, ''), flag };
+}
+
+// Org-specific canonical number. CKJ/KT trucks appear as "KT-7040 P" in the truck
+// resource, "CKJ7040" in load tickets and "KT-7040" in Samsara — canonical is the
+// bare digits (same rule as the desktop's rotation.js). Everything else as-is.
+function canonicalTruckNumber(orgId, raw) {
+  const s = normNum(raw).replace(/\s+/g, '');
+  if (orgId === 'KT') {
+    const m = /^(?:KT|CKJ)-?(\d{2,})/.exec(s);
+    if (m) return m[1];
+    const m2 = /^(\d{2,})$/.exec(s);
+    if (m2) return m2[1];
+  }
+  return s;
 }
 
 // Normalize a load_tickets truck_number given the fleet it came from.
@@ -88,4 +104,4 @@ function reportDateToISO(s) {
   return `${y}-${String(m[1]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`;
 }
 
-module.exports = { normNum, splitNameFlag, normLoadTruck, ctParts, todayCT, shiftISO, daysBetween, weekDatesCT, reportDateToISO, CT };
+module.exports = { normNum, splitNameFlag, canonicalTruckNumber, normLoadTruck, ctParts, todayCT, shiftISO, daysBetween, weekDatesCT, reportDateToISO, CT };

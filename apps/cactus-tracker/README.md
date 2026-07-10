@@ -76,12 +76,19 @@ exclusivamente de NewMile; el sync de Samsara los salta por diseño (`is_sub = 1
 - Auditoría completa en `truck_log` (cambios), `truck_days` (snapshots), `parking_log`
   (dónde durmió) y `dispatch_state.marked_by` (quién marcó cada truck).
 
-## Fase 2 (ya preparada en el schema)
+## CKJ / KT (activo)
 
-- `orgs` trae **KT** (fleet 6, Samsara "CKJ Transport") y **SUBS** (NewMile only)
-  pre-creadas deshabilitadas: activar org + divisiones (Powderly/Rhome/Whitewright) y
-  aparece el tab, sin tocar schema.
-- GPS nocturno de Samsara (punto 3–5 AM) para autoclasificar áreas del South.
+Tabs **KT POWDERLY / RHOME / WHITEWRIGHT** junto a los de Cactus. Sin seed manual: el
+primer sync de NewMile (fleet 6) trae todos los trucks de KT como ⚑ NUEVO y los asignas
+a su terminal con dos taps. Samsara de CKJ funciona igual que el de Cactus (token
+"CKJ Transport" en config): GPS de dónde duermen, sugerencia de área y flags de nombres.
+Normalización verificada contra el desktop: "KT-7040 P" (roster) = "CKJ7040" (loads) =
+"KT-7040" (Samsara) = truck **7040**; los CKJ### de 3 dígitos son subs afiliados y otros
+carriers (Arango) nunca se auto-crean en el board de KT.
+
+## Fase 2 restante
+
+- Módulo propio de **SUBS** (org pre-creada deshabilitada, NewMile only).
 
 ## Archivos
 

@@ -25,7 +25,7 @@
  *     first load lands — no double-marking a truck that is already dispatched.
  */
 const { all, get, run, metaSet, nowISO } = require('./db');
-const { normNum, splitNameFlag, normLoadTruck, todayCT, shiftISO, reportDateToISO } = require('./util');
+const { normNum, splitNameFlag, canonicalTruckNumber, normLoadTruck, todayCT, shiftISO, reportDateToISO } = require('./util');
 
 const ACTIVITY_WINDOW_DAYS = 21;   // enough history to compute "X días sin carga" up to red (>=14)
 
@@ -39,6 +39,37 @@ function enabledOrgs() {
 function subFleetNames() {
   const o = get('SELECT nm_fleet_names FROM orgs WHERE id = ?', 'SUBS');
   return o ? JSON.parse(o.nm_fleet_names || '[]') : [];
+}
+
+// Resolve a load/ticket row to a roster truck. Rules mirror the desktop's rotation.js:
+//  - Cactus Express rows come prefixed "C1127" → 1127, auto-create NUEVO if unknown.
+//  - CKJ Transport rows: "CKJ7040" (4+ digits) = KT truck → 7040, auto-create NUEVO;
+//    "CKJ340" (3 digits) = CKJ-affiliated sub and other carriers riding the CKJ fleet
+//    (e.g. "ARANGO - 1116") only match if already on my roster — never auto-created.
+//  - Cactus sub fleets (Butler, Billy Walker, Hope, Arrowhead): raw number, auto-create.
+//  - Any other fleet: match only if the number already exists somewhere in my roster.
+function matchLoadRow(r, orgs, subNames) {
+  const fleetName = (typeof r.fleet === 'string' ? r.fleet : (r.fleet && r.fleet.name)) || '';
+  const orgHit = orgs.find(o => o.fleetNames.some(n => normNum(n) === normNum(fleetName)));
+  if (orgHit) {
+    let num = normLoadTruck(r.truck_number, fleetName, orgHit.fleetNames, orgHit.truck_prefix);
+    if (orgHit.id === 'KT') {
+      const digits = canonicalTruckNumber('KT', num);
+      if (!/^\d{4,}$/.test(digits)) {
+        const cand = normNum(num).replace(/\s+/g, '');
+        const hit = get('SELECT org_id, number FROM trucks WHERE number IN (?, ?) AND archived = 0', cand, digits);
+        return hit ? { orgId: hit.org_id, num: hit.number, autoCreate: false } : null;
+      }
+      num = digits;
+    }
+    return { orgId: orgHit.id, num, autoCreate: true };
+  }
+  if (subNames.some(n => normNum(n) === normNum(fleetName))) {
+    return { orgId: 'CACTUS', num: normNum(r.truck_number), autoCreate: true };
+  }
+  const cand = normNum(r.truck_number);
+  const hit = get('SELECT org_id, number FROM trucks WHERE number = ? AND archived = 0', cand);
+  return hit ? { orgId: hit.org_id, num: hit.number, autoCreate: false } : null;
 }
 
 // ---------- roster ----------
@@ -57,7 +88,9 @@ async function syncRoster(client) {
     const seen = new Set();
 
     for (const t of mine) {
-      const { number, flag } = splitNameFlag(t.truck_number || t.number || '');
+      const parsed = splitNameFlag(t.truck_number || t.number || '');
+      const number = canonicalTruckNumber(org.id, parsed.number); // "KT-7040 P" → 7040
+      const flag = parsed.flag;
       if (!number) continue;
       seen.add(number);
       const driver = (t.driver_name || t.driver || '').trim();
@@ -122,26 +155,11 @@ async function syncActivity(client) {
   const autoOn = !autoMark || autoMark.value !== '0';
 
   for (const r of rows) {
-    const fleetName = (typeof r.fleet === 'string' ? r.fleet : (r.fleet && r.fleet.name)) || '';
     const iso = reportDateToISO(r.order_date) || today;
-    let orgId = null, num = null;
+    const m = matchLoadRow(r, orgs, subNames);
+    if (!m) { summary.unmatched++; continue; }
 
-    if (cactus && cactus.fleetNames.some(n => normNum(n) === normNum(fleetName))) {
-      orgId = 'CACTUS';
-      num = normLoadTruck(r.truck_number, fleetName, cactus.fleetNames, cactus.truck_prefix);
-    } else if (subNames.some(n => normNum(n) === normNum(fleetName))) {
-      // sub fleets: raw number, no prefix; they render inside the Cactus board today
-      orgId = 'CACTUS';
-      num = normNum(r.truck_number);
-    } else {
-      // any other fleet: only match if the number already exists in my roster
-      const cand = normNum(r.truck_number);
-      const hit = get(`SELECT org_id FROM trucks WHERE number = ? AND archived = 0`, cand);
-      if (!hit) { summary.unmatched++; continue; }
-      orgId = hit.org_id; num = cand;
-    }
-
-    const key = orgId + '|' + num + '|' + iso;
+    const key = m.orgId + '|' + m.num + '|' + iso + '|' + (m.autoCreate ? 1 : 0);
     const cur = agg.get(key) || { loads: 0, driver: '' };
     cur.loads++;
     if (r.driver_name) cur.driver = String(r.driver_name).trim();
@@ -149,11 +167,12 @@ async function syncActivity(client) {
   }
 
   for (const [key, v] of agg) {
-    const [orgId, num, iso] = key.split('|');
+    const [orgId, num, iso, autoCreate] = key.split('|');
     let row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, num);
     if (!row) {
+      if (autoCreate !== '1') { summary.unmatched += v.loads; continue; }
       // Ran a load but is not on my roster → ⚑ NUEVO immediately (never wait for 4:30 AM).
-      const sub = subNames.length && /^(BT|BW|HS|AE)\d/i.test(num) ? 1 : 0;
+      const sub = orgId === 'CACTUS' && /^(BT|BW|HS|AE)\d/i.test(num) ? 1 : 0;
       run(`INSERT INTO trucks (org_id, number, division, area, driver, tags, is_sub, is_new, updated_at)
            VALUES (?,?,NULL,'(SIN YARD)',?,?,?,1,?)`,
         orgId, num, v.driver || '', sub ? 'SUBHAULER' : '', sub, nowISO());
@@ -195,19 +214,21 @@ async function syncActivity(client) {
       const nums = new Set();
       for (const a of assigns) {
         const raw = a.truck_number || (a.truck && (a.truck.truck_number || a.truck.number)) || '';
-        if (!raw) continue;
-        let n = normNum(raw);
-        // assignment numbers usually match the truck resource (plain for Cactus), but be
-        // tolerant of the load-report style "C1127"
-        if (!get('SELECT 1 AS x FROM trucks WHERE number = ? AND archived = 0', n) &&
-            cactus && cactus.truck_prefix && n.startsWith(cactus.truck_prefix) && /\d/.test(n.slice(1))) {
-          n = n.slice(cactus.truck_prefix.length);
-        }
-        nums.add(n);
+        if (raw) nums.add(normNum(raw).replace(/\s+/g, ''));
       }
       summary.assignments = assigns.length;
       for (const n of nums) {
-        const hit = get('SELECT org_id, number FROM trucks WHERE number = ? AND archived = 0', n);
+        // assignment numbers usually match the truck resource, but tolerate the
+        // load-report styles too: "C1127" (Cactus) and "KT-7040 P"/"CKJ7040" (KT)
+        const candidates = [n, canonicalTruckNumber('KT', n)];
+        if (cactus && cactus.truck_prefix && n.startsWith(cactus.truck_prefix) && /\d/.test(n.slice(cactus.truck_prefix.length))) {
+          candidates.push(n.slice(cactus.truck_prefix.length));
+        }
+        let hit = null;
+        for (const c of [...new Set(candidates)]) {
+          hit = get('SELECT org_id, number FROM trucks WHERE number = ? AND archived = 0', c);
+          if (hit) break;
+        }
         if (!hit) continue;
         const st = get('SELECT * FROM dispatch_state WHERE date = ? AND org_id = ? AND number = ?', today, hit.org_id, hit.number);
         if (!st) {
@@ -244,24 +265,17 @@ async function scanRipRap(client, days) {
   const from = shiftISO(today, -(days || 30));
   const rows = await client.loadTicketsMaterialsAll(from, today);
   const orgs = enabledOrgs();
-  const cactus = orgs.find(o => o.id === 'CACTUS');
   const subNames = subFleetNames();
 
   const evidence = new Map(); // org|num -> {loads, first, last, materials:Set}
   for (const r of rows) {
     const mat = String(r.material || '') + ' | ' + String(r.alternative_material_name || '');
     if (!RIP_RE.test(mat)) continue;
-    const fleetName = (typeof r.fleet === 'string' ? r.fleet : (r.fleet && r.fleet.name)) || '';
-    let num;
-    if (cactus && cactus.fleetNames.some(n => normNum(n) === normNum(fleetName))) {
-      num = normLoadTruck(r.truck_number, fleetName, cactus.fleetNames, cactus.truck_prefix);
-    } else if (subNames.some(n => normNum(n) === normNum(fleetName))) {
-      num = normNum(r.truck_number);
-    } else {
-      continue; // other fleets (CKJ etc.) enter when their org is enabled
-    }
+    const m = matchLoadRow(r, orgs, subNames);
+    if (!m) continue;
+    const num = m.num;
     const iso = reportDateToISO(r.order_date) || today;
-    const key = 'CACTUS|' + num;
+    const key = m.orgId + '|' + num;
     const e = evidence.get(key) || { loads: 0, first: iso, last: iso, materials: new Set() };
     e.loads++;
     if (iso < e.first) e.first = iso;

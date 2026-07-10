@@ -20,7 +20,7 @@
  *    "📍 duerme en X" badge that I accept or dismiss. Nothing moves by itself.
  */
 const { all, get, run, metaSet, nowISO } = require('./db');
-const { splitNameFlag, ctParts, todayCT, normNum } = require('./util');
+const { splitNameFlag, canonicalTruckNumber, ctParts, todayCT, normNum } = require('./util');
 
 function tokenFor(cfg, orgName) {
   const toks = (cfg.samsara && cfg.samsara.tokens) || [];
@@ -128,7 +128,9 @@ async function syncSamsara(cfg) {
     summary.vehicles += vehicles.length;
 
     for (const v of vehicles) {
-      const { number, flag } = splitNameFlag(v.name || '');
+      const parsed = splitNameFlag(v.name || '');
+      const number = canonicalTruckNumber(org.id, parsed.number); // CKJ: "KT-7045" → 7045
+      const flag = parsed.flag;
       if (!number) continue;
       // subs are never in Samsara — the is_sub filter is belt & suspenders
       const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ? AND is_sub = 0', org.id, number);
@@ -158,7 +160,8 @@ async function syncSamsara(cfg) {
       const { hour } = ctParts();
       const isSleepWindow = hour >= 3 && hour < 6;
       const today = todayCT();
-      for (const [number, g] of Object.entries(gps)) {
+      for (const [rawNumber, g] of Object.entries(gps)) {
+        const number = canonicalTruckNumber(org.id, rawNumber);
         const row = get('SELECT number, is_sub FROM trucks WHERE org_id = ? AND number = ? AND is_sub = 0', org.id, number);
         if (!row) continue;
         summary.gps++;

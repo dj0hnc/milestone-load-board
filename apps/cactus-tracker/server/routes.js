@@ -62,6 +62,9 @@ function createRouter({ config, newmile, log }) {
       org: { id: org.id, label: org.label },
       orgs: all('SELECT id, label, enabled FROM orgs ORDER BY sort'),
       divisions,
+      // one tab per division of every enabled org (Cactus NORTH/SOUTH, KT POWDERLY/RHOME/…)
+      tabs: all(`SELECT d.org_id, d.id, d.label FROM divisions d JOIN orgs o ON o.id = d.org_id
+                 WHERE o.enabled = 1 ORDER BY o.sort, d.sort`),
       date, today, historical,
       week: weekDatesCT(date),
       trucks: outTrucks,

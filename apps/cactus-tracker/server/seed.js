@@ -36,8 +36,9 @@ function isSubTruck(t) {
 function seedOrgs() {
   const orgs = [
     { id: 'CACTUS', label: 'Cactus Express', nm_fleet_id: 5, nm_fleet_names: JSON.stringify(['Cactus Express']), truck_prefix: 'C', samsara: 1, samsara_org: 'Cactus Express', enabled: 1, sort: 1 },
-    // Phase 2 placeholders — enable + fill divisions when their module lands.
-    { id: 'KT', label: 'CKJ / KT', nm_fleet_id: 6, nm_fleet_names: JSON.stringify(['Kennemer']), truck_prefix: '', samsara: 1, samsara_org: 'CKJ Transport', enabled: 0, sort: 2 },
+    // KT/CKJ: fleet 6, loads arrive as fleet "CKJ Transport" with numbers "CKJ7040" (4+ digits
+    // = KT truck; CKJ### 3 digits = CKJ-affiliated sub, handled apart). Samsara org "CKJ Transport".
+    { id: 'KT', label: 'CKJ / KT', nm_fleet_id: 6, nm_fleet_names: JSON.stringify(['CKJ Transport', 'Kennemer']), truck_prefix: 'CKJ', samsara: 1, samsara_org: 'CKJ Transport', enabled: 1, sort: 2 },
     { id: 'SUBS', label: 'Subhaulers', nm_fleet_id: null, nm_fleet_names: JSON.stringify(['Butler Trucking LLC', 'Billy Walker Trucking LLC', 'Hope Services Inc.', 'Arrowhead Earthworks LLC']), truck_prefix: '', samsara: 0 /* subs: NewMile only */, samsara_org: null, enabled: 0, sort: 3 }
   ];
   for (const o of orgs) {
@@ -48,7 +49,11 @@ function seedOrgs() {
   }
   const divs = [
     { org: 'CACTUS', id: 'NORTH', label: 'Cactus NORTH', tag: '4218297', sort: 1 }, // Paris Terminal
-    { org: 'CACTUS', id: 'SOUTH', label: 'Cactus SOUTH', tag: '4218296', sort: 2 }  // Lufkin Terminal
+    { org: 'CACTUS', id: 'SOUTH', label: 'Cactus SOUTH', tag: '4218296', sort: 2 }, // Lufkin Terminal
+    // Terminales de KT (sin tag de Samsara conocido; el GPS nocturno sugiere por ciudad)
+    { org: 'KT', id: 'POWDERLY', label: 'KT POWDERLY', tag: null, sort: 1 },
+    { org: 'KT', id: 'RHOME', label: 'KT RHOME', tag: null, sort: 2 },
+    { org: 'KT', id: 'WHITEWRIGHT', label: 'KT WHITEWRIGHT', tag: null, sort: 3 }
   ];
   for (const d of divs) {
     run(`INSERT INTO divisions (org_id,id,label,samsara_tag_id,sort) VALUES (?,?,?,?,?)
@@ -122,6 +127,15 @@ function main(force) {
     run('DELETE FROM dispatch_state'); run('DELETE FROM orgs'); run('DELETE FROM divisions');
   }
   seedOrgs();
+  // migración idempotente: DBs creadas antes de que KT existiera lo activan aquí
+  if (!get(`SELECT 1 AS x FROM divisions WHERE org_id = 'KT'`)) {
+    run(`UPDATE orgs SET enabled = 1, nm_fleet_names = ?, truck_prefix = 'CKJ' WHERE id = 'KT'`,
+      JSON.stringify(['CKJ Transport', 'Kennemer']));
+    for (const d of [['POWDERLY', 1], ['RHOME', 2], ['WHITEWRIGHT', 3]]) {
+      run(`INSERT INTO divisions (org_id,id,label,samsara_tag_id,sort) VALUES ('KT',?,?,NULL,?) ON CONFLICT(org_id,id) DO NOTHING`,
+        d[0], 'KT ' + d[0], d[1]);
+    }
+  }
   const existing = get('SELECT COUNT(*) AS c FROM trucks').c;
   if (existing > 0) {
     console.log(`seed: DB already has ${existing} trucks — skipping (use --force to reload)`);
