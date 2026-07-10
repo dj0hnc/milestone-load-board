@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cactus Truck Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#1C2333; --navy2:#252e42; --gold:#C8991F;
+  --bg:#f4f5f7; --card:#fff; --ink:#1C2333; --mut:#7a8194;
+  --green:#1e8a4c; --green-bg:#e6f5ec; --red:#b02a2a; --red-bg:#fbe9e9;
+  --blue:#2456a6; --blue-bg:#e7f0fc;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{font-family:'Barlow',Arial,sans-serif;background:var(--bg);color:var(--ink);}
+header{background:var(--navy);color:#fff;padding:12px 16px 0;position:sticky;top:0;z-index:50;box-shadow:0 2px 10px rgba(0,0,0,.3);}
+.hrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+h1{font-family:'Barlow Condensed';font-weight:800;font-size:26px;letter-spacing:1px;text-transform:uppercase;}
+h1 span{color:var(--gold);}
+.faltan-pill{margin-left:auto;background:var(--gold);color:var(--navy);font-family:'Barlow Condensed';font-weight:800;font-size:19px;letter-spacing:.5px;padding:6px 16px;border-radius:999px;cursor:pointer;white-space:nowrap;}
+.faltan-pill.ok{background:var(--green);color:#fff;}
+.hrow2{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:8px;}
+.fleet-tab{font-family:'Barlow Condensed';font-weight:700;font-size:17px;letter-spacing:1px;text-transform:uppercase;padding:8px 18px;background:transparent;border:none;color:#8f97ab;cursor:pointer;border-bottom:4px solid transparent;}
+.fleet-tab.on{color:#fff;border-bottom-color:var(--gold);}
+.days{display:flex;gap:5px;margin-left:auto;padding-bottom:6px;}
+.day{width:42px;height:34px;border-radius:8px;border:1px solid #3a4460;background:var(--navy2);color:#c6cddd;font-family:'Barlow Condensed';font-weight:700;font-size:14px;cursor:pointer;}
+.day.on{background:var(--gold);border-color:var(--gold);color:var(--navy);}
+.day.today{border-color:var(--gold);}
+.wrap{max-width:1280px;margin:0 auto;padding:14px 16px 70px;}
+.progress{background:#e2e5ec;border-radius:999px;height:10px;overflow:hidden;margin-bottom:12px;}
+.progress i{display:block;height:100%;background:linear-gradient(90deg,var(--gold),var(--green));width:0%;transition:width .3s;}
+.pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+.pill{border:1.5px solid #cdd3df;background:#fff;color:var(--ink);border-radius:999px;padding:7px 15px;font-family:'Barlow Condensed';font-weight:700;font-size:15px;letter-spacing:.4px;cursor:pointer;}
+.pill.on{background:var(--navy);border-color:var(--navy);color:#fff;}
+.pill.rip.on{background:var(--blue);border-color:var(--blue);}
+.searchrow{display:flex;gap:8px;margin-bottom:14px;}
+.searchrow input{flex:1;padding:11px 14px;border:1.5px solid #cdd3df;border-radius:10px;font-family:'Barlow';font-size:16px;}
+.btn-reset{background:none;border:1.5px solid var(--red);color:var(--red);border-radius:10px;padding:0 16px;font-family:'Barlow Condensed';font-weight:700;font-size:15px;text-transform:uppercase;cursor:pointer;}
+.faltanBox{background:#fff8e6;border:1.5px solid var(--gold);border-radius:12px;padding:12px 14px;margin-bottom:14px;display:none;}
+.faltanBox.show{display:block;}
+.faltanBox b{font-family:'Barlow Condensed';font-size:18px;letter-spacing:.5px;text-transform:uppercase;color:#8a6a10;}
+.faltanBox .chip-mini{display:inline-block;background:#fff;border:1.5px solid #d8c58a;border-radius:6px;padding:3px 10px;margin:6px 6px 0 0;font-weight:700;font-size:14px;cursor:pointer;}
+.faltanBox .chip-mini.rip{border-color:var(--blue);color:var(--blue);}
+.banner{border-radius:12px;padding:12px 14px;margin-bottom:14px;}
+.banner b{font-family:'Barlow Condensed';font-size:18px;letter-spacing:.5px;text-transform:uppercase;}
+.banner .chip-mini{display:inline-block;background:#fff;border-radius:6px;padding:3px 10px;margin:6px 6px 0 0;font-weight:700;font-size:14px;cursor:pointer;border:1.5px solid transparent;}
+.banner.new{background:var(--red-bg);border:1.5px solid var(--red);}
+.banner.new b{color:var(--red);}
+.banner.new .chip-mini{border-color:#e2a3a3;color:var(--red);}
+.banner.baja{background:#fdf3e3;border:1.5px solid #c98a2f;}
+.banner.baja b{color:#8a5a10;}
+.banner.baja .chip-mini{border-color:#dcc08a;color:#8a5a10;}
+.banner.off{background:#eef0f5;border:1.5px solid #aab2c5;color:#4a5164;}
+.group{margin-bottom:20px;}
+.group h2{font-family:'Barlow Condensed';font-size:20px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--navy);border-bottom:2px solid var(--gold);padding-bottom:3px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:baseline;}
+.group h2 small{font-size:14px;color:var(--mut);font-family:'Barlow Condensed';}
+.group h2 small.full{color:var(--green);}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;}
+.chip{background:var(--card);border:2px solid #dde1ea;border-radius:12px;padding:10px 12px;cursor:pointer;user-select:none;position:relative;box-shadow:0 1px 3px rgba(0,0,0,.07);transition:transform .05s;min-height:78px;}
+.chip:active{transform:scale(.97);}
+.chip .top{display:flex;justify-content:space-between;align-items:flex-start;gap:6px;padding-right:50px;}
+.chip .num{font-family:'Barlow Condensed';font-weight:800;font-size:26px;line-height:1;}
+.chip .trl{font-size:10.5px;font-weight:700;letter-spacing:.3px;padding:3px 7px;border-radius:5px;background:#eef0f5;color:var(--mut);white-space:nowrap;margin-top:2px;}
+.chip .trl.rip{background:var(--blue-bg);color:var(--blue);}
+.chip .trl.sd{background:#f3e8fb;color:#7a2fa8;}
+.chip .trl.bd{background:#fdeedd;color:#a8622f;}
+.chip .drv{font-size:13.5px;font-weight:600;margin-top:4px;line-height:1.25;}
+.chip .drv.none{color:#b8853a;font-weight:700;}
+.chip .act{font-size:10.5px;color:var(--green);font-weight:700;margin-top:3px;}
+.chip .act.warn{color:#b8853a;}
+.chip .act.bad{color:var(--red);}
+.chip .note{font-size:11px;color:#a8622f;margin-top:3px;line-height:1.25;}
+.chip .badge{display:inline-block;font-size:10px;font-weight:800;border-radius:5px;padding:2px 6px;margin-top:3px;margin-right:4px;}
+.chip .badge.drvchg{background:#f3e8fb;color:#7a2fa8;}
+.chip .badge.flag{background:var(--red-bg);color:var(--red);cursor:pointer;}
+.chip .badge.status{background:#eef0f5;color:#4a5164;}
+.chip .ripflag{position:absolute;left:0;top:0;bottom:0;width:6px;border-radius:10px 0 0 10px;background:var(--blue);}
+.btn-down{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:14px;font-weight:700;cursor:pointer;line-height:1;}
+.btn-down:hover{border-color:var(--red);color:var(--red);}
+.btn-edit{position:absolute;top:6px;right:36px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:13px;cursor:pointer;line-height:1;}
+.btn-edit:hover{border-color:var(--gold);color:var(--gold);}
+.chip.s-a{border-color:var(--green);background:var(--green-bg);}
+.chip.s-a .check{position:absolute;top:-9px;left:-9px;width:26px;height:26px;border-radius:50%;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;box-shadow:0 1px 4px rgba(0,0,0,.3);}
+.chip.s-a .check.auto{background:#2456a6;font-size:11px;}
+.chip.s-d{border-color:var(--red);background:var(--red-bg);opacity:.7;}
+.chip.s-d .num{text-decoration:line-through;color:var(--red);}
+.chip.s-d .btn-down{background:var(--red);border-color:var(--red);color:#fff;}
+.chip.rest{opacity:.55;background:#eef0f5;}
+.chip.status-off{background:#f2f3f6;}
+.statusbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:12px;color:var(--mut);}
+.statusbar .dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:#b02a2a;margin-right:4px;}
+.statusbar .dot.on{background:var(--green);}
+.btn-sync{background:var(--navy);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-family:'Barlow Condensed';font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer;text-transform:uppercase;}
+.btn-sync:disabled{opacity:.5;}
+a.connect{color:var(--blue);font-weight:700;text-decoration:none;}
+footer{text-align:center;color:var(--mut);font-size:12px;padding:18px;}
+/* modal */
+.modal-bg{position:fixed;inset:0;background:rgba(28,35,51,.55);z-index:100;display:none;align-items:flex-end;justify-content:center;}
+.modal-bg.show{display:flex;}
+.modal{background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:560px;max-height:88vh;overflow:auto;padding:18px 16px 26px;}
+.modal h3{font-family:'Barlow Condensed';font-size:24px;letter-spacing:.5px;margin-bottom:10px;}
+.modal label{display:block;font-size:12px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 4px;}
+.modal input[type=text],.modal select{width:100%;padding:10px 12px;border:1.5px solid #cdd3df;border-radius:10px;font-family:'Barlow';font-size:16px;}
+.modal .row2{display:flex;gap:10px;}
+.modal .row2>div{flex:1;}
+.restdays{display:flex;gap:6px;flex-wrap:wrap;}
+.restdays label{display:flex;align-items:center;gap:4px;margin:0;border:1.5px solid #cdd3df;border-radius:8px;padding:6px 10px;font-size:13px;text-transform:none;color:var(--ink);cursor:pointer;}
+.restdays label.on{background:var(--navy);color:#fff;border-color:var(--navy);}
+.restdays input{display:none;}
+.modal .actions{display:flex;gap:10px;margin-top:18px;}
+.modal .actions button{flex:1;padding:12px;border-radius:10px;border:none;font-family:'Barlow Condensed';font-weight:700;font-size:17px;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;}
+.b-save{background:var(--green);color:#fff;}
+.b-cancel{background:#eef0f5;color:var(--ink);}
+.chk{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:14px;font-weight:600;}
+@media (max-width:600px){
+  h1{font-size:20px;} .grid{grid-template-columns:repeat(auto-fill,minmax(165px,1fr));}
+  .days{margin-left:0;}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="hrow">
+    <h1>CACTUS <span>TRACKER</span></h1>
+    <div class="faltan-pill" id="faltanPill" onclick="toggleFaltan()">—</div>
+  </div>
+  <div class="hrow2">
+    <div id="fleets"></div>
+    <div class="days" id="days"></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="statusbar">
+    <span><span class="dot" id="nmDot"></span><span id="nmTxt">NewMile…</span></span>
+    <span id="lastSync"></span>
+    <button class="btn-sync" id="btnSync" onclick="syncNow()">⟳ Sync ahora</button>
+    <span id="netTxt"></span>
+  </div>
+
+  <div class="progress"><i id="prog"></i></div>
+
+  <div id="banners"></div>
+
+  <div class="faltanBox" id="faltanBox">
+    <b id="faltanTitle"></b>
+    <div id="faltanList"></div>
+  </div>
+
+  <div class="pills" id="pills"></div>
+
+  <div class="searchrow">
+    <input id="fSearch" type="text" placeholder="Buscar truck # o driver...">
+    <button class="btn-reset" id="btnReset">Reset día</button>
+  </div>
+
+  <div id="board"></div>
+</div>
+<footer>1 tap = asignado ✓ · tap otra vez = pendiente · ✕ = down · ✎ = editar · ✓ azul = cubierto solo (cargó hoy en NewMile) · se guarda al server por fecha</footer>
+
+<div class="modal-bg" id="modalBg" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modalBody"></div>
+</div>
+
+<script>
+// API base: works mounted at /cactus-tracker/ or standalone at /
+const API = location.pathname.replace(/\/(index\.html)?$/, '');
+const DAYS = ["Mon","Tue","Wed","Thur","Fri","Sat"];
+const STATUS_LBL = {ok:"OK", shop:"EN SHOP", down:"DOWN", no_driver:"SIN DRIVER", vacation:"VACACIONES", deleased:"DE-LEASED"};
+const TYPE_PILLS = [
+  {id:"",lbl:"Todos"},
+  {id:"rip",lbl:"RIP RAP",cls:"rip"},
+  {id:"SD",lbl:"Super Dump"},
+  {id:"BD",lbl:"Belly Dump"},
+  {id:"ED",lbl:"End Dump"},
+  {id:"3X8",lbl:"3X8"},
+  {id:"SUB",lbl:"Subs"},
+  {id:"pend",lbl:"Pendientes"},
+];
+
+let board=null;          // last good server payload
+let division="NORTH";
+let date=null;           // ISO date being viewed
+let typeFilter=""; let showFaltan=false;
+let offline=false;
+
+const $=id=>document.getElementById(id);
+const CACHE_KEY="cactus-tracker-cache-v1";
+const QUEUE_KEY="cactus-tracker-queue-v1";
+
+// ---------- data ----------
+async function fetchBoard(){
+  const d=date?("&date="+date):"";
+  try{
+    const r=await fetch(`${API}/api/board?org=CACTUS${d}`);
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    board=await r.json();
+    if(!date)date=board.date;
+    offline=false;
+    localStorage.setItem(CACHE_KEY,JSON.stringify({at:Date.now(),board}));
+  }catch(e){
+    // Regla de oro: si la red falla, mostrar la última data buena CON timestamp, nunca inventar.
+    const c=localStorage.getItem(CACHE_KEY);
+    if(c&&!board){const j=JSON.parse(c);board=j.board;if(!date)date=board.date;}
+    offline=true;
+  }
+  render();
+}
+
+// ---------- write queue (optimistic, retries when the yard signal comes back) ----------
+function queuePush(req){
+  const q=JSON.parse(localStorage.getItem(QUEUE_KEY)||"[]");
+  q.push(req); localStorage.setItem(QUEUE_KEY,JSON.stringify(q));
+  flushQueue();
+}
+let flushing=false;
+async function flushQueue(){
+  if(flushing)return; flushing=true;
+  try{
+    let q=JSON.parse(localStorage.getItem(QUEUE_KEY)||"[]");
+    while(q.length){
+      const req=q[0];
+      try{
+        const r=await fetch(API+req.path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(req.body)});
+        if(!r.ok && r.status>=500)throw new Error("server");
+      }catch(e){break;} // network down: retry on next flush
+      q.shift(); localStorage.setItem(QUEUE_KEY,JSON.stringify(q));
+    }
+    offline=JSON.parse(localStorage.getItem(QUEUE_KEY)||"[]").length>0&&offline;
+  }finally{flushing=false;}
+  renderNet();
+}
+setInterval(flushQueue,15000);
+window.addEventListener("online",()=>{flushQueue();fetchBoard();});
+
+// ---------- state taps ----------
+function truckOf(num){return (board.trucks||[]).find(t=>t.number===num);}
+function setSt(t,s){
+  t.state=s; t.state_source="manual";
+  queuePush({path:"/api/state",body:{date,org:"CACTUS",number:t.number,state:s}});
+  render();
+}
+function tapChip(num){const t=truckOf(num);if(!t)return; setSt(t,t.state==="a"?"p":"a");}
+function tapDown(ev,num){ev.stopPropagation();const t=truckOf(num);if(!t)return; setSt(t,t.state==="d"?"p":"d");}
+
+// ---------- helpers ----------
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function restsToday(t){
+  if(!t.rest_days)return false;
+  const wd=Object.entries(board.week).find(([,iso])=>iso===date);
+  return wd?t.rest_days.split(",").map(s=>s.trim()).includes(wd[0]):false;
+}
+function outOfService(t){return ["shop","down","vacation","deleased"].includes(t.status);}
+function countsForFaltan(t){return t.state==="p"&&!restsToday(t)&&!outOfService(t)&&!t.archived;}
+function trlClass(tt,rip){if(rip)return"rip";if((tt||"").startsWith("SD"))return"sd";if(tt==="BD")return"bd";return"";}
+function matchType(t){
+  const f=typeFilter;
+  if(!f)return true;
+  if(f==="rip")return !!t.rip_rap;
+  if(f==="pend")return countsForFaltan(t);
+  if(f==="SD")return (t.trailer_type||"").startsWith("SD")||/SD/.test(t.trailer_type||"");
+  if(f==="BD")return t.trailer_type==="BD"||/Belly/i.test(t.trailer_type||"");
+  if(f==="ED")return /ED|End Dump/i.test(t.trailer_type||"")&&!/SD|Super/i.test(t.trailer_type||"");
+  if(f==="3X8")return (t.tags||"").includes("3X8");
+  if(f==="SUB")return !!t.is_sub;
+  return true;
+}
+function actHtml(t){
+  if(t.loads_today>0)return `<div class="act">🟢 hoy: ${t.loads_today} carga${t.loads_today>1?"s":""}${t.last_load_driver?" · "+esc(t.last_load_driver):""}</div>`;
+  if(t.days_since_last_load==null)return `<div class="act bad">⚠ sin carga registrada</div>`;
+  const d=t.days_since_last_load;
+  const md=t.last_load_date?t.last_load_date.slice(5).replace("-","/").replace(/^0/,""):"";
+  if(d>=14)return `<div class="act bad">⛔ ${d} días sin carga</div>`;
+  if(d>=5)return `<div class="act warn">⚠ ${d} días sin carga</div>`;
+  return `<div class="act">🟢 última: ${md}${t.last_load_driver?" · "+esc(t.last_load_driver):""}</div>`;
+}
+function toggleFaltan(){showFaltan=!showFaltan;render();}
+function jumpTo(num){
+  typeFilter="";$("fSearch").value="";showFaltan=false;render();
+  const el=$("chip-"+cssId(num));
+  if(el){el.scrollIntoView({behavior:"smooth",block:"center"});el.style.boxShadow="0 0 0 4px var(--gold)";setTimeout(()=>el.style.boxShadow="",1200);}
+}
+function cssId(n){return String(n).replace(/[^A-Za-z0-9_-]/g,"_");}
+function fmtTime(iso){if(!iso)return "—";const d=new Date(iso);return d.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});}
+
+// ---------- render ----------
+function render(){
+  if(!board){$("board").innerHTML="<p style='color:var(--mut);padding:20px'>Cargando…</p>";return;}
+  const divTrucks=(board.trucks||[]).filter(t=>t.division===division&&!t.archived);
+
+  // FALTAN
+  const pend=divTrucks.filter(countsForFaltan);
+  const asg=divTrucks.filter(t=>t.state==="a").length;
+  const activos=divTrucks.filter(t=>t.state!=="d"&&!restsToday(t)&&!outOfService(t)).length;
+  const pill=$("faltanPill");
+  if(pend.length===0){pill.className="faltan-pill ok";pill.textContent="✔ TODOS CUBIERTOS";}
+  else{pill.className="faltan-pill";pill.textContent="FALTAN "+pend.length;}
+  $("prog").style.width=(activos?Math.round(Math.min(asg,activos)/activos*100):100)+"%";
+
+  const fb=$("faltanBox");
+  fb.className="faltanBox"+(showFaltan&&pend.length>0?" show":"");
+  if(pend.length>0){
+    const dayName=Object.entries(board.week).find(([,iso])=>iso===date);
+    $("faltanTitle").textContent=`TE FALTAN ${pend.length} — ${dayName?dayName[0]:date} (tap para ir al truck)`;
+    // agrupado por área: de un vistazo dónde falta gente y de dónde jalar trucks libres
+    const byArea={};
+    for(const t of pend)(byArea[t.area||"(SIN YARD)"]=byArea[t.area||"(SIN YARD)"]||[]).push(t);
+    $("faltanList").innerHTML=Object.keys(byArea).sort().map(area=>{
+      const list=byArea[area].sort((x,y)=>(y.rip_rap?1:0)-(x.rip_rap?1:0));
+      return `<div style="margin-top:8px;"><span style="font-family:'Barlow Condensed';font-weight:700;font-size:14px;color:#8a6a10;">${esc(area)} · ${list.length}</span><br>`+
+        list.map(t=>`<span class="chip-mini ${t.rip_rap?"rip":""}" onclick="jumpTo('${esc(t.number)}')">${esc(t.number)}${t.rip_rap?" · RIP":""}</span>`).join("")+`</div>`;
+    }).join("");
+  }
+
+  renderBanners();
+
+  $("pills").innerHTML=TYPE_PILLS.map(tp=>`<button class="pill ${tp.cls||""} ${typeFilter===tp.id?"on":""}" onclick="setType('${tp.id}')">${tp.lbl}</button>`).join("");
+
+  const q=$("fSearch").value.trim().toLowerCase();
+  const groups={};
+  for(const t of divTrucks){
+    if(t.is_new)continue; // NUEVOS live in the red banner until placed
+    if(!matchType(t))continue;
+    if(q&&!(t.number.toLowerCase().includes(q)||(t.driver||"").toLowerCase().includes(q)))continue;
+    const g=t.area||"(SIN YARD)";
+    (groups[g]=groups[g]||[]).push(t);
+  }
+  let html="";
+  for(const g of Object.keys(groups).sort()){
+    const list=groups[g];
+    const asig=list.filter(t=>t.state==="a").length;
+    const act=list.filter(t=>t.state!=="d"&&!restsToday(t)&&!outOfService(t)).length;
+    const full=act>0&&asig>=act;
+    html+=`<div class="group"><h2>${esc(g)}<small class="${full?"full":""}">${full?"✔ COMPLETO":asig+"/"+act+" asignados"}</small></h2><div class="grid">`;
+    for(const t of list)html+=chipHtml(t);
+    html+="</div></div>";
+  }
+  $("board").innerHTML=html||"<p style='color:var(--mut);padding:20px'>Sin resultados.</p>";
+  buildHeader(); renderStatusbar(); renderNet();
+}
+
+function chipHtml(t){
+  const rest=restsToday(t);
+  const off=outOfService(t);
+  const cls=t.state==="a"?"s-a":t.state==="d"?"s-d":"";
+  const flag=t.samsara_flag||t.detected_flag;
+  const drvChg=t.driver_changed_recent;
+  return `<div class="chip ${cls} ${rest?"rest":""} ${off?"status-off":""}" id="chip-${cssId(t.number)}" onclick="tapChip('${esc(t.number)}')">
+    ${t.rip_rap?'<div class="ripflag"></div>':""}
+    ${t.state==="a"?`<div class="check ${t.state_source==="auto"?"auto":""}" title="${t.state_source==="auto"?"cubierto solo: cargó hoy en NewMile":"asignado"}">${t.state_source==="auto"?"⚡":"✓"}</div>`:""}
+    <button class="btn-edit" onclick="event.stopPropagation();openEdit('${esc(t.number)}')" title="Editar">✎</button>
+    <button class="btn-down" onclick="tapDown(event,'${esc(t.number)}')" title="Marcar down">✕</button>
+    <div class="top"><span class="num">${esc(t.number)}</span>${t.trailer_type?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(t.trailer_type)}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}</div>
+    <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ SIN DRIVER"}</div>
+    ${actHtml(t)}
+    ${rest?'<span class="badge status">DESCANSA HOY</span>':""}
+    ${off?`<span class="badge status">${STATUS_LBL[t.status]||esc(t.status)}${t.return_date?" · "+esc(t.return_date):""}</span>`:""}
+    ${drvChg?`<span class="badge drvchg" title="driver cambió">driver cambió: antes ${esc(drvChg.prev||"?")}</span>`:""}
+    ${flag?`<span class="badge flag" onclick="event.stopPropagation();openFlag('${esc(t.number)}')">⚑ ${esc(flag)}</span>`:""}
+    ${t.note?`<div class="note">${esc(t.note)}</div>`:""}
+  </div>`;
+}
+
+function renderBanners(){
+  let html="";
+  if(offline){
+    const c=localStorage.getItem(CACHE_KEY);
+    const at=c?new Date(JSON.parse(c).at):null;
+    html+=`<div class="banner off"><b>SIN CONEXIÓN</b> — mostrando la última data buena${at?" de las "+at.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"}):""}. Los taps se guardan y se suben solos al volver la señal.</div>`;
+  }
+  const nuevos=(board.trucks||[]).filter(t=>t.is_new&&!t.archived);
+  if(nuevos.length){
+    html+=`<div class="banner new"><b>⚑ ${nuevos.length} TRUCK${nuevos.length>1?"S":""} NUEVO${nuevos.length>1?"S":""} — asigna North/South + área</b><div>`+
+      nuevos.map(t=>`<span class="chip-mini" onclick="openConfirmNew('${esc(t.number)}')">${esc(t.number)}${t.driver?" · "+esc(t.driver):""}${t.suggested_division?" · sug: "+esc(t.suggested_division):""}</span>`).join("")+`</div></div>`;
+  }
+  const bajas=(board.trucks||[]).filter(t=>t.maybe_removed&&!t.archived);
+  if(bajas.length){
+    html+=`<div class="banner baja"><b>¿DE BAJA? — ya no aparecen en el fleet de NewMile</b><div>`+
+      bajas.map(t=>`<span class="chip-mini" onclick="openResolveRemoved('${esc(t.number)}')">${esc(t.number)}</span>`).join("")+`</div></div>`;
+  }
+  $("banners").innerHTML=html;
+}
+
+function renderStatusbar(){
+  const m=(board&&board.meta)||{};
+  const nm=m.newmile||{};
+  $("nmDot").className="dot"+(nm.connected?" on":"");
+  $("nmTxt").innerHTML=nm.connected?("NewMile: "+esc(nm.user||"conectado")):`NewMile desconectado — <a class="connect" href="${API}/api/newmile/connect">conectar</a>`;
+  const last=m.last_sync_activity||m.last_sync_roster;
+  $("lastSync").textContent="última sync: "+fmtTime(last);
+}
+function renderNet(){
+  const q=JSON.parse(localStorage.getItem(QUEUE_KEY)||"[]");
+  $("netTxt").textContent=q.length?`⏳ ${q.length} cambio${q.length>1?"s":""} por subir`:"";
+}
+
+function buildHeader(){
+  const divs=(board&&board.divisions)||[];
+  $("fleets").innerHTML=divs.map(d=>`<button class="fleet-tab ${d.id===division?"on":""}" onclick="setDivision('${d.id}')">${esc(d.label)}</button>`).join("");
+  const week=(board&&board.week)||{};
+  $("days").innerHTML=DAYS.map(dd=>{
+    const iso=week[dd];
+    return `<button class="day ${iso===date?"on":""} ${iso===board.today?"today":""}" onclick="setDate('${iso}')" title="${iso||""}">${dd}</button>`;
+  }).join("");
+}
+
+function setType(t){typeFilter=t;render();}
+function setDivision(d){division=d;render();}
+function setDate(iso){if(!iso)return;date=iso;fetchBoard();}
+
+$("btnReset").onclick=()=>{
+  const dayName=Object.entries(board.week).find(([,iso])=>iso===date);
+  if(!confirm(`¿Borrar marcas de Cactus ${division} — ${dayName?dayName[0]:date} (${date})?`))return;
+  for(const t of board.trucks)if(t.division===division){t.state="p";t.state_source=null;}
+  queuePush({path:"/api/reset",body:{date,org:"CACTUS",division}});
+  render();
+};
+$("fSearch").oninput=render;
+
+// ---------- sync ----------
+async function syncNow(){
+  const b=$("btnSync");b.disabled=true;b.textContent="⟳ Sincronizando…";
+  try{
+    const r=await fetch(API+"/api/sync/newmile",{method:"POST"});
+    const j=await r.json().catch(()=>({}));
+    if(r.status===401){if(confirm("NewMile no está conectado. ¿Abrir el sign-in?"))location.href=API+"/api/newmile/connect";}
+    else if(!r.ok)alert("Sync falló: "+(j.error||r.status));
+    try{await fetch(API+"/api/sync/samsara",{method:"POST"});}catch(e){}
+    await fetchBoard();
+  }finally{b.disabled=false;b.textContent="⟳ Sync ahora";}
+}
+
+// ---------- modals ----------
+function closeModal(){$("modalBg").classList.remove("show");}
+function openModal(html){$("modalBody").innerHTML=html;$("modalBg").classList.add("show");}
+
+function openEdit(num){
+  const t=truckOf(num);if(!t)return;
+  const rest=(t.rest_days||"").split(",").map(s=>s.trim()).filter(Boolean);
+  const divs=(board.divisions||[]).map(d=>`<option value="${d.id}" ${t.division===d.id?"selected":""}>${esc(d.label)}</option>`).join("");
+  openModal(`
+    <h3>✎ Truck ${esc(t.number)}</h3>
+    <label>Nota</label><input type="text" id="eNote" value="${esc(t.note)}" placeholder="en el shop, DEL Zotto only, tel del owner…">
+    <div class="row2">
+      <div><label>Status</label><select id="eStatus">${Object.entries(STATUS_LBL).map(([k,v])=>`<option value="${k}" ${t.status===k?"selected":""}>${v}</option>`).join("")}</select></div>
+      <div><label>Regresa (opcional)</label><input type="text" id="eReturn" value="${esc(t.return_date)}" placeholder="7/13"></div>
+    </div>
+    <label>Días que NO trabaja</label>
+    <div class="restdays" id="eRest">${DAYS.map(d=>`<label class="${rest.includes(d)?"on":""}" onclick="this.classList.toggle('on')"><input type="checkbox" value="${d}">${d}</label>`).join("")}</div>
+    <div class="row2">
+      <div><label>División</label><select id="eDiv">${divs}</select></div>
+      <div><label>Área / yard</label><input type="text" id="eArea" value="${esc(t.area)}"></div>
+    </div>
+    <div class="row2">
+      <div><label>Teléfono</label><input type="text" id="ePhone" value="${esc(t.phone)}"></div>
+      <div><label>Tags (3X8, SUBHAULER…)</label><input type="text" id="eTags" value="${esc(t.tags)}"></div>
+    </div>
+    <div class="chk"><input type="checkbox" id="eRip" ${t.rip_rap?"checked":""}><label for="eRip" style="margin:0;text-transform:none;color:var(--ink);font-size:14px;">Puede RIP RAP (franja azul)</label></div>
+    <div class="actions">
+      <button class="b-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="b-save" onclick="saveEdit('${esc(t.number)}')">Guardar</button>
+    </div>`);
+}
+function saveEdit(num){
+  const t=truckOf(num);if(!t)return;
+  const rest=[...document.querySelectorAll("#eRest label.on input")].map(i=>i.value).join(",");
+  const body={
+    note:$("eNote").value, status:$("eStatus").value, return_date:$("eReturn").value,
+    rest_days:rest, division:$("eDiv").value, area:$("eArea").value.toUpperCase(),
+    phone:$("ePhone").value, tags:$("eTags").value.toUpperCase(), rip_rap:$("eRip").checked?1:0
+  };
+  Object.assign(t,body,{rip_rap:body.rip_rap});
+  queuePush({path:`/api/truck/CACTUS/${encodeURIComponent(num)}`,body});
+  closeModal();render();
+}
+
+function openConfirmNew(num){
+  const t=truckOf(num);if(!t)return;
+  const divs=(board.divisions||[]).map(d=>`<option value="${d.id}" ${(t.suggested_division||"NORTH")===d.id?"selected":""}>${esc(d.label)}</option>`).join("");
+  openModal(`
+    <h3>⚑ NUEVO — Truck ${esc(t.number)}</h3>
+    <p style="font-size:14px;color:var(--mut);">${esc(t.driver||"sin driver")}${t.trailer_type?" · "+esc(t.trailer_type):""}${t.suggested_division?" · Samsara sugiere: <b>"+esc(t.suggested_division)+"</b>":""}</p>
+    <label>División</label><select id="cnDiv">${divs}</select>
+    <label>Área / yard</label><input type="text" id="cnArea" placeholder="PARIS, TYLER, CORSICANA…" value="${esc(t.area==="(SIN YARD)"?"":t.area)}">
+    <div class="actions">
+      <button class="b-cancel" onclick="closeModal()">Después</button>
+      <button class="b-save" onclick="confirmNew('${esc(t.number)}')">Confirmar</button>
+    </div>`);
+}
+function confirmNew(num){
+  const t=truckOf(num);if(!t)return;
+  const division_=$("cnDiv").value, area=$("cnArea").value.toUpperCase();
+  Object.assign(t,{is_new:0,division:division_,area:area||t.area});
+  queuePush({path:`/api/truck/CACTUS/${encodeURIComponent(num)}/confirm-new`,body:{division:division_,area}});
+  closeModal();render();
+}
+
+function openResolveRemoved(num){
+  const t=truckOf(num);if(!t)return;
+  openModal(`
+    <h3>¿De baja? — Truck ${esc(t.number)}</h3>
+    <p style="font-size:14px;color:var(--mut);">Ya no aparece en el fleet 5 de NewMile. Nada se borra solo: tú decides.</p>
+    <div class="actions">
+      <button class="b-cancel" onclick="resolveRemoved('${esc(t.number)}','keep')">Sigue activo</button>
+      <button class="b-save" style="background:var(--red)" onclick="resolveRemoved('${esc(t.number)}','archive')">Confirmar baja</button>
+    </div>`);
+}
+function resolveRemoved(num,action){
+  const t=truckOf(num);if(!t)return;
+  if(action==="archive")t.archived=1; t.maybe_removed=0;
+  queuePush({path:`/api/truck/CACTUS/${encodeURIComponent(num)}/resolve-removed`,body:{action}});
+  closeModal();render();
+}
+
+function openFlag(num){
+  const t=truckOf(num);if(!t)return;
+  const src=t.samsara_flag?"samsara":"newmile";
+  const flag=t.samsara_flag||t.detected_flag;
+  openModal(`
+    <h3>⚑ Flag detectado — Truck ${esc(t.number)}</h3>
+    <p style="font-size:15px;"><b>"${esc(flag)}"</b> <span style="color:var(--mut)">(del nombre en ${src==="samsara"?"Samsara":"NewMile"})</span></p>
+    <p style="font-size:13px;color:var(--mut);">Aceptar lo convierte en status (shop/down/de-leased según el texto) y guarda el texto como nota de status.</p>
+    <div class="actions">
+      <button class="b-cancel" onclick="applyFlag('${esc(t.number)}','${src}','dismiss')">Descartar</button>
+      <button class="b-save" onclick="applyFlag('${esc(t.number)}','${src}','accept')">Aceptar flag</button>
+    </div>`);
+}
+function applyFlag(num,source,action){
+  const t=truckOf(num);if(!t)return;
+  if(action==="accept"){
+    const flag=source==="samsara"?t.samsara_flag:t.detected_flag;
+    if(/DELEAS/i.test(flag))t.status="deleased";else if(/SHOP/i.test(flag))t.status="shop";else if(/DOWN/i.test(flag))t.status="down";
+    t.status_note=flag;
+  }
+  if(source==="samsara")t.samsara_flag="";else t.detected_flag="";
+  queuePush({path:`/api/truck/CACTUS/${encodeURIComponent(num)}/flag`,body:{source,action}});
+  closeModal();render();
+}
+
+// ---------- boot ----------
+fetchBoard();
+setInterval(fetchBoard,5*60*1000); // refresh every 5 min while open
+</script>
+</body>
+</html>

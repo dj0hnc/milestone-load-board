@@ -1,0 +1,1617 @@
+{
+ "north": [
+  {
+   "t": "98",
+   "d": "Charles Gordon",
+   "tt": "ST-ED",
+   "c": "Paris"
+  },
+  {
+   "t": "169",
+   "d": "Andrew Whipkey",
+   "tt": "AL-ED",
+   "c": "Blossom"
+  },
+  {
+   "t": "170",
+   "d": "Whipkey Sr / Deb Blevins",
+   "tt": "ST-ED",
+   "c": "Powderly",
+   "n": "DEL Zotto Only"
+  },
+  {
+   "t": "171",
+   "d": "Whipkey Sr / Jose Herrera",
+   "tt": "AL-ED",
+   "c": "Paris",
+   "n": "DEL Zotto Only"
+  },
+  {
+   "t": "172",
+   "d": "Whipkey Sr / Darryl Wilson",
+   "tt": "AL-ED",
+   "c": "Scroggins",
+   "n": "DEL Zotto Only"
+  },
+  {
+   "t": "196",
+   "d": "Chris Burns",
+   "tt": "AL-ED",
+   "c": "Paris"
+  },
+  {
+   "t": "273",
+   "d": "Henry Serrano",
+   "tt": "AL-ED",
+   "c": "Campbell"
+  },
+  {
+   "t": "351",
+   "d": "Elaine Raper / Lonnie Seat",
+   "tt": "AL-ED",
+   "c": "Bogota"
+  },
+  {
+   "t": "354",
+   "d": "Anthony Burton",
+   "tt": "AL-ED",
+   "c": "Paris"
+  },
+  {
+   "t": "355",
+   "d": "Ferguson / Brendi Romero",
+   "tt": "ST-ED",
+   "c": "Paris"
+  },
+  {
+   "t": "930",
+   "d": "Real Tex / Jason Benedict",
+   "tt": "AL-ED/L",
+   "c": "Paris",
+   "n": "En TRK 927 desde 7/8/26"
+  },
+  {
+   "t": "972",
+   "d": "BLN - Shawn Kellam",
+   "tt": "RIP Trl",
+   "c": "Paris",
+   "rip": true
+  },
+  {
+   "t": "1001",
+   "d": "Heith Stubbs",
+   "tt": "ED",
+   "c": "Sulphur Spr"
+  },
+  {
+   "t": "1003",
+   "d": "Ferguson / Peter Strouse",
+   "tt": "ST-ED",
+   "c": "Hugo"
+  },
+  {
+   "t": "1007",
+   "d": "Ervin Hill",
+   "tt": "RIP Trl",
+   "c": "ARK",
+   "rip": true
+  },
+  {
+   "t": "1017",
+   "d": "Mills / Kaleb Mills",
+   "tt": "AL-ED",
+   "c": "Paris"
+  },
+  {
+   "t": "1026",
+   "d": "Jimmy (JD) Ferguson",
+   "tt": "AL-ED",
+   "c": "Powderly"
+  },
+  {
+   "t": "1031",
+   "d": "Jacob Dyck / Willie Knelsen",
+   "tt": "ST-ED",
+   "c": "Powderly"
+  },
+  {
+   "t": "1035",
+   "d": "Raper / Saul Gonzales",
+   "tt": "ST-ED",
+   "c": "Powderly"
+  },
+  {
+   "t": "1037",
+   "d": "Mark Hoskins / Jonathan King",
+   "tt": "ST-ED",
+   "c": "Powderly"
+  },
+  {
+   "t": "1055",
+   "d": "Jeff Hill",
+   "tt": "AL-ED",
+   "c": "Paris"
+  },
+  {
+   "t": "1063",
+   "d": "Josh Turley",
+   "tt": "AL-ED/L",
+   "c": "Sawyer"
+  },
+  {
+   "t": "1076",
+   "d": "Dustin Smith / SIN DRIVER",
+   "tt": "AL-ED",
+   "c": "Paris"
+  },
+  {
+   "t": "1079",
+   "d": "Michael / Casey Turner",
+   "tt": "RIP Trl",
+   "c": "Mt Vernon",
+   "rip": true
+  },
+  {
+   "t": "1082",
+   "d": "Williams / DOWN",
+   "tt": "ST-ED",
+   "c": "Savoy"
+  },
+  {
+   "t": "1083",
+   "d": "Williams / John (Adam) Jacks",
+   "tt": "RIP Trl",
+   "c": "Campbell",
+   "rip": true
+  },
+  {
+   "t": "1086",
+   "d": "Swaim / DOWN",
+   "tt": "ST-ED",
+   "c": "Paris",
+   "st": "d"
+  },
+  {
+   "t": "1087",
+   "d": "Elliott / Paul Thedford",
+   "tt": "ST-ED",
+   "c": "Pecan Gap",
+   "st": "d"
+  },
+  {
+   "t": "1106",
+   "d": "Smith / Ross Malone",
+   "tt": "AL-ED/L",
+   "c": "Powderly",
+   "n": "TRK Down desde 7/13/26"
+  },
+  {
+   "t": "1108",
+   "d": "Lane Anderson",
+   "tt": "AL-ED",
+   "c": "Powderly"
+  },
+  {
+   "t": "1109",
+   "d": "Ryan Glover",
+   "tt": "ST-ED",
+   "c": "Paris"
+  },
+  {
+   "t": "1117",
+   "d": "Jacob Dyck",
+   "tt": "ST-ED",
+   "c": "Powderly"
+  },
+  {
+   "t": "1118",
+   "d": "Steve Ebsen Jr",
+   "tt": "RIP Trl",
+   "c": "Hugo",
+   "st": "d",
+   "n": "Down desde 7/8/26",
+   "rip": true
+  },
+  {
+   "t": "1119",
+   "d": "Vontray Watkins",
+   "tt": "ED",
+   "c": "Valliant"
+  },
+  {
+   "t": "1120",
+   "d": "Jeremy (James) Burcham",
+   "tt": "AL-ED/L",
+   "c": "Eagletown",
+   "n": "Regresa a manejar 7/13/26"
+  },
+  {
+   "t": "1122",
+   "d": "Dyke / Ademilson Fernandes",
+   "tt": "ST-ED",
+   "c": "Powderly"
+  },
+  {
+   "t": "1123",
+   "d": "Raper / Greg Newsom",
+   "tt": "ST-ED",
+   "c": "Paris"
+  },
+  {
+   "t": "1124",
+   "d": "Johansen / Dustin M",
+   "tt": "ED",
+   "c": "Paris"
+  },
+  {
+   "t": "1126",
+   "d": "Smith / Philip Adams",
+   "tt": "AL-ED",
+   "c": "Paris"
+  },
+  {
+   "t": "1129",
+   "d": "Williams / Tracy Mize",
+   "tt": "AL-ED/L",
+   "c": "Cooper"
+  },
+  {
+   "t": "1130",
+   "d": "Bobby Guess",
+   "tt": "ST-ED",
+   "c": "Paris"
+  },
+  {
+   "t": "1132",
+   "d": "Mark (Marcus) Womack",
+   "tt": "AL-ED/L",
+   "c": "Alba"
+  },
+  {
+   "t": "1136",
+   "d": "Dustin Smith",
+   "tt": "AL-ED/L",
+   "c": "Paris"
+  },
+  {
+   "t": "1137",
+   "d": "Steve Raper",
+   "tt": "AL-ED",
+   "c": "Paris"
+  },
+  {
+   "t": "1138",
+   "d": "Darrel Wingard",
+   "tt": "AL-ED",
+   "c": "Powderly"
+  },
+  {
+   "t": "1143",
+   "d": "Travis Sullivan / SIN DRIVER",
+   "tt": "RIP Trl",
+   "c": "Gilmer",
+   "st": "d",
+   "rip": true
+  },
+  {
+   "t": "1144",
+   "d": "Wilson Sparks / DOWN",
+   "tt": "RB-ED",
+   "c": "Mt. Vernon",
+   "st": "d"
+  },
+  {
+   "t": "1216",
+   "d": "Kevin Arnold",
+   "tt": "ST-ED",
+   "c": "Paris"
+  },
+  {
+   "t": "1244",
+   "d": "Daniel Lee / DOWN",
+   "tt": "ST-ED",
+   "c": "Detroit",
+   "n": "DEL Zotto Only"
+  },
+  {
+   "t": "1287",
+   "d": "Ross Malone",
+   "tt": "ST-ED",
+   "c": "Powderly"
+  },
+  {
+   "t": "1307",
+   "d": "Steve Dawson",
+   "tt": "ST-ED",
+   "c": "Clarksville",
+   "n": "Running desde 7/13/26"
+  },
+  {
+   "t": "1448",
+   "d": "Stefan Cannon",
+   "tt": "AL-ED",
+   "c": "Paris"
+  },
+  {
+   "t": "1477",
+   "d": "Jason Johansen",
+   "tt": "AL-ED",
+   "c": "Paris"
+  },
+  {
+   "t": "1483",
+   "d": "Briscoe / Don Kautz",
+   "tt": "AL-ED/L",
+   "c": "Powderly"
+  },
+  {
+   "t": "1511",
+   "d": "Briscoe / Clint Moore",
+   "tt": "ST-ED",
+   "c": "Paris"
+  },
+  {
+   "t": "2005",
+   "d": "SUT / Jack Gillean Jr.",
+   "tt": "AL-ED/L",
+   "c": "Hugo"
+  },
+  {
+   "t": "2006",
+   "d": "SUT / Steve Fugett",
+   "tt": "AL-ED",
+   "c": "Powderly"
+  },
+  {
+   "t": "2007",
+   "d": "SUT / Windel Miles",
+   "tt": "ST-ED",
+   "c": "Paris"
+  },
+  {
+   "t": "2008",
+   "d": "SUT / Tim Rees",
+   "tt": "AL-ED",
+   "c": "Hugo"
+  },
+  {
+   "t": "2009",
+   "d": "SUT / John Colley",
+   "tt": "AL-ED",
+   "c": "Hugo"
+  },
+  {
+   "t": "2010",
+   "d": "SUT / Dusty Starr",
+   "tt": "AL-ED",
+   "c": "Hugo"
+  },
+  {
+   "t": "2011",
+   "d": "SUT / Kenny Gibbons",
+   "tt": "RIP Trl",
+   "c": "Hugo",
+   "rip": true
+  },
+  {
+   "t": "2012",
+   "d": "SUT / Jack Self",
+   "tt": "AL-ED",
+   "c": "Sawyer"
+  },
+  {
+   "t": "2013",
+   "d": "SUT / Dedrick Stiles",
+   "tt": "ST-ED",
+   "c": "Hugo"
+  },
+  {
+   "t": "2014",
+   "d": "SUT / Michael Labit",
+   "tt": "AL-ED",
+   "c": "Hugo"
+  },
+  {
+   "t": "2015",
+   "d": "SUT / Darrell (Kenneth) Cowart / DOWN",
+   "tt": "ST-ED",
+   "c": "Hugo"
+  },
+  {
+   "t": "2022",
+   "d": "Jonathan Harrington",
+   "tt": "RIP Trl",
+   "c": "Sulphur Spr",
+   "rip": true
+  },
+  {
+   "t": "2072",
+   "d": "Billy J Swain",
+   "tt": "AL-ED",
+   "c": "Paris"
+  },
+  {
+   "t": "4003",
+   "d": "Kevin Baker",
+   "tt": "AL-ED",
+   "c": "Mt Vernon"
+  },
+  {
+   "t": "5081",
+   "d": "Swain / Joann Strouse",
+   "tt": "ST-ED",
+   "c": "Powderly",
+   "n": "Arrowhead: Blake (owner) 918-453-3847"
+  },
+  {
+   "t": "AE17",
+   "d": "",
+   "tt": "",
+   "c": "RKH Sawyer"
+  },
+  {
+   "t": "AE44",
+   "d": "",
+   "tt": "",
+   "c": "RKH Sawyer"
+  },
+  {
+   "t": "AE55",
+   "d": "",
+   "tt": "",
+   "c": "RKH Sawyer"
+  },
+  {
+   "t": "AE88",
+   "d": "",
+   "tt": "",
+   "c": "RKH Sawyer"
+  },
+  {
+   "t": "BT01",
+   "d": "Butler Trucking",
+   "tt": "",
+   "c": "Butler / Walker / Livingston",
+   "st": "d",
+   "n": "BT01 DOWN — Nathan 870-330-2818"
+  },
+  {
+   "t": "BT02",
+   "d": "Nathan Butler",
+   "tt": "",
+   "c": "Butler / Walker / Livingston",
+   "n": "Nathan 870-330-2818"
+  },
+  {
+   "t": "BW05",
+   "d": "Aaron Walker",
+   "tt": "",
+   "c": "Butler / Walker / Livingston",
+   "n": "Billy 580-372-0547"
+  },
+  {
+   "t": "BW176",
+   "d": "Ocsar",
+   "tt": "",
+   "c": "Butler / Walker / Livingston",
+   "n": "Billy 580-372-0547"
+  },
+  {
+   "t": "BW813",
+   "d": "Billy Walker",
+   "tt": "",
+   "c": "Butler / Walker / Livingston",
+   "n": "Billy 580-372-0547"
+  },
+  {
+   "t": "245",
+   "d": "Livingston",
+   "tt": "",
+   "c": "Butler / Walker / Livingston",
+   "n": "Leila 903-824-6062"
+  },
+  {
+   "t": "246",
+   "d": "Livingston",
+   "tt": "",
+   "c": "Butler / Walker / Livingston",
+   "n": "Leila 903-824-6062"
+  },
+  {
+   "t": "250",
+   "d": "Livingston",
+   "tt": "",
+   "c": "Butler / Walker / Livingston",
+   "n": "Leila 903-824-6062"
+  },
+  {
+   "t": "251",
+   "d": "Livingston",
+   "tt": "",
+   "c": "Butler / Walker / Livingston",
+   "n": "Leila 903-824-6062"
+  },
+  {
+   "t": "492",
+   "d": "Livingston",
+   "tt": "",
+   "c": "Butler / Walker / Livingston",
+   "n": "Leila 903-824-6062"
+  },
+  {
+   "t": "630",
+   "d": "Livingston",
+   "tt": "",
+   "c": "Butler / Walker / Livingston",
+   "n": "Leila 903-824-6062"
+  },
+  {
+   "t": "1273",
+   "d": "Henry Serrano",
+   "tt": "AL-ED",
+   "c": "Campbell",
+   "n": "⚑ NUEVO — fleet propio Henry Serrano, corrió 7/9"
+  },
+  {
+   "t": "2000",
+   "d": "Justin McLean (JJE)",
+   "tt": "AL-ED",
+   "c": "Sulphur Spr",
+   "n": "⚑ NUEVO — no estaba en tu lista, corrió 7/9"
+  },
+  {
+   "t": "AE044",
+   "d": "Teddy Young",
+   "tt": "",
+   "c": "RKH Sawyer",
+   "n": "⚑ Arrowhead real en NewMile (tu lista dice AE44)"
+  },
+  {
+   "t": "AE099",
+   "d": "Jerry Arrowhead",
+   "tt": "",
+   "c": "RKH Sawyer",
+   "n": "⚑ Arrowhead real en NewMile — corrió 7/7"
+  }
+ ],
+ "south": [
+  {
+   "t": "629",
+   "d": "Stephen Brown",
+   "tt": "RB-ED",
+   "c": "TYLER",
+   "rip": true
+  },
+  {
+   "t": "633",
+   "d": "Jose Servin",
+   "tt": "AL-ED",
+   "c": "TYLER"
+  },
+  {
+   "t": "645",
+   "d": "Jose Chavez",
+   "tt": "AL-ED",
+   "c": "TYLER"
+  },
+  {
+   "t": "670",
+   "d": "Ramon Lopez",
+   "tt": "AL-ED",
+   "c": "TYLER"
+  },
+  {
+   "t": "720",
+   "d": "Job Vega",
+   "tt": "AL-ED",
+   "c": "TYLER"
+  },
+  {
+   "t": "766",
+   "d": "Ramon Velazco",
+   "tt": "AL-ED",
+   "c": "TYLER"
+  },
+  {
+   "t": "927",
+   "d": "Jason Benedict",
+   "tt": "AL-ED",
+   "c": "TYLER",
+   "n": "Aquí anda Jason del 930 desde 7/8"
+  },
+  {
+   "t": "963",
+   "d": "Charles Wages",
+   "tt": "SD Steel",
+   "c": "TYLER",
+   "n": "Super Dump + RIP RAP",
+   "rip": true
+  },
+  {
+   "t": "973",
+   "d": "Cody Hamilton",
+   "tt": "SD Steel",
+   "c": "TYLER",
+   "n": "Super Dump + RIP RAP",
+   "rip": true
+  },
+  {
+   "t": "974",
+   "d": "Chris Ballew",
+   "tt": "AL-ED",
+   "c": "TYLER"
+  },
+  {
+   "t": "1032",
+   "d": "",
+   "tt": "ED",
+   "c": "TYLER",
+   "n": "JJE Trucking — sin driver en NM"
+  },
+  {
+   "t": "1036",
+   "d": "John Wickware",
+   "tt": "SD Demo",
+   "c": "TYLER",
+   "n": "Super Dump"
+  },
+  {
+   "t": "1054",
+   "d": "Greg Brown",
+   "tt": "AL-ED",
+   "c": "TYLER"
+  },
+  {
+   "t": "1127",
+   "d": "Justin Ballew",
+   "tt": "AL-ED",
+   "c": "TYLER"
+  },
+  {
+   "t": "1140",
+   "d": "Mark Aldridge",
+   "tt": "AL-TT",
+   "c": "TYLER"
+  },
+  {
+   "t": "1252",
+   "d": "Ramiro Baldovinos",
+   "tt": "AL-ED",
+   "c": "TYLER"
+  },
+  {
+   "t": "1318",
+   "d": "Manuel Beltran",
+   "tt": "AL-ED",
+   "c": "TYLER",
+   "rip": true
+  },
+  {
+   "t": "1386",
+   "d": "Dustin Rabouin",
+   "tt": "ED",
+   "c": "TYLER"
+  },
+  {
+   "t": "1690",
+   "d": "Colton Parrigin",
+   "tt": "AL-ED",
+   "c": "TYLER"
+  },
+  {
+   "t": "1732",
+   "d": "Disifredo Baldovinos",
+   "tt": "AL-ED",
+   "c": "TYLER"
+  },
+  {
+   "t": "7051",
+   "d": "Ricardo Hernandez",
+   "tt": "AL-ED",
+   "c": "TYLER"
+  },
+  {
+   "t": "9321",
+   "d": "Walt Ottaberry",
+   "tt": "AL-ED",
+   "c": "TYLER",
+   "rip": true
+  },
+  {
+   "t": "9322",
+   "d": "Sammy Smith",
+   "tt": "AL-ED",
+   "c": "TYLER",
+   "rip": true
+  },
+  {
+   "t": "9323",
+   "d": "Angela McLean",
+   "tt": "AL-ED",
+   "c": "TYLER"
+  },
+  {
+   "t": "9324",
+   "d": "Dustin Tidwell",
+   "tt": "AL-ED",
+   "c": "TYLER"
+  },
+  {
+   "t": "9931",
+   "d": "Lauree Wade",
+   "tt": "AL-ED",
+   "c": "TYLER"
+  },
+  {
+   "t": "1103",
+   "d": "Vidal Hernandez",
+   "tt": "AL-ED",
+   "c": "SULPHUR SPRINGS",
+   "n": "Mismo driver que 669"
+  },
+  {
+   "t": "669",
+   "d": "Vidal Hernandez (comparte c/ 1103)",
+   "tt": "AL-ED",
+   "c": "SULPHUR SPRINGS",
+   "n": "Mismo driver que 1103",
+   "rip": true
+  },
+  {
+   "t": "723",
+   "d": "Tomas Trujillo",
+   "tt": "AL-ED",
+   "c": "SULPHUR SPRINGS",
+   "tg": "3X8"
+  },
+  {
+   "t": "682",
+   "d": "Jose Rodriguez",
+   "tt": "AL-ED",
+   "c": "DALLAS"
+  },
+  {
+   "t": "687",
+   "d": "Zadok Hawkins",
+   "tt": "AL-ED",
+   "c": "DALLAS"
+  },
+  {
+   "t": "1005",
+   "d": "Byron Serrano",
+   "tt": "AL-ED",
+   "c": "DALLAS"
+  },
+  {
+   "t": "1013",
+   "d": "Eric Osorio",
+   "tt": "AL-ED",
+   "c": "DALLAS",
+   "rip": true
+  },
+  {
+   "t": "1056",
+   "d": "Roberto Osorio",
+   "tt": "AL-ED",
+   "c": "DALLAS",
+   "tg": "3X8"
+  },
+  {
+   "t": "1058",
+   "d": "Ramon Garcia",
+   "tt": "AL-ED",
+   "c": "DALLAS"
+  },
+  {
+   "t": "1068",
+   "d": "Jose Varelas",
+   "tt": "AL-ED",
+   "c": "DALLAS"
+  },
+  {
+   "t": "1100",
+   "d": "Julio Navarro",
+   "tt": "AL-ED",
+   "c": "DALLAS"
+  },
+  {
+   "t": "1115",
+   "d": "Enrique J Carbajal",
+   "tt": "AL-ED",
+   "c": "DALLAS"
+  },
+  {
+   "t": "1125",
+   "d": "Rico Pate",
+   "tt": "AL-ED",
+   "c": "DALLAS"
+  },
+  {
+   "t": "1172",
+   "d": "Martin Sanchez Rodriguez",
+   "tt": "AL-ED",
+   "c": "DALLAS",
+   "tg": "3X8"
+  },
+  {
+   "t": "553",
+   "d": "",
+   "tt": "",
+   "c": "KAUFMAN",
+   "tg": "3X8",
+   "n": "No aparece en NewMile fleet 5 — verificar"
+  },
+  {
+   "t": "684",
+   "d": "Olivo Mendoza",
+   "tt": "AL-ED",
+   "c": "KAUFMAN"
+  },
+  {
+   "t": "899",
+   "d": "Andy Mendoza",
+   "tt": "AL-ED",
+   "c": "KAUFMAN"
+  },
+  {
+   "t": "1064",
+   "d": "Oscar Ramos",
+   "tt": "AL-ED",
+   "c": "KAUFMAN"
+  },
+  {
+   "t": "1090",
+   "d": "Rigoberto Vargas",
+   "tt": "AL-ED",
+   "c": "KAUFMAN"
+  },
+  {
+   "t": "1092",
+   "d": "Omar Amador",
+   "tt": "AL-ED",
+   "c": "KAUFMAN"
+  },
+  {
+   "t": "1387",
+   "d": "Hector Alanis-Tamez",
+   "tt": "AL-ED",
+   "c": "KAUFMAN"
+  },
+  {
+   "t": "1664",
+   "d": "Jesus Gutierrez",
+   "tt": "AL-ED",
+   "c": "KAUFMAN",
+   "tg": "3X8"
+  },
+  {
+   "t": "385",
+   "d": "Jason Greene",
+   "tt": "BD",
+   "c": "ATHENS"
+  },
+  {
+   "t": "1019",
+   "d": "Luis Ramos",
+   "tt": "AL-ED",
+   "c": "ATHENS",
+   "tg": "3X8"
+  },
+  {
+   "t": "1027",
+   "d": "",
+   "tt": "AL-ED",
+   "c": "ATHENS",
+   "n": "Brutus — sin driver en NM"
+  },
+  {
+   "t": "1049",
+   "d": "Barta Vaughan",
+   "tt": "AL-ED",
+   "c": "ATHENS"
+  },
+  {
+   "t": "1093",
+   "d": "",
+   "tt": "BD",
+   "c": "ATHENS",
+   "n": "Sin driver en NM"
+  },
+  {
+   "t": "1094",
+   "d": "Curtiss Vaughn",
+   "tt": "BD",
+   "c": "ATHENS"
+  },
+  {
+   "t": "1095",
+   "d": "",
+   "tt": "BD",
+   "c": "ATHENS",
+   "n": "Sin driver en NM"
+  },
+  {
+   "t": "1096",
+   "d": "Roger Partain",
+   "tt": "BD",
+   "c": "ATHENS"
+  },
+  {
+   "t": "1097",
+   "d": "Joseph Hernandez",
+   "tt": "BD",
+   "c": "ATHENS"
+  },
+  {
+   "t": "1101",
+   "d": "Bryan Raulston",
+   "tt": "AL-ED",
+   "c": "ATHENS"
+  },
+  {
+   "t": "1110",
+   "d": "Tristan Pate",
+   "tt": "AL-ED",
+   "c": "ATHENS"
+  },
+  {
+   "t": "1648",
+   "d": "Mario Medina",
+   "tt": "AL-ED",
+   "c": "LONGVIEW"
+  },
+  {
+   "t": "1047",
+   "d": "Lametho Armstrong",
+   "tt": "BD",
+   "c": "(SIN YARD)",
+   "tg": "3X8",
+   "n": "NM: De-Leased 02/09/26, need camera"
+  },
+  {
+   "t": "1048",
+   "d": "Jose Flores",
+   "tt": "AL-ED",
+   "c": "(SIN YARD)",
+   "tg": "3X8"
+  },
+  {
+   "t": "1061",
+   "d": "",
+   "tt": "",
+   "c": "(SIN YARD)",
+   "n": "No aparece en NewMile fleet 5 — verificar",
+   "rip": true
+  },
+  {
+   "t": "1062",
+   "d": "Jose Ayala",
+   "tt": "AL-ED",
+   "c": "(SIN YARD)",
+   "rip": true
+  },
+  {
+   "t": "1121",
+   "d": "Brian Jones",
+   "tt": "BD",
+   "c": "(SIN YARD)"
+  },
+  {
+   "t": "1973",
+   "d": "",
+   "tt": "",
+   "c": "(SIN YARD)",
+   "tg": "3X8",
+   "n": "No aparece en NewMile (¿será 1970 Breck West?)"
+  },
+  {
+   "t": "HS023",
+   "d": "Subhauler",
+   "tt": "SD",
+   "c": "(SIN YARD)",
+   "tg": "SUBHAULER"
+  },
+  {
+   "t": "HS024",
+   "d": "Subhauler",
+   "tt": "SD",
+   "c": "(SIN YARD)",
+   "tg": "SUBHAULER"
+  },
+  {
+   "t": "1065",
+   "d": "Cesar Bedoy",
+   "tt": "AL-ED",
+   "c": "CORSICANA",
+   "n": "⚑ NUEVO — base Kerens, corrió 7/9"
+  },
+  {
+   "t": "1091",
+   "d": "Edward Hernandez",
+   "tt": "AL-ED",
+   "c": "CORSICANA",
+   "n": "⚑ NUEVO — base Ennis, corrió 7/9"
+  },
+  {
+   "t": "1105",
+   "d": "Enrique Carbajal",
+   "tt": "AL-ED",
+   "c": "CORSICANA",
+   "n": "⚑ NUEVO — base Corsicana, corrió 7/9"
+  },
+  {
+   "t": "1139",
+   "d": "Humberto Bedoy",
+   "tt": "AL-ED",
+   "c": "CORSICANA",
+   "n": "⚑ NUEVO — base Kerens, corrió 7/9"
+  }
+ ],
+ "activity_sample_jul6_9": {
+  "98": [
+   "Charles Gordon",
+   "7/9"
+  ],
+  "169": [
+   "David Whipkey",
+   "7/9"
+  ],
+  "170": [
+   "Debra Blevins",
+   "7/9"
+  ],
+  "171": [
+   "Jose Herrera",
+   "7/9"
+  ],
+  "196": [
+   "Christopher Burns",
+   "7/9"
+  ],
+  "351": [
+   "Lonnie Seat",
+   "7/9"
+  ],
+  "354": [
+   "Anthony Burton",
+   "7/9"
+  ],
+  "355": [
+   "Brendi Romero",
+   "7/9"
+  ],
+  "385": [
+   "Jason Greene",
+   "7/8"
+  ],
+  "629": [
+   "Stephen Brown",
+   "7/9"
+  ],
+  "633": [
+   "Jose Servin",
+   "7/9"
+  ],
+  "670": [
+   "Ramon Lopez",
+   "7/9"
+  ],
+  "682": [
+   "Jose Rodriguez",
+   "7/9"
+  ],
+  "684": [
+   "Olivo Mendoza",
+   "7/9"
+  ],
+  "687": [
+   "Zadok Hawkins",
+   "7/9"
+  ],
+  "720": [
+   "Job Vega",
+   "7/9"
+  ],
+  "766": [
+   "Ramon Velazco",
+   "7/9"
+  ],
+  "927": [
+   "Jason Benedict",
+   "7/9"
+  ],
+  "963": [
+   "Charles Wages",
+   "7/9"
+  ],
+  "972": [
+   "Shawn Kellam",
+   "7/9"
+  ],
+  "974": [
+   "Chris Ballew",
+   "7/9"
+  ],
+  "1001": [
+   "Heith Stubbs",
+   "7/7"
+  ],
+  "1003": [
+   "Peter Strouse",
+   "7/9"
+  ],
+  "1005": [
+   "Byron Serrano",
+   "7/9"
+  ],
+  "1007": [
+   "Ervin Hill",
+   "7/9"
+  ],
+  "1013": [
+   "Eric Osorio",
+   "7/9"
+  ],
+  "1017": [
+   "Kaleb Mills",
+   "7/9"
+  ],
+  "1019": [
+   "Luis Ramos",
+   "7/9"
+  ],
+  "1026": [
+   "JD Ferguson",
+   "7/9"
+  ],
+  "1031": [
+   "Willy Knelsen",
+   "7/9"
+  ],
+  "1035": [
+   "Saul Gonzales",
+   "7/9"
+  ],
+  "1037": [
+   "Jonathan King",
+   "7/9"
+  ],
+  "1048": [
+   "Jose Flores",
+   "7/9"
+  ],
+  "1049": [
+   "Barta Vaughan",
+   "7/9"
+  ],
+  "1055": [
+   "Jeffery Hill",
+   "7/9"
+  ],
+  "1056": [
+   "Roberto Osorio",
+   "7/9"
+  ],
+  "1058": [
+   "Ramon Garcia",
+   "7/9"
+  ],
+  "1063": [
+   "Joshua Turley",
+   "7/9"
+  ],
+  "1065": [
+   "Cesar Bedoy",
+   "7/9"
+  ],
+  "1068": [
+   "Jose Varelas",
+   "7/9"
+  ],
+  "1079": [
+   "Casey Turner",
+   "7/9"
+  ],
+  "1083": [
+   "John Jacks",
+   "7/9"
+  ],
+  "1087": [
+   "Paul Thedford",
+   "7/9"
+  ],
+  "1090": [
+   "Rigoberto Vargas",
+   "7/9"
+  ],
+  "1091": [
+   "Edward Hernandez",
+   "7/9"
+  ],
+  "1096": [
+   "Roger Partain",
+   "7/9"
+  ],
+  "1097": [
+   "Joseph Hernandez",
+   "7/9"
+  ],
+  "1100": [
+   "Julio Navarro",
+   "7/9"
+  ],
+  "1101": [
+   "Bryan Raulston",
+   "7/9"
+  ],
+  "1103": [
+   "Vidal Hernandez",
+   "7/9"
+  ],
+  "1105": [
+   "Enrique Carbajal",
+   "7/9"
+  ],
+  "1106": [
+   "Ross Malone",
+   "7/9"
+  ],
+  "1108": [
+   "Lane Anderson",
+   "7/9"
+  ],
+  "1109": [
+   "Ryan Glover",
+   "7/9"
+  ],
+  "1115": [
+   "Enrique J Carbajal",
+   "7/9"
+  ],
+  "1117": [
+   "Jacob Dyck",
+   "7/9"
+  ],
+  "1119": [
+   "Vontray Watkins",
+   "7/9"
+  ],
+  "1122": [
+   "Ademilson Fernandes",
+   "7/9"
+  ],
+  "1123": [
+   "Gregory Newsom",
+   "7/9"
+  ],
+  "1125": [
+   "Rico Pate",
+   "7/9"
+  ],
+  "1126": [
+   "Philip Adams",
+   "7/9"
+  ],
+  "1127": [
+   "Justin Ballew",
+   "7/9"
+  ],
+  "1129": [
+   "Tracy Mize",
+   "7/9"
+  ],
+  "1130": [
+   "Bobby Guess",
+   "7/9"
+  ],
+  "1136": [
+   "Dustin Smith",
+   "7/9"
+  ],
+  "1137": [
+   "Steve Raper",
+   "7/9"
+  ],
+  "1138": [
+   "Darrel Wingard",
+   "7/9"
+  ],
+  "1139": [
+   "Humberto Bedoy",
+   "7/9"
+  ],
+  "1140": [
+   "Mark Aldridge",
+   "7/9"
+  ],
+  "1172": [
+   "Martin Sanchez Rodriguez",
+   "7/9"
+  ],
+  "1216": [
+   "Kevin Arnold",
+   "7/9"
+  ],
+  "1273": [
+   "Henry Serrano",
+   "7/9"
+  ],
+  "1307": [
+   "Steven Dawson",
+   "7/9"
+  ],
+  "1386": [
+   "Dustin Rabouin",
+   "7/9"
+  ],
+  "1387": [
+   "Hector Alanis-Tamez",
+   "7/9"
+  ],
+  "1448": [
+   "Stefan Cannon",
+   "7/9"
+  ],
+  "1477": [
+   "Jason Johansen",
+   "7/9"
+  ],
+  "1483": [
+   "Donald Kautz",
+   "7/9"
+  ],
+  "1511": [
+   "Clint Moore",
+   "7/9"
+  ],
+  "1648": [
+   "Mario Medina",
+   "7/9"
+  ],
+  "1690": [
+   "Colton Parrigin",
+   "7/9"
+  ],
+  "1732": [
+   "Disifredo Baldovinos",
+   "7/9"
+  ],
+  "2000": [
+   "Justin McLean",
+   "7/9"
+  ],
+  "2005": [
+   "Jack Gillean Jr.",
+   "7/9"
+  ],
+  "2006": [
+   "Steve Fugett",
+   "7/9"
+  ],
+  "2007": [
+   "Windel Miles",
+   "7/9"
+  ],
+  "2008": [
+   "Tim Rees",
+   "7/9"
+  ],
+  "2009": [
+   "John Colley",
+   "7/9"
+  ],
+  "2010": [
+   "Dusty Starr",
+   "7/9"
+  ],
+  "2011": [
+   "Kenneth Gibbons",
+   "7/9"
+  ],
+  "2012": [
+   "Jack Self",
+   "7/9"
+  ],
+  "2013": [
+   "Dedrick Stiles",
+   "7/9"
+  ],
+  "2014": [
+   "Michael Labit",
+   "7/9"
+  ],
+  "2072": [
+   "Billy Swain",
+   "7/9"
+  ],
+  "4003": [
+   "Kevin Baker",
+   "7/9"
+  ],
+  "5081": [
+   "Joann Strouse",
+   "7/9"
+  ],
+  "7051": [
+   "Ricardo Hernandez",
+   "7/8"
+  ],
+  "9321": [
+   "Walt Ottaberry",
+   "7/9"
+  ],
+  "9322": [
+   "Sammy Smith",
+   "7/9"
+  ],
+  "9323": [
+   "Angela McLean",
+   "7/9"
+  ],
+  "9324": [
+   "Dustin Tidwell",
+   "7/8"
+  ],
+  "9931": [
+   "Lauree Wade",
+   "7/9"
+  ],
+  "BT02": [
+   "Nathan Butler",
+   "7/9"
+  ],
+  "BW05": [
+   "Aaron Walker",
+   "7/9"
+  ],
+  "BW176": [
+   "Oscar Perez",
+   "7/9"
+  ],
+  "BW813": [
+   "Billy Walker",
+   "7/9"
+  ],
+  "HS023": [
+   "Robert Johnson",
+   "7/9"
+  ],
+  "HS024": [
+   "Bob Clayton",
+   "7/9"
+  ],
+  "AE044": [
+   "Teddy Young",
+   "7/9"
+  ],
+  "AE099": [
+   "Jerry Arrowhead",
+   "7/7"
+  ]
+ },
+ "samsara_flags": {
+  "169": [
+   "DeLeased 12 01 2025 Need Camera"
+  ],
+  "1002": [
+   "DeLeased 12 30 2025 NEED CAMERA"
+  ],
+  "535": [
+   "Deleased Need Camera"
+  ],
+  "Not": [
+   "Used"
+  ],
+  "2158": [
+   "DeLeased 09/01/2025 NEED CAMERA RETURNED"
+  ],
+  "1023": [
+   "IN SHOP 08/20/2025"
+  ],
+  "672": [
+   "Deleased  Need Camera"
+  ],
+  "683": [
+   "In Shop 10/08/2025"
+  ],
+  "624": [
+   "Deleased 11072025-Need Camera"
+  ],
+  "718": [
+   "Deleased Need Camera"
+  ],
+  "632": [
+   "Needs Camera Returned"
+  ],
+  "1060": [
+   "Tyler Kelley De-leased Need Camera"
+  ],
+  "1073": [
+   "DeLeased 12 05 2025 Need Camera Returned"
+  ],
+  "716": [
+   "DeLeased Need Camera"
+  ],
+  "553": [
+   "Deleased Need Camera"
+  ],
+  "1010": [
+   "DeLeased 12 12 2025 Need Camera"
+  ],
+  "1088": [
+   "Deleased need camara"
+  ],
+  "1009": [
+   "DOWN 12/12/2024"
+  ],
+  "1018": [
+   "David Rosson  Need Camera Returned"
+  ],
+  "1443": [
+   "De-Leased Need Camera"
+  ],
+  "1497": [
+   "DOWN 07/07/2025"
+  ],
+  "1043": [
+   "LSK Trans De-Leased Need Camera"
+  ],
+  "1047": [
+   "De-Leased 02/09/2026 - Need Camera"
+  ],
+  "1044": [
+   "Deleased Need Camera"
+  ],
+  "1973": [
+   "DeLeased Need Camera"
+  ],
+  "1066": [
+   "DeLeased Need Camera"
+  ],
+  "1067": [
+   "Deleased 09/15/25 Need Camera"
+  ],
+  "1076": [
+   "DeLeased Need Camera"
+  ],
+  "1074": [
+   "Deleased Need Camera Returned"
+  ],
+  "Deactivated": [
+   ", Previously paired with gateway G82CR5JJ76"
+  ],
+  "1000": [
+   "DeLeased Need Camera"
+  ],
+  "971": [
+   "In Shop 08/03/2025"
+  ],
+  "1102": [
+   "De-leased Need Camera"
+  ],
+  "1089": [
+   "De-leased Need Camera"
+  ],
+  "GX46": [
+   "29J-A3R"
+  ],
+  "GGYC": [
+   "D9J-5KK"
+  ],
+  "GFDT": [
+   "SYE-SAC"
+  ],
+  "GX6E": [
+   "DEW-AYA"
+  ],
+  "1114": [
+   "Deleased Need Camera"
+  ],
+  "1113": [
+   "DeLeased 10/19/2025 NEED CAMERA RETURNED"
+  ],
+  "GTHB": [
+   "U25-8C8"
+  ]
+ }
+}

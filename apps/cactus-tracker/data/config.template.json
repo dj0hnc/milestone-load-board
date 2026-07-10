@@ -1,0 +1,21 @@
+{
+  "_comment": "Copia este archivo a data/config.json y llena los tokens. Sin config.json el tracker corre igual (seed + board + marcas), solo que sin syncs.",
+  "port": 8791,
+  "publicBase": "https://TU-TUNNEL.trycloudflare.com",
+  "_publicBase": "URL pública del tunnel de Cloudflare (la misma del office bundle). Se usa para armar el redirect del sign-in de NewMile: <publicBase>/cactus-tracker/api/newmile/callback.",
+  "newmile": {
+    "mcpUrl": "https://app.newmile.com/mcp",
+    "oauth": {
+      "_comment": "Vacío = dynamic client registration (verificado en vivo). El primer sign-in se hace desde la UI (botón conectar); después el refresh token mantiene la sesión solo.",
+      "clientId": "",
+      "scopes": "mcp:read mcp:write claudeai"
+    }
+  },
+  "samsara": {
+    "_comment": "Tokens read-only por org de Samsara. SUBS NO van aquí: los subhaulers no están en Samsara, su info sale solo de NewMile. El token de Cactus no tiene scope de trips/driver-assignments: solo vehicles + tags (suficiente).",
+    "tokens": [
+      { "name": "Cactus Express", "token": "" },
+      { "name": "CKJ Transport", "token": "" }
+    ]
+  }
+}

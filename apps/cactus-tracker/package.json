@@ -1,0 +1,17 @@
+{
+  "name": "cactus-tracker",
+  "version": "1.0.0",
+  "description": "Cactus Truck Tracker — board de cobertura diaria de despacho (NewMile + Samsara). Mobile-first, corre standalone o montado en mab-office-bundle.",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "seed": "node server/seed.js",
+    "seed:force": "node server/seed.js --force"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

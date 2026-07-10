@@ -1,0 +1,6 @@
+# runtime — nunca al repo
+node_modules/
+data/cactus.db
+data/cactus.db-*
+data/newmile-tokens.json
+data/config.json

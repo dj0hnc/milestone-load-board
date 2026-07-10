@@ -1,0 +1,101 @@
+# Cactus Truck Tracker
+
+Board de cobertura diaria de despacho: **que jamás se pase un truck de Cactus Express**.
+Mobile-first (se usa desde el cel en el yard), con sync automático de NewMile y Samsara.
+
+Vive aquí como app autocontenida (`apps/cactus-tracker/`) — cero dependencias del
+Electron del Load Board. Para moverlo a `mab-office-bundle` o a su propio repo, se copia
+esta carpeta completa y listo.
+
+## Correr
+
+```bash
+cd apps/cactus-tracker
+npm install            # solo express; la DB es node:sqlite (Node >= 22.13, sin build nativo)
+npm run seed           # carga los 161 trucks del roster inicial (idempotente)
+npm start              # http://localhost:8791/cactus-tracker/
+```
+
+Config opcional: copia `data/config.template.json` a `data/config.json` y llena
+`publicBase` (URL del tunnel) + tokens de Samsara. Sin config el board funciona igual
+(marcas, notas, FALTAN); solo los syncs quedan apagados.
+
+Por truck se controla: status (OK / en shop / down / sin driver / **vacaciones** / de-leased)
+con fecha de regreso, días fijos que no trabaja (Mon–Sat), nota libre, teléfono, tags,
+rip-rap y división/área. El panel FALTAN agrupa los pendientes **por zona**, para jalar
+rápido un truck libre del área donde se necesita.
+
+### Montado dentro de mab-office-bundle
+
+```js
+const { createTracker } = require('./apps/cactus-tracker/server');
+const t = createTracker({ config: require('./data/config.json') });
+app.use('/cactus-tracker', t.router);
+t.startScheduler();
+```
+
+## Conectar NewMile
+
+Abrir el tracker → barra de status → **conectar**. Es el mismo OAuth 2.1 verificado del
+Load Board (dynamic registration + PKCE); el redirect regresa a
+`<publicBase>/cactus-tracker/api/newmile/callback`. Después del primer sign-in el
+refresh token mantiene la sesión sola (los jobs corren sin intervención).
+
+## Qué hace solo
+
+| Cuándo (CT) | Job | Qué |
+|---|---|---|
+| 4:30 AM | Roster (NewMile fleet 5) | drivers/trailer types actualizados; badge 48 h si cambió driver; truck nuevo → banner rojo ⚑ NUEVO; truck desaparecido → ¿de baja? (nada se borra solo) |
+| cada hora 4 AM–7 PM | Actividad (load_tickets + assignments de hoy) | última carga, días sin carga (⚠ ≥5, ⛔ ≥14), driver real de hoy; **auto-cover**: truck con carga hoy O ya asignado en NewMile (plan empujado desde el desktop) se marca ⚡ azul solo — FALTAN se vuelve el hueco real |
+| 5:00 AM | Samsara (solo Cactus) | flags en nombres de vehículo ("IN SHOP…", "Deleased…") propuestos para confirmar; tags de terminal (Paris=North, Lufkin=South) sugieren división a los NUEVOS |
+
+**Subhaulers: NO están en Samsara.** Todo lo de subs (BT, BW, HS, AE, Livingston) sale
+exclusivamente de NewMile; el sync de Samsara los salta por diseño (`is_sub = 1`).
+
+## Reglas de oro (implementadas)
+
+1. Datos reales siempre: si la red falla, la UI muestra la última data buena con
+   timestamp y encola los taps para subirlos al volver la señal. Nunca inventa.
+2. Nada se borra solo: bajas se flaggean y tú decides (archivar conserva historial).
+3. NewMile manda en drivers/trailer/actividad; tú mandas en división, área, rip-rap,
+   notas, status y días de descanso (el sync jamás pisa tus campos).
+4. Estado por fecha real (no por día de semana): el jueves pasado nunca se hereda; no
+   hace falta job de reset a las 3 AM.
+
+## Fase 2 (ya preparada en el schema)
+
+- `orgs` trae **KT** (fleet 6, Samsara "CKJ Transport") y **SUBS** (NewMile only)
+  pre-creadas deshabilitadas: activar org + divisiones (Powderly/Rhome/Whitewright) y
+  aparece el tab, sin tocar schema.
+- GPS nocturno de Samsara (punto 3–5 AM) para autoclasificar áreas del South.
+
+## Archivos
+
+```
+server/index.js          entry standalone + scheduler CT (sin dependencia de cron)
+server/routes.js         API REST (board, state, edits, confirms, syncs, audit, OAuth)
+server/db.js             SQLite (node:sqlite) — schema orgs/divisions/trucks/estado/actividad
+server/seed.js           seed idempotente desde data/roster_seed.json
+server/newmile-client.js cliente MCP OAuth server-side (recortado del desktop, mismas llamadas verificadas)
+server/sync-newmile.js   jobs roster + actividad + auto-cover + detección de NUEVOS
+server/sync-samsara.js   flags + tags de terminal (salta subs SIEMPRE)
+server/util.js           normalización de truck numbers + helpers de hora Central
+public/index.html        frontend (diseño canónico navy/gold/Barlow del v3)
+data/roster_seed.json    89 North + 72 South con actividad Jul 6–9 y flags Samsara
+spec/SPEC.md             spec original de referencia
+```
+
+## API rápida
+
+```
+GET  /api/board?org=CACTUS&date=2026-07-10   todo en 1 llamada
+POST /api/state                              {date, org, number, state p|a|d}
+POST /api/truck/CACTUS/:num                  {note?, status?, rest_days?, area?, division?, rip_rap?, phone?, tags?}
+POST /api/truck/CACTUS/:num/confirm-new      {division, area?}
+POST /api/truck/CACTUS/:num/resolve-removed  {action: archive|keep}
+POST /api/truck/CACTUS/:num/flag             {source: samsara|newmile, action: accept|dismiss}
+POST /api/reset                              {date, org, division?}
+POST /api/sync/newmile · /api/sync/samsara   sync manual ("Sync ahora")
+GET  /api/audit?org=CACTUS                   JSON tipo la auditoría del 7/9
+GET  /api/newmile/connect                    sign-in web (una vez)
+```
