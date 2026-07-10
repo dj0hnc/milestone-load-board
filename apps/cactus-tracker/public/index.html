@@ -95,6 +95,11 @@ h1 span{color:var(--gold);}
 .chip.s-d .btn-down{background:var(--red);border-color:var(--red);color:#fff;}
 .chip.rest{opacity:.55;background:#eef0f5;}
 .chip.status-off{background:#f2f3f6;}
+/* no disponible (vacaciones/shop programado/status): ámbar rayado, imposible de confundir */
+.chip.s-off{border-color:#c98a2f;background:repeating-linear-gradient(135deg,#f8f3e8,#f8f3e8 9px,#f0e6d0 9px,#f0e6d0 18px);}
+.chip.s-off .num{color:#8a5a10;}
+.chip.s-off .drv{color:#a8874a;}
+.chip.s-off .offmark{position:absolute;top:-9px;left:-9px;width:26px;height:26px;border-radius:50%;background:#c98a2f;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 1px 4px rgba(0,0,0,.3);}
 .statusbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:12px;color:var(--mut);}
 .statusbar .dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:#b02a2a;margin-right:4px;}
 .statusbar .dot.on{background:var(--green);}
@@ -396,15 +401,20 @@ function render(){
   buildHeader(); renderStatusbar(); renderNet();
 }
 
+const OFF_EMOJI={vacation:"🌴",shop:"🔧",down:"⛔",personal:"🏠",no_driver:"⚠",deleased:"🚫"};
 function chipHtml(t){
   const rest=restsToday(t);
+  const offEntry=offOf(t);
   const off=outOfService(t);
-  const cls=t.state==="a"?"s-a":t.state==="d"?"s-d":"";
+  // orden visual: verde=cubierto, rojo=down HOY, ámbar rayado=no disponible (programado/status)
+  const cls=t.state==="a"?"s-a":t.state==="d"?"s-d":(off?"s-off":"");
+  const offEmoji=offEntry?(OFF_EMOJI[offEntry.reason]||"⛔"):(off?(OFF_EMOJI[t.status]||"⛔"):"");
   const flag=t.samsara_flag||t.detected_flag;
   const drvChg=t.driver_changed_recent;
-  return `<div class="chip ${cls} ${rest?"rest":""} ${off?"status-off":""}" id="chip-${cssId(t.org_id+"-"+t.number)}" onclick="tapChip('${t.org_id}','${esc(t.number)}')">
+  return `<div class="chip ${cls} ${rest?"rest":""}" id="chip-${cssId(t.org_id+"-"+t.number)}" onclick="tapChip('${t.org_id}','${esc(t.number)}')">
     ${t.rip_rap?'<div class="ripflag"></div>':""}
     ${t.state==="a"?`<div class="check ${t.state_source==="auto"?"auto":""}" title="${t.state_source==="auto"?"auto-covered: hauled or assigned today in NewMile":"assigned"}">${t.state_source==="auto"?"⚡":"✓"}</div>`:""}
+    ${cls==="s-off"?`<div class="offmark" title="not available">${offEmoji}</div>`:""}
     <button class="btn-edit" onclick="event.stopPropagation();openEdit('${t.org_id}','${esc(t.number)}')" title="Edit">✎</button>
     <button class="btn-down" onclick="tapDown(event,'${t.org_id}','${esc(t.number)}')" title="Mark down">✕</button>
     <div class="top"><span class="num">${esc(dnum(t))}</span>${t.trailer_type?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(t.trailer_type)}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}</div>
