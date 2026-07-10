@@ -63,17 +63,15 @@ function createTracker(opts) {
   });
   newmile.resume().then(st => log(st ? ('NewMile conectado: ' + (st.user || 'ok')) : 'NewMile sin sesión — conectar desde la UI')).catch(() => {});
 
-  // bootstrap GPS (una vez): reconstruye dónde durmió TODA la flota las últimas noches
-  // y acomoda áreas/terminales solo — se re-corre a mano con POST /api/scan/parking
-  if (!metaGet('mig_gps_backfill')) {
-    setTimeout(async () => {
-      try {
-        const s = await backfillParking(config, 2);
-        if (s.orgs.length) { metaSet('mig_gps_backfill', '1'); log('GPS backfill → ' + JSON.stringify(s)); }
-        else log('GPS backfill pospuesto: sin tokens de Samsara aún');
-      } catch (e) { log('GPS backfill error: ' + (e.message || e)); }
-    }, 5000);
-  }
+  // GPS placement en cada boot: reconstruye dónde durmió la flota las últimas noches
+  // y acomoda áreas/terminales solo (idempotente — corre también tras roster syncs y
+  // en el job nocturno, y a mano con POST /api/scan/parking)
+  setTimeout(async () => {
+    try {
+      const s = await backfillParking(config, 2);
+      log(s.orgs.length ? ('GPS placement → ' + JSON.stringify(s)) : 'GPS placement pospuesto: sin tokens de Samsara aún');
+    } catch (e) { log('GPS placement error: ' + (e.message || e)); }
+  }, 5000);
 
   const router = createRouter({ config, newmile, log });
 
@@ -92,7 +90,10 @@ function createTracker(opts) {
       if (afterOr(4, 30) && metaGet('job_roster_day') !== dateISO) {
         metaSet('job_roster_day', dateISO);
         if (newmile.connected || await newmile.resume()) {
-          log('roster sync → ' + JSON.stringify(await syncRoster(newmile)));
+          const rs = await syncRoster(newmile);
+          log('roster sync → ' + JSON.stringify(rs));
+          // trucks nuevos → acomodarlos por GPS de inmediato, no hasta mañana
+          if (rs.created > 0) { try { log('GPS placement (nuevos) → ' + JSON.stringify(await backfillParking(config, 2))); } catch (e) {} }
           // rip-rap scan diario (ventana corta; el backfill largo se corre manual)
           try { log('riprap scan → ' + JSON.stringify(await scanRipRap(newmile, 14))); } catch (e) { log('riprap scan error: ' + e.message); }
         } else log('roster sync saltado: NewMile sin sesión');
@@ -103,6 +104,7 @@ function createTracker(opts) {
       if (afterOr(4, 10) && metaGet('job_samsara_day') !== dateISO) {
         metaSet('job_samsara_day', dateISO);
         log('samsara sync → ' + JSON.stringify(await syncSamsara(config)));
+        try { log('GPS placement → ' + JSON.stringify(await backfillParking(config, 2))); } catch (e) { log('GPS placement error: ' + (e.message || e)); }
       }
       // Respaldo diario de la DB (20:00 o al primer despertar después): VACUUM INTO
       // un snapshot consistente en DATA_DIR/backups, conserva los últimos 14.

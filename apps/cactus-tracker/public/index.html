@@ -37,10 +37,19 @@ h1 span{color:var(--gold);}
 .wrap{max-width:1280px;margin:0 auto;padding:14px 16px 70px;}
 .progress{background:#e2e5ec;border-radius:999px;height:10px;overflow:hidden;margin-bottom:12px;}
 .progress i{display:block;height:100%;background:linear-gradient(90deg,var(--gold),var(--green));width:0%;transition:width .3s;}
-.pills{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
-.pill{border:1.5px solid #cdd3df;background:#fff;color:var(--ink);border-radius:999px;padding:7px 15px;font-family:'Barlow Condensed';font-weight:700;font-size:15px;letter-spacing:.4px;cursor:pointer;}
-.pill.on{background:var(--navy);border-color:var(--navy);color:#fff;}
-.pill.rip.on{background:var(--blue);border-color:var(--blue);}
+/* control segmentado de status con contadores */
+.seg{display:flex;background:#fff;border:1.5px solid #cdd3df;border-radius:12px;overflow:hidden;margin-bottom:10px;}
+.seg button{flex:1;padding:7px 2px 6px;border:none;background:none;color:#5a6275;cursor:pointer;font-family:'Barlow Condensed';font-weight:700;font-size:13.5px;letter-spacing:.4px;display:flex;flex-direction:column;align-items:center;gap:0;border-right:1px solid #e8ebf1;}
+.seg button:last-child{border-right:none;}
+.seg button span{font-size:15px;font-weight:800;}
+.seg button.on{background:var(--navy);color:#fff;}
+.seg button.rip.on{background:var(--blue);}
+.seg button.off-seg.on{background:#c98a2f;}
+.searchrow select{border:1.5px solid #cdd3df;border-radius:10px;padding:0 8px;font-family:'Barlow Condensed';font-weight:700;font-size:15px;background:#fff;height:44px;}
+.orgtag{font-size:9px;font-weight:800;letter-spacing:.5px;padding:2px 5px;border-radius:4px;background:var(--navy);color:#fff;vertical-align:middle;margin-left:6px;}
+.orgtag.kt{background:var(--blue);}
+.orgtag.ic{background:#7a2fa8;}
+.orgtag.sub{background:#5a6275;}
 .searchrow{display:flex;gap:8px;margin-bottom:14px;}
 .searchrow input{flex:1;padding:11px 14px;border:1.5px solid #cdd3df;border-radius:10px;font-family:'Barlow';font-size:16px;}
 .btn-reset{background:none;border:1.5px solid var(--red);color:var(--red);border-radius:10px;padding:0 16px;font-family:'Barlow Condensed';font-weight:700;font-size:15px;text-transform:uppercase;cursor:pointer;}
@@ -160,14 +169,23 @@ footer{text-align:center;color:var(--mut);font-size:12px;padding:18px;}
     <div id="faltanList"></div>
   </div>
 
-  <div class="pills" id="pills"></div>
+  <div class="seg" id="segStatus"></div>
 
-  <div class="searchrow">
-    <div style="flex:1;position:relative;">
+  <div class="searchrow" style="flex-wrap:wrap;">
+    <div style="flex:1 1 100%;position:relative;">
       <input id="fSearch" type="text" placeholder="Search # / driver / area / note / type…" style="width:100%;padding-right:38px;">
       <button id="fClear" onclick="clearSearch()" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);width:26px;height:26px;border-radius:50%;border:none;background:#cdd3df;color:#4a5164;font-size:14px;font-weight:700;cursor:pointer;line-height:1;">✕</button>
     </div>
-    <select id="fArea" onchange="render()" style="max-width:150px;border:1.5px solid #cdd3df;border-radius:10px;padding:0 8px;font-family:'Barlow Condensed';font-weight:700;font-size:15px;background:#fff;"></select>
+    <select id="fType" onchange="typeFilter=this.value;render()" style="flex:1;">
+      <option value="">Type: all</option>
+      <option value="SD">Super Dump</option>
+      <option value="BD">Belly Dump</option>
+      <option value="ED">End Dump</option>
+      <option value="ALTT">AL-TT</option>
+      <option value="3X8">3X8</option>
+      <option value="SUB">Subhaulers</option>
+    </select>
+    <select id="fArea" onchange="render()" style="flex:1;max-width:170px;"></select>
     <button class="btn-reset" id="btnReset">Reset day</button>
   </div>
 
@@ -184,26 +202,13 @@ footer{text-align:center;color:var(--mut);font-size:12px;padding:18px;}
 const API = location.pathname.replace(/\/(index\.html)?$/, '');
 const DAYS = ["Mon","Tue","Wed","Thur","Fri","Sat"];
 const STATUS_LBL = {ok:"OK", shop:"IN SHOP", down:"DOWN", no_driver:"NO DRIVER", vacation:"VACATION", deleased:"DE-LEASED"};
-const TYPE_PILLS = [
-  {id:"",lbl:"All"},
-  {id:"rip",lbl:"RIP RAP",cls:"rip"},
-  {id:"SD",lbl:"Super Dump"},
-  {id:"BD",lbl:"Belly Dump"},
-  {id:"ED",lbl:"End Dump"},
-  {id:"3X8",lbl:"3X8"},
-  {id:"SUB",lbl:"Subs"},
-  {id:"pend",lbl:"Pending"},
-  {id:"prob",lbl:"Down/Shop"},
-  {id:"vacas",lbl:"Vacation"},
-  {id:"sindrv",lbl:"No driver"},
-];
 const TRAILER_TYPES = ["AL-ED","AL-ED/L","ED","ST-ED","RB-ED","SD Steel","SD Demo","SD","BD","AL-TT","RIP Trl","Demo"];
 
 let board=null;          // last good server payload
 let ORG="CACTUS";        // org del tab activo (CACTUS | KT | ...)
 let division="NORTH";
 let date=null;           // ISO date being viewed
-let typeFilter=""; let showFaltan=false;
+let typeFilter=""; let statusFilter=""; let showFaltan=false;
 let offline=false;
 
 // multi-usuario: cada quien pone su nombre una vez; viaja en cada cambio (auditoría)
@@ -292,21 +297,44 @@ function mdy(iso){return iso?iso.slice(5).replace("-","/").replace(/^0/,""):"";}
 function outOfService(t){return ["shop","down","vacation","deleased"].includes(t.status)||!!offOf(t);}
 function countsForFaltan(t){return t.state==="p"&&!restsToday(t)&&!outOfService(t)&&!t.archived;}
 function trlClass(tt,rip){if(rip)return"rip";if((tt||"").startsWith("SD"))return"sd";if(tt==="BD")return"bd";return"";}
-function matchType(t){
-  const f=typeFilter;
-  if(!f)return true;
-  if(f==="rip")return !!t.rip_rap;
-  if(f==="pend")return countsForFaltan(t);
-  if(f==="SD")return (t.trailer_type||"").startsWith("SD")||/SD/.test(t.trailer_type||"");
-  if(f==="BD")return t.trailer_type==="BD"||/Belly/i.test(t.trailer_type||"");
-  if(f==="ED")return /ED|End Dump/i.test(t.trailer_type||"")&&!/SD|Super/i.test(t.trailer_type||"");
-  if(f==="3X8")return (t.tags||"").includes("3X8");
-  if(f==="SUB")return !!t.is_sub;
-  if(f==="prob")return ["down","shop"].includes(t.status)||["down","shop"].includes((offOf(t)||{}).reason);
-  if(f==="vacas")return t.status==="vacation"||(offOf(t)||{}).reason==="vacation";
-  if(f==="sindrv")return !t.driver||t.status==="no_driver";
+// status: cómo está HOY (para planear); type: qué trae (equipo)
+function isOffNow(t){return t.state==="d"||outOfService(t)||restsToday(t);}
+function matchStatus(t){
+  switch(statusFilter){
+    case "": return true;
+    case "open": return t.state==="p"&&!isOffNow(t);
+    case "cov": return t.state==="a";
+    case "off": return isOffNow(t);
+    case "rip": return !!t.rip_rap;
+  }
   return true;
 }
+function matchTypeSel(t){
+  switch(typeFilter){
+    case "": return true;
+    case "SD": return /SD|Super/i.test(t.trailer_type||"");
+    case "BD": return /^BD$|Belly/i.test(t.trailer_type||"");
+    case "ED": return /ED|End Dump/i.test(t.trailer_type||"")&&!/SD|Super/i.test(t.trailer_type||"");
+    case "ALTT": return /AL-?TT|Tractor/i.test(t.trailer_type||"");
+    case "3X8": return (t.tags||"").includes("3X8");
+    case "SUB": return !!t.is_sub;
+  }
+  return true;
+}
+function renderSeg(list){
+  const c={all:0,open:0,cov:0,off:0,rip:0};
+  for(const t of list){
+    if(t.is_new)continue;
+    c.all++;
+    if(t.state==="a")c.cov++;
+    else if(isOffNow(t))c.off++;
+    else c.open++;
+    if(t.rip_rap)c.rip++;
+  }
+  const segs=[["","ALL",c.all,""],["open","OPEN",c.open,""],["cov","COVERED",c.cov,""],["off","OFF",c.off,"off-seg"],["rip","RIP",c.rip,"rip"]];
+  $("segStatus").innerHTML=segs.map(s=>`<button class="${s[3]} ${statusFilter===s[0]?"on":""}" onclick="setStatus('${s[0]}')">${s[1]}<span>${s[2]}</span></button>`).join("");
+}
+function setStatus(v){statusFilter=v;render();}
 // la búsqueda encuentra por número, driver, área, nota, tipo, tags o teléfono
 function matchSearch(t,q){
   if(!q)return true;
@@ -371,23 +399,25 @@ function render(){
 
   renderBanners();
 
-  $("pills").innerHTML=TYPE_PILLS.map(tp=>`<button class="pill ${tp.cls||""} ${typeFilter===tp.id?"on":""}" onclick="setType('${tp.id}')">${tp.lbl}</button>`).join("");
-
   // dropdown de áreas de la división actual (conserva la selección)
   const areaSel=$("fArea");
   const areas=[...new Set(divTrucks.map(t=>t.area||"(SIN YARD)"))].sort();
   const curArea=areaSel.value;
   areaSel.innerHTML=`<option value="">Area: all</option>`+areas.map(a=>`<option value="${esc(a)}" ${a===curArea?"selected":""}>${esc(areaLbl(a))}</option>`).join("");
 
+  renderSeg(divTrucks);
   const q=$("fSearch").value.trim().toLowerCase();
   const groups={};
   for(const t of divTrucks){
     if(t.is_new)continue; // NEW trucks live in Review until placed
-    if(!matchType(t))continue;
+    if(!matchStatus(t))continue;
+    if(!matchTypeSel(t))continue;
     if(!matchSearch(t,q))continue;
     const a=t.area||"(SIN YARD)";
     if(areaSel.value&&a!==areaSel.value)continue;
-    const g=virtual?`${tabLbl(t)} — ${areaLbl(a)}`:a; // en ALL/SUBS el header dice de qué board es
+    // vista por ZONA: en ALL/SUBS se agrupa por área pura — Cactus, KT e ICs de la
+    // misma zona quedan juntos (la compañía va en la etiquetita del chip)
+    const g=areaLbl(a);
     (groups[g]=groups[g]||[]).push(t);
   }
   let html="";
@@ -420,7 +450,7 @@ function chipHtml(t){
     ${cls==="s-off"?`<div class="offmark" title="not available">${offEmoji}</div>`:""}
     <button class="btn-edit" onclick="event.stopPropagation();openEdit('${t.org_id}','${esc(t.number)}')" title="Edit">✎</button>
     <button class="btn-down" onclick="tapDown(event,'${t.org_id}','${esc(t.number)}')" title="Mark down">✕</button>
-    <div class="top"><span class="num">${esc(dnum(t))}</span>${t.trailer_type?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(t.trailer_type)}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}</div>
+    <div class="top"><span class="num">${esc(dnum(t))}${isVirtual()?`<span class="orgtag ${t.org_id==="KT"?(t.is_sub?"ic":"kt"):(t.is_sub?"sub":"")}">${t.org_id==="KT"?(t.is_sub?"IC":"KT"):(t.is_sub?"SUB":"CACTUS")}</span>`:""}${t.trailer_type?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(t.trailer_type)}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}</div>
     <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ NO DRIVER"}</div>
     ${actHtml(t)}
     ${rest?'<span class="badge status">OFF TODAY</span>':""}
@@ -436,6 +466,10 @@ function chipHtml(t){
 
 function renderBanners(){
   let html="";
+  const nm=(board.meta||{}).newmile||{};
+  if(!nm.connected){
+    html+=`<div class="banner new"><b>⚠ NEWMILE IS NOT CONNECTED</b> — roster, activity and auto-cover are frozen. <a class="connect" style="color:var(--red);font-weight:800;" href="${API}/api/newmile/connect">Tap here to sign in</a>.</div>`;
+  }
   if(board.historical){
     html+=`<div class="banner off"><b>📅 HISTORY VIEW — ${date}</b> — status and notes as they were that day. ✎ edits apply to the truck as of TODAY.</div>`;
   }
@@ -556,7 +590,6 @@ function shiftWeek(days){
   setDate(d.toISOString().slice(0,10));
 }
 
-function setType(t){typeFilter=t;render();}
 function setTab(org,div){
   division=div;
   if(org!==ORG){ORG=org;board=null;render();fetchBoard();}

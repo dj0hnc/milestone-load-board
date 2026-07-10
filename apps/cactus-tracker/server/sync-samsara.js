@@ -68,6 +68,17 @@ function tokenFor(cfg, orgName) {
   return t ? t.token : null;
 }
 
+// Busca el truck que corresponde a un vehículo de Samsara. Los subs de CACTUS no
+// están en Samsara (excluidos), pero los KT ICs SÍ: en Samsara aparecen como dígitos
+// pelones ("211") y en el roster viven como "CKJ211".
+function samsaraTruck(orgId, number) {
+  let row = get(`SELECT * FROM trucks WHERE org_id = ? AND number = ? AND (is_sub = 0 OR org_id = 'KT')`, orgId, number);
+  if (!row && orgId === 'KT' && /^\d{1,3}$/.test(number)) {
+    row = get(`SELECT * FROM trucks WHERE org_id = 'KT' AND number = ?`, 'CKJ' + number);
+  }
+  return row;
+}
+
 async function fetchVehicles(token) {
   let out = [], after = '', pages = 0;
   do {
@@ -193,7 +204,7 @@ async function backfillParking(cfg, days) {
           const { number: rawNum } = splitNameFlag(v.name || '');
           const number = canonicalTruckNumber(org.id, rawNum);
           if (!number) continue;
-          const row = get('SELECT number FROM trucks WHERE org_id = ? AND number = ? AND is_sub = 0', org.id, number);
+          const row = samsaraTruck(org.id, number);
           if (!row) continue;
           const pts = (v.gps || []).filter(g => g.speedMilesPerHour == null || g.speedMilesPerHour < 3);
           if (!pts.length) continue;
@@ -202,7 +213,7 @@ async function backfillParking(cfg, days) {
           if (!city) continue;
           run(`INSERT INTO parking_log (org_id, number, date, city, lat, lon) VALUES (?,?,?,?,?,?)
                ON CONFLICT(org_id, number, date) DO UPDATE SET city = excluded.city, lat = excluded.lat, lon = excluded.lon`,
-            org.id, number, day, city, p.latitude, p.longitude);
+            org.id, row.number, day, city, p.latitude, p.longitude);
           summary.nights++;
         }
       } catch (e) { summary.errors.push(`${org.id} ${day}: ${e.message}`); }
@@ -217,7 +228,8 @@ async function backfillParking(cfg, days) {
 const KT_TERMINALS = ['POWDERLY', 'RHOME', 'WHITEWRIGHT'];
 function applyPlacements(org, summary) {
   const areas = all(`SELECT DISTINCT area FROM trucks WHERE org_id = ? AND area IS NOT NULL AND area != ''`, org.id).map(r => r.area);
-  for (const t of all(`SELECT * FROM trucks WHERE org_id = ? AND is_sub = 0 AND archived = 0`, org.id)) {
+  // los KT ICs sí entran (tienen Samsara); los subs de Cactus no
+  for (const t of all(`SELECT * FROM trucks WHERE org_id = ? AND archived = 0 AND (is_sub = 0 OR org_id = 'KT')`, org.id)) {
     const nights = all(`SELECT city FROM parking_log WHERE org_id = ? AND number = ? AND city != '' ORDER BY date DESC LIMIT 7`, org.id, t.number);
     const count = {};
     for (const n of nights) count[n.city] = (count[n.city] || 0) + 1;
@@ -227,7 +239,9 @@ function applyPlacements(org, summary) {
 
     if (org.id === 'KT') {
       const divGuess = (KT_TERMINALS.includes(normNum(topCity)) ? normNum(topCity) : null)
-        || ktDivisionHint(t.display_number || '') || null;
+        || ktDivisionHint(t.display_number || '')
+        || (t.is_sub && nights.length ? 'ICS' : null) // IC con GPS confirmado → su terminal ICS
+        || null;
       if (!t.division && divGuess) {
         sets.push('division = ?'); vals.push(divGuess); summary.placedDivision++;
         if (t.is_new) { sets.push('is_new = 0', "suggested_division = NULL"); summary.autoConfirmedNew++; }
@@ -264,8 +278,7 @@ async function syncSamsara(cfg) {
       const number = canonicalTruckNumber(org.id, parsed.number); // CKJ: "KT-7045" → 7045
       const flag = parsed.flag;
       if (!number) continue;
-      // subs are never in Samsara — the is_sub filter is belt & suspenders
-      const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ? AND is_sub = 0', org.id, number);
+      const row = samsaraTruck(org.id, number);
       if (!row) continue;
       summary.matched++;
 
@@ -295,16 +308,16 @@ async function syncSamsara(cfg) {
       const today = todayCT();
       for (const [rawNumber, g] of Object.entries(gps)) {
         const number = canonicalTruckNumber(org.id, rawNumber);
-        const row = get('SELECT number, is_sub FROM trucks WHERE org_id = ? AND number = ? AND is_sub = 0', org.id, number);
+        const row = samsaraTruck(org.id, number);
         if (!row) continue;
         summary.gps++;
         run(`UPDATE trucks SET parked_city = ?, parked_at = ? WHERE org_id = ? AND number = ?`,
-          g.city || '', g.time || '', org.id, number);
+          g.city || '', g.time || '', org.id, row.number);
         // parked = sleep window and not rolling
         if (isSleepWindow && (g.speed == null || g.speed < 3) && g.city) {
           run(`INSERT INTO parking_log (org_id, number, date, city, lat, lon) VALUES (?,?,?,?,?,?)
                ON CONFLICT(org_id, number, date) DO UPDATE SET city = excluded.city, lat = excluded.lat, lon = excluded.lon`,
-            org.id, number, today, g.city, g.lat, g.lon);
+            org.id, row.number, today, g.city, g.lat, g.lon);
           summary.parkingLogged++;
         }
       }
