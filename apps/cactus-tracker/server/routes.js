@@ -11,7 +11,7 @@ const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
 const { todayCT, weekDatesCT, daysBetween, normNum } = require('./util');
 const { syncRoster, syncActivity, scanRipRap } = require('./sync-newmile');
-const { syncSamsara } = require('./sync-samsara');
+const { syncSamsara, backfillParking } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
 
 const VALID_STATUS = ['ok', 'shop', 'down', 'no_driver', 'vacation', 'deleased'];
@@ -277,6 +277,15 @@ function createRouter({ config, newmile, log }) {
       run(`UPDATE trucks SET suggested_area = '' WHERE org_id = ? AND number = ?`, orgId, number);
     }
     res.json({ ok: true });
+  });
+
+  // Re-corre el acomodo por GPS a demanda (noches de los últimos {days}, default 2).
+  router.post('/api/scan/parking', async (req, res) => {
+    try {
+      res.json({ ok: true, ...(await backfillParking(config, Number((req.body || {}).days) || 2)) });
+    } catch (e) {
+      res.status(500).json({ error: String(e.message || e) });
+    }
   });
 
   // Escaneo manual de RIP RAP sobre una ventana de días (default 30).

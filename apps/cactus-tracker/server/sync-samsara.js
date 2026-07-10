@@ -20,8 +20,31 @@
  *    "📍 duerme en X" badge that I accept or dismiss. Nothing moves by itself.
  */
 const fs = require('fs');
-const { all, get, run, metaSet, nowISO } = require('./db');
-const { splitNameFlag, canonicalTruckNumber, ktDivisionHint, ctParts, todayCT, normNum } = require('./util');
+const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
+const { splitNameFlag, canonicalTruckNumber, ktDivisionHint, ctParts, todayCT, shiftISO, normNum } = require('./util');
+
+// Fallback de ciudad cuando el reverse-geo no viene: pueblo más cercano de la operación.
+const TOWNS = [
+  ['PARIS', 33.662, -95.548], ['POWDERLY', 33.811, -95.506], ['HUGO', 34.011, -95.510],
+  ['BLOSSOM', 33.662, -95.385], ['CLARKSVILLE', 33.611, -95.053], ['DETROIT', 33.662, -95.267],
+  ['BOGATA', 33.470, -95.213], ['COOPER', 33.373, -95.692], ['CAMPBELL', 33.148, -95.951],
+  ['PECAN GAP', 33.438, -95.851], ['SAVOY', 33.600, -96.366], ['SCROGGINS', 33.023, -95.211],
+  ['MT VERNON', 33.188, -95.221], ['SULPHUR SPRINGS', 33.138, -95.601], ['ALBA', 32.792, -95.634],
+  ['GILMER', 32.729, -94.942], ['SAWYER', 34.023, -95.364], ['VALLIANT', 34.004, -95.093],
+  ['EAGLETOWN', 34.036, -94.565], ['TYLER', 32.351, -95.301], ['DALLAS', 32.777, -96.797],
+  ['KAUFMAN', 32.589, -96.309], ['ATHENS', 32.205, -95.856], ['LONGVIEW', 32.501, -94.740],
+  ['CORSICANA', 32.095, -96.469], ['KERENS', 32.132, -96.228], ['ENNIS', 32.329, -96.625],
+  ['RHOME', 33.054, -97.472], ['WHITEWRIGHT', 33.513, -96.407], ['GREENVILLE', 33.138, -96.111]
+];
+function nearestTown(lat, lon) {
+  if (lat == null || lon == null) return '';
+  let best = '', bestD = Infinity;
+  for (const [name, tl, tn] of TOWNS) {
+    const d = Math.pow((lat - tl) * 111, 2) + Math.pow((lon - tn) * 92, 2); // km² aprox
+    if (d < bestD) { bestD = d; best = name; }
+  }
+  return bestD <= 40 * 40 ? best : ''; // más de ~40 km de todo lo conocido: no adivinar
+}
 
 // Tokens: los propios (config.samsara.tokens) Y/O los del otro tool via
 // config.samsara.tokensFile — apunta al newmile.config.json del Load Board de
@@ -130,6 +153,98 @@ function computeAreaSuggestions(orgId, summary) {
   }
 }
 
+// Historia GPS de una ventana (para reconstruir dónde DURMIÓ cada truck).
+async function fetchGpsHistory(token, startISO, endISO) {
+  let out = [], after = '', pages = 0;
+  do {
+    const url = 'https://api.samsara.com/fleet/vehicles/stats/history?types=gps'
+      + '&startTime=' + encodeURIComponent(startISO) + '&endTime=' + encodeURIComponent(endISO)
+      + (after ? '&after=' + encodeURIComponent(after) : '');
+    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
+    if (!r.ok) throw new Error('Samsara gps history HTTP ' + r.status);
+    const j = await r.json();
+    out = out.concat(j.data || []);
+    after = (j.pagination && j.pagination.hasNextPage) ? j.pagination.endCursor : '';
+    pages++;
+  } while (after && pages < 40);
+  return out;
+}
+
+// BACKFILL + ACOMODO AUTOMÁTICO: reconstruye el parking de las últimas `days` noches
+// (ventana 3-6 AM CT ≈ 08-11Z en verano) y coloca los trucks por área él solo:
+//  - sin área o "(SIN YARD)" → área directa (no hay nada que pisar)
+//  - KT: área + terminal directas (GPS y/o la letra del nombre); un ⚑ NEW de KT con
+//    señal clara se confirma solo — menos revisión manual
+//  - área ya curada que no coincide → solo suggested_area (badge de un tap)
+async function backfillParking(cfg, days) {
+  const orgs = all('SELECT * FROM orgs WHERE enabled = 1 AND samsara = 1 ORDER BY sort');
+  const summary = { nights: 0, placedArea: 0, placedDivision: 0, autoConfirmedNew: 0, suggested: 0, orgs: [], errors: [] };
+  const today = todayCT();
+
+  for (const org of orgs) {
+    const token = tokenFor(cfg, org.samsara_org);
+    if (!token) { summary.errors.push(org.id + ': sin token'); continue; }
+    summary.orgs.push(org.id);
+    for (let d = 1; d <= (days || 2); d++) {
+      const day = shiftISO(today, -d + 1); // hoy y hacia atrás
+      try {
+        const vehicles = await fetchGpsHistory(token, day + 'T08:00:00Z', day + 'T11:00:00Z');
+        for (const v of vehicles) {
+          const { number: rawNum } = splitNameFlag(v.name || '');
+          const number = canonicalTruckNumber(org.id, rawNum);
+          if (!number) continue;
+          const row = get('SELECT number FROM trucks WHERE org_id = ? AND number = ? AND is_sub = 0', org.id, number);
+          if (!row) continue;
+          const pts = (v.gps || []).filter(g => g.speedMilesPerHour == null || g.speedMilesPerHour < 3);
+          if (!pts.length) continue;
+          const p = pts[Math.floor(pts.length / 2)]; // punto de media madrugada
+          const city = cityFrom(p.reverseGeo && p.reverseGeo.formattedLocation) || nearestTown(p.latitude, p.longitude);
+          if (!city) continue;
+          run(`INSERT INTO parking_log (org_id, number, date, city, lat, lon) VALUES (?,?,?,?,?,?)
+               ON CONFLICT(org_id, number, date) DO UPDATE SET city = excluded.city, lat = excluded.lat, lon = excluded.lon`,
+            org.id, number, day, city, p.latitude, p.longitude);
+          summary.nights++;
+        }
+      } catch (e) { summary.errors.push(`${org.id} ${day}: ${e.message}`); }
+    }
+    applyPlacements(org, summary);
+  }
+  metaSet('last_gps_backfill', nowISO());
+  metaSet('last_gps_backfill_summary', JSON.stringify(summary));
+  return summary;
+}
+
+const KT_TERMINALS = ['POWDERLY', 'RHOME', 'WHITEWRIGHT'];
+function applyPlacements(org, summary) {
+  const areas = all(`SELECT DISTINCT area FROM trucks WHERE org_id = ? AND area IS NOT NULL AND area != ''`, org.id).map(r => r.area);
+  for (const t of all(`SELECT * FROM trucks WHERE org_id = ? AND is_sub = 0 AND archived = 0`, org.id)) {
+    const nights = all(`SELECT city FROM parking_log WHERE org_id = ? AND number = ? AND city != '' ORDER BY date DESC LIMIT 7`, org.id, t.number);
+    const count = {};
+    for (const n of nights) count[n.city] = (count[n.city] || 0) + 1;
+    const topCity = Object.entries(count).sort((a, b) => b[1] - a[1]).map(e => e[0])[0] || '';
+    const target = topCity ? mapCityToArea(topCity, areas) : '';
+    const sets = [], vals = [];
+
+    if (org.id === 'KT') {
+      const divGuess = (KT_TERMINALS.includes(normNum(topCity)) ? normNum(topCity) : null)
+        || ktDivisionHint(t.display_number || '') || null;
+      if (!t.division && divGuess) {
+        sets.push('division = ?'); vals.push(divGuess); summary.placedDivision++;
+        if (t.is_new) { sets.push('is_new = 0', "suggested_division = NULL"); summary.autoConfirmedNew++; }
+      }
+      if (target && (!t.area || t.area === '(SIN YARD)')) { sets.push('area = ?'); vals.push(target); summary.placedArea++; }
+      else if (target && normNum(target) !== normNum(t.area || '') && t.suggested_area !== target) { sets.push('suggested_area = ?'); vals.push(target); summary.suggested++; }
+    } else {
+      if (target && (!t.area || t.area === '(SIN YARD)')) { sets.push('area = ?'); vals.push(target); summary.placedArea++; }
+      else if (target && normNum(target) !== normNum(t.area || '') && t.suggested_area !== target) { sets.push('suggested_area = ?'); vals.push(target); summary.suggested++; }
+    }
+    if (sets.length) {
+      sets.push('updated_at = ?'); vals.push(nowISO());
+      run(`UPDATE trucks SET ${sets.join(', ')} WHERE org_id = ? AND number = ?`, ...vals, org.id, t.number);
+    }
+  }
+}
+
 async function syncSamsara(cfg) {
   const orgs = all('SELECT * FROM orgs WHERE enabled = 1 AND samsara = 1 ORDER BY sort');
   const summary = { vehicles: 0, matched: 0, flags: 0, suggestions: 0, gps: 0, parkingLogged: 0, areaSuggestions: 0, skippedOrgs: [] };
@@ -204,4 +319,4 @@ async function syncSamsara(cfg) {
   return summary;
 }
 
-module.exports = { syncSamsara };
+module.exports = { syncSamsara, backfillParking, applyPlacements, nearestTown };

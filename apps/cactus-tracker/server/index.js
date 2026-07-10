@@ -22,7 +22,7 @@ const seed = require('./seed');
 const { createRouter } = require('./routes');
 const { NewMileClient } = require('./newmile-client');
 const { syncRoster, syncActivity, scanRipRap } = require('./sync-newmile');
-const { syncSamsara } = require('./sync-samsara');
+const { syncSamsara, backfillParking } = require('./sync-samsara');
 const { snapshotAllToday } = require('./history');
 const { ctParts } = require('./util');
 
@@ -62,6 +62,18 @@ function createTracker(opts) {
     onLog: (s) => log('newmile: ' + s)
   });
   newmile.resume().then(st => log(st ? ('NewMile conectado: ' + (st.user || 'ok')) : 'NewMile sin sesión — conectar desde la UI')).catch(() => {});
+
+  // bootstrap GPS (una vez): reconstruye dónde durmió TODA la flota las últimas noches
+  // y acomoda áreas/terminales solo — se re-corre a mano con POST /api/scan/parking
+  if (!metaGet('mig_gps_backfill')) {
+    setTimeout(async () => {
+      try {
+        const s = await backfillParking(config, 2);
+        if (s.orgs.length) { metaSet('mig_gps_backfill', '1'); log('GPS backfill → ' + JSON.stringify(s)); }
+        else log('GPS backfill pospuesto: sin tokens de Samsara aún');
+      } catch (e) { log('GPS backfill error: ' + (e.message || e)); }
+    }, 5000);
+  }
 
   const router = createRouter({ config, newmile, log });
 
