@@ -1,14 +1,18 @@
 name: MAB Reports
 
-# Sends the morning (7-8am CT) no-show report and the night (8-9pm CT) fleet-assignment report
-# from GitHub's cloud — never depends on any PC. Reuses the exact app logic (report-engine/).
+# Sends the morning (7am CT, catch-up until noon) no-show report and the night (8pm CT,
+# catch-up until midnight) fleet-assignment report from GitHub's cloud — never depends on
+# any PC. Reuses the exact app logic (report-engine/).
 #
 # SCHEDULING: GitHub cron fires with unpredictable delays (observed 2-9 HOURS on this repo),
-# which used to send the night report at 4am and the morning report at noon. Fix: trigger EVERY
-# HOUR and let the run decide by the ACTUAL Central hour — send morning only during 7-8am CT,
-# night only during 8-9pm CT, otherwise exit quietly. The once-per-day lock (report-engine
-# .state/last-sent.json, kept in the Actions cache) guarantees each report goes out at most
-# once per day even if several runs land in the same window.
+# which used to send the night report at 4am and the morning report at noon. Fix: trigger twice
+# an hour and let the run decide by the ACTUAL Central hour. Each report has a CATCH-UP window,
+# not a 2-hour one — morning sends any time 7-11am CT while unsent, night any time 8-11pm CT —
+# so a badly delayed cron run still rescues the report instead of skipping the day (which is
+# what happened on 2026-07-09/10 when the external pinger died and no cron run landed inside
+# the old 2-hour windows). The once-per-day lock (report-engine .state/last-sent.json, kept in
+# the Actions cache) guarantees each report goes out at most once per day even if several runs
+# land in the same window.
 #
 # OFF-APP SUBS: scheduled runs read the repo VARIABLE `MAB_OFFSUBS` (Settings -> Secrets and
 # variables -> Actions -> Variables tab). Edit it any time; the next report uses it. Manual runs
@@ -20,7 +24,7 @@ name: MAB Reports
 
 on:
   schedule:
-    - cron: '11 * * * *'   # hourly; the job itself gates on the real Central hour
+    - cron: '11,41 * * * *'   # twice an hour; the job itself gates on the real Central hour
   workflow_dispatch:
     inputs:
       kind:
@@ -74,19 +78,21 @@ jobs:
           else
             HOUR=$(TZ=America/Chicago date +%H)
             HOUR=$((10#$HOUR))
-            if [ "$HOUR" -ge 7 ] && [ "$HOUR" -le 8 ]; then
+            # CATCH-UP windows: wide on purpose. The once-per-day lock means only the FIRST run
+            # inside the window actually sends; the width only buys tolerance to cron delays.
+            if [ "$HOUR" -ge 7 ] && [ "$HOUR" -le 11 ]; then
               KIND=morning
-            elif [ "$HOUR" -ge 20 ] && [ "$HOUR" -le 21 ]; then
+            elif [ "$HOUR" -ge 20 ] && [ "$HOUR" -le 23 ]; then
               KIND=night
             else
-              echo "Central hour $HOUR is outside the send windows (7-8am morning, 8-9pm night) — nothing to do"
+              echo "Central hour $HOUR is outside the send windows (7-11am morning, 8-11pm night) — nothing to do"
               exit 0
             fi
             # OFFICE PC IS THE PUNCTUAL PRIMARY (sends 7:00/20:00 CT on the minute). The cloud is the
             # BACKUP: ask the office first. Already sent -> stay quiet. Office UP but not sent yet
             # during the primary hour (7/20) -> give it the hour. Office DOWN (unreachable) or still
-            # unsent in the backup hour (8/21) -> the cloud sends. The once-per-day cache lock still
-            # dedupes multiple backup runs.
+            # unsent in any later hour of the window -> the cloud sends. The once-per-day cache lock
+            # still dedupes multiple backup runs.
             STATE=$(curl -s -m 12 -H 'ngrok-skip-browser-warning: true' "https://bullion-magician-prancing.ngrok-free.dev/reportstate?kind=$KIND" || true)
             echo "office state: ${STATE:-unreachable}"
             if echo "$STATE" | grep -q '"sentToday":true'; then
