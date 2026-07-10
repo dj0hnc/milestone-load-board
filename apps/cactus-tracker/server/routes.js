@@ -98,6 +98,15 @@ function createRouter({ config, newmile, log }) {
       ? all('SELECT * FROM dispatch_state WHERE date = ?', date)
       : all('SELECT * FROM dispatch_state WHERE date = ? AND org_id = ?', date, orgId);
     const stMap = new Map(states.map(s => [s.org_id + '|' + s.number, s]));
+    // rangos programados de no-disponible (vacaciones/shop): vigentes o futuros vs la fecha vista
+    const offs = virtual
+      ? all('SELECT * FROM time_off WHERE to_date >= ?', date)
+      : all('SELECT * FROM time_off WHERE org_id = ? AND to_date >= ?', orgId, date);
+    const offMap = new Map();
+    for (const o of offs) {
+      const k = o.org_id + '|' + o.number;
+      (offMap.get(k) || offMap.set(k, []).get(k)).push(o);
+    }
     const today = todayCT();
     // past date → overlay how each truck WAS that day (status/notas de ese día)
     const historical = date < today;
@@ -118,6 +127,7 @@ function createRouter({ config, newmile, log }) {
         state: s ? s.state : 'p',
         state_source: s ? s.source : null,
         state_by: s ? s.marked_by : null,
+        time_off: offMap.get(t.org_id + '|' + t.number) || [],
         days_since_last_load: t.last_load_date ? daysBetween(t.last_load_date, today) : null,
         driver_changed_recent: driverChangedRecent ? { prev: t.driver_prev, at: t.driver_changed_at } : null
       };
@@ -200,6 +210,35 @@ function createRouter({ config, newmile, log }) {
     for (const f of EDITABLE) if (f in (req.body || {})) logChange(orgId, number, f, row[f], updated[f], by);
     snapshotTruckDay(updated);
     res.json({ ok: true, truck: updated });
+  });
+
+  // Time off programado: "vacaciones toda la semana que viene" con un tap. Entra y
+  // regresa solo por fecha; MISSING lo excluye únicamente esos días.
+  router.post('/api/truck/:org/:number/timeoff', (req, res) => {
+    const orgId = normNum(req.params.org), number = normNum(req.params.number);
+    const { from, to, reason, note, by } = req.body || {};
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(to || '') || to < from) {
+      return res.status(400).json({ error: 'body: {from ISO, to ISO (>= from), reason?, note?}' });
+    }
+    if (!get('SELECT 1 AS x FROM trucks WHERE org_id = ? AND number = ?', orgId, number)) {
+      return res.status(404).json({ error: 'truck not found' });
+    }
+    const rz = ['vacation', 'shop', 'down', 'personal'].includes(reason) ? reason : 'vacation';
+    run(`INSERT INTO time_off (org_id, number, from_date, to_date, reason, note, created_by, created_at)
+         VALUES (?,?,?,?,?,?,?,?)`,
+      orgId, number, from, to, rz, String(note || '').slice(0, 200), String(by || '').slice(0, 40), nowISO());
+    logChange(orgId, number, 'time_off', '', `${rz} ${from} → ${to}`, by);
+    res.json({ ok: true, time_off: all('SELECT * FROM time_off WHERE org_id = ? AND number = ? ORDER BY from_date', orgId, number) });
+  });
+
+  router.post('/api/truck/:org/:number/timeoff/delete', (req, res) => {
+    const orgId = normNum(req.params.org), number = normNum(req.params.number);
+    const { id, by } = req.body || {};
+    const row = get('SELECT * FROM time_off WHERE id = ? AND org_id = ? AND number = ?', Number(id) || 0, orgId, number);
+    if (!row) return res.status(404).json({ error: 'time off entry not found' });
+    run('DELETE FROM time_off WHERE id = ?', row.id);
+    logChange(orgId, number, 'time_off', `${row.reason} ${row.from_date} → ${row.to_date}`, 'removed', by);
+    res.json({ ok: true });
   });
 
   // Historial por truck: cambios (quién/cuándo), cargas y dónde durmió.

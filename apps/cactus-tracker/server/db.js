@@ -147,6 +147,17 @@ function migrate(d) {
     note TEXT, driver TEXT, division TEXT, area TEXT, rip_rap INTEGER,
     PRIMARY KEY (date, org_id, number)
   );
+  CREATE TABLE IF NOT EXISTS time_off (    -- scheduled unavailability: "vacation next week"
+    id INTEGER PRIMARY KEY AUTOINCREMENT,  -- takes effect and returns BY DATE, on its own
+    org_id TEXT NOT NULL,
+    number TEXT NOT NULL,
+    from_date TEXT NOT NULL,               -- ISO inclusive
+    to_date TEXT NOT NULL,                 -- ISO inclusive
+    reason TEXT DEFAULT 'vacation',        -- vacation|shop|down|personal
+    note TEXT DEFAULT '',
+    created_by TEXT DEFAULT '',
+    created_at TEXT
+  );
   CREATE TABLE IF NOT EXISTS parking_log ( -- where the truck slept (3-5 AM GPS point)
     org_id TEXT NOT NULL,
     number TEXT NOT NULL,
@@ -157,6 +168,7 @@ function migrate(d) {
   );
   CREATE INDEX IF NOT EXISTS idx_activity_num ON activity_log (org_id, number, load_date DESC);
   CREATE INDEX IF NOT EXISTS idx_truck_log ON truck_log (org_id, number, ts DESC);
+  CREATE INDEX IF NOT EXISTS idx_time_off ON time_off (org_id, number, to_date);
   `);
   // additive migrations for DBs created before these columns existed
   addCol(d, 'trucks', 'rip_suggested', 'INTEGER DEFAULT 0');

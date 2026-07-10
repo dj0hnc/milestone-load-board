@@ -275,7 +275,13 @@ function restsToday(t){
   const wd=Object.entries(board.week).find(([,iso])=>iso===date);
   return wd?t.rest_days.split(",").map(s=>s.trim()).includes(wd[0]):false;
 }
-function outOfService(t){return ["shop","down","vacation","deleased"].includes(t.status);}
+// time off programado: aplica SOLO en el rango de fechas (el día visto decide)
+const OFF_LBL={vacation:"🌴 VACATION",shop:"🔧 SHOP",down:"⛔ DOWN",personal:"🏠 PERSONAL"};
+function offOf(t){return (t.time_off||[]).find(o=>o.from_date<=date&&date<=o.to_date)||null;}
+function upcomingOff(t){return (t.time_off||[]).find(o=>o.from_date>date&&o.from_date<=isoShift(date,7))||null;}
+function isoShift(iso,days){const d=new Date(iso+"T12:00:00Z");d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);}
+function mdy(iso){return iso?iso.slice(5).replace("-","/").replace(/^0/,""):"";}
+function outOfService(t){return ["shop","down","vacation","deleased"].includes(t.status)||!!offOf(t);}
 function countsForFaltan(t){return t.state==="p"&&!restsToday(t)&&!outOfService(t)&&!t.archived;}
 function trlClass(tt,rip){if(rip)return"rip";if((tt||"").startsWith("SD"))return"sd";if(tt==="BD")return"bd";return"";}
 function matchType(t){
@@ -288,8 +294,8 @@ function matchType(t){
   if(f==="ED")return /ED|End Dump/i.test(t.trailer_type||"")&&!/SD|Super/i.test(t.trailer_type||"");
   if(f==="3X8")return (t.tags||"").includes("3X8");
   if(f==="SUB")return !!t.is_sub;
-  if(f==="prob")return ["down","shop"].includes(t.status);
-  if(f==="vacas")return t.status==="vacation";
+  if(f==="prob")return ["down","shop"].includes(t.status)||["down","shop"].includes((offOf(t)||{}).reason);
+  if(f==="vacas")return t.status==="vacation"||(offOf(t)||{}).reason==="vacation";
   if(f==="sindrv")return !t.driver||t.status==="no_driver";
   return true;
 }
@@ -405,7 +411,9 @@ function chipHtml(t){
     <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ NO DRIVER"}</div>
     ${actHtml(t)}
     ${rest?'<span class="badge status">OFF TODAY</span>':""}
-    ${off?`<span class="badge status">${STATUS_LBL[t.status]||esc(t.status)}${t.return_date?" · "+esc(t.return_date):""}</span>`:""}
+    ${(()=>{const o=offOf(t);return o?`<span class="badge status" style="background:#fdeedd;color:#a8622f;">${OFF_LBL[o.reason]||o.reason} ${mdy(o.from_date)}–${mdy(o.to_date)}</span>`:"";})()}
+    ${(()=>{const u=!offOf(t)&&upcomingOff(t);return u?`<span class="badge status" title="scheduled">🗓 ${esc(u.reason)} ${mdy(u.from_date)}–${mdy(u.to_date)}</span>`:"";})()}
+    ${off&&!offOf(t)?`<span class="badge status">${STATUS_LBL[t.status]||esc(t.status)}${t.return_date?" · "+esc(t.return_date):""}</span>`:""}
     ${drvChg?`<span class="badge drvchg" title="driver changed">driver changed: was ${esc(drvChg.prev||"?")}</span>`:""}
     ${flag?`<span class="badge flag" onclick="event.stopPropagation();openFlag('${t.org_id}','${esc(t.number)}')">⚑ ${esc(flag)}</span>`:""}
     ${t.suggested_area&&!board.historical?`<span class="badge" style="background:var(--blue-bg);color:var(--blue);cursor:pointer;" onclick="event.stopPropagation();openAreaSuggest('${t.org_id}','${esc(t.number)}')">📍 sleeps in ${esc(t.suggested_area)}</span>`:""}
@@ -573,6 +581,30 @@ function openEdit(org,num){
       <div><label>Driver</label><input type="text" id="eDriver" value="${esc(t.driver)}"></div>
     </div>
     <div class="chk"><input type="checkbox" id="eRip" ${t.rip_rap?"checked":""}><label for="eRip" style="margin:0;text-transform:none;color:var(--ink);font-size:14px;">Can haul RIP RAP (blue stripe)</label></div>
+
+    <label>Scheduled time off (starts and ends on its own)</label>
+    <div id="toList">${(t.time_off||[]).map(o=>`
+      <div style="display:flex;align-items:center;gap:8px;font-size:13.5px;padding:4px 0;">
+        <span style="flex:1;">${OFF_LBL[o.reason]||esc(o.reason)} <b>${mdy(o.from_date)} – ${mdy(o.to_date)}</b>${o.note?" · "+esc(o.note):""}</span>
+        <button onclick="delTimeOff('${t.org_id}','${esc(t.number)}',${o.id})" style="border:1.5px solid var(--red);color:var(--red);background:none;border-radius:8px;width:26px;height:26px;cursor:pointer;">✕</button>
+      </div>`).join("")||"<span style='font-size:12px;color:var(--mut)'>none scheduled</span>"}</div>
+    <div class="restdays" style="margin-top:8px;">
+      <label onclick="toPreset(0,0)">Today</label>
+      <label onclick="toPreset(1,1)">Tomorrow</label>
+      <label onclick="toPreset('tw')">This week</label>
+      <label onclick="toPreset('nw')">Next week</label>
+    </div>
+    <div class="row2" style="margin-top:8px;">
+      <div><label>From</label><input type="date" id="toFrom" value="${date}"></div>
+      <div><label>To</label><input type="date" id="toTo" value="${date}"></div>
+    </div>
+    <div class="row2" style="margin-top:8px;">
+      <div><label>Reason</label><select id="toReason">
+        <option value="vacation">🌴 Vacation</option><option value="shop">🔧 Shop</option>
+        <option value="down">⛔ Down</option><option value="personal">🏠 Personal</option>
+      </select></div>
+      <div><label>&nbsp;</label><button class="b-save" style="width:100%;padding:11px;border:none;border-radius:10px;font-family:'Barlow Condensed';font-weight:700;font-size:16px;text-transform:uppercase;cursor:pointer;" onclick="addTimeOff('${t.org_id}','${esc(t.number)}')">+ Add time off</button></div>
+    </div>
     ${t.parked_city?`<p style="font-size:12px;color:var(--mut);margin-top:10px;">📍 last position (Samsara): <b>${esc(t.parked_city)}</b>${t.parked_at?" · "+new Date(t.parked_at).toLocaleString("en-US",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}):""}</p>`:""}
     <div class="actions">
       <button class="b-cancel" onclick="openHistory('${t.org_id}','${esc(t.number)}')">History</button>
@@ -595,6 +627,34 @@ function saveEdit(org,num){
   if($("eDriver").value!==t.driver)body.driver=$("eDriver").value;
   Object.assign(t,body,{rip_rap:body.rip_rap});
   queuePush({path:`/api/truck/${t.org_id}/${encodeURIComponent(num)}`,body});
+  closeModal();render();
+}
+
+// presets de time off: hoy, mañana, esta semana (hoy→sábado), semana que viene (lun→sáb)
+function toPreset(a,b){
+  const today=board.today;
+  let from,to;
+  if(a==="tw"||a==="nw"){
+    const d=new Date(today+"T12:00:00Z");const dow=d.getUTCDay();
+    const mon=isoShift(today,(dow===0?-6:1-dow)+(a==="nw"?7:0));
+    from=a==="nw"?mon:today; to=isoShift(mon,5); // hasta el sábado
+  }else{from=isoShift(today,a);to=isoShift(today,b);}
+  $("toFrom").value=from;$("toTo").value=to;
+}
+function addTimeOff(org,num){
+  const t=truckOf(org,num);if(!t)return;
+  ensureWho();
+  const from=$("toFrom").value,to=$("toTo").value,reason=$("toReason").value;
+  if(!from||!to||to<from){alert("Check the dates: To must be on or after From.");return;}
+  t.time_off=(t.time_off||[]).concat([{id:-Date.now(),from_date:from,to_date:to,reason,note:""}]);
+  queuePush({path:`/api/truck/${t.org_id}/${encodeURIComponent(num)}/timeoff`,body:{from,to,reason,by:WHO}});
+  closeModal();render();
+}
+function delTimeOff(org,num,id){
+  const t=truckOf(org,num);if(!t)return;
+  ensureWho();
+  t.time_off=(t.time_off||[]).filter(o=>o.id!==id);
+  queuePush({path:`/api/truck/${t.org_id}/${encodeURIComponent(num)}/timeoff/delete`,body:{id,by:WHO}});
   closeModal();render();
 }
 
