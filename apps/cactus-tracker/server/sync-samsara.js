@@ -19,12 +19,29 @@
  *    7 nights becomes suggested_area when it differs from my assignment — shown as a
  *    "📍 duerme en X" badge that I accept or dismiss. Nothing moves by itself.
  */
+const fs = require('fs');
 const { all, get, run, metaSet, nowISO } = require('./db');
-const { splitNameFlag, canonicalTruckNumber, ctParts, todayCT, normNum } = require('./util');
+const { splitNameFlag, canonicalTruckNumber, ktDivisionHint, ctParts, todayCT, normNum } = require('./util');
+
+// Tokens: los propios (config.samsara.tokens) Y/O los del otro tool via
+// config.samsara.tokensFile — apunta al newmile.config.json del Load Board de
+// escritorio o del office bundle y los reutiliza sin copiarlos (shape
+// {samsara:{tokens:[{name,token}]}} o {tokens:[...]}). Los propios ganan.
+function allTokens(cfg) {
+  const own = (cfg.samsara && cfg.samsara.tokens) || [];
+  let ext = [];
+  const file = cfg.samsara && cfg.samsara.tokensFile;
+  if (file) {
+    try {
+      const j = JSON.parse(fs.readFileSync(file, 'utf8'));
+      ext = (j.samsara && j.samsara.tokens) || j.tokens || [];
+    } catch (e) { /* archivo ausente o ilegible: seguimos con los propios */ }
+  }
+  return [...own.filter(t => t && t.token), ...ext.filter(t => t && t.token)];
+}
 
 function tokenFor(cfg, orgName) {
-  const toks = (cfg.samsara && cfg.samsara.tokens) || [];
-  const t = toks.find(x => x && x.name === orgName && x.token);
+  const t = allTokens(cfg).find(x => x.name === orgName);
   return t ? t.token : null;
 }
 
@@ -142,10 +159,11 @@ async function syncSamsara(cfg) {
       if (sid && sid !== row.samsara_id) { sets.push('samsara_id = ?'); vals.push(sid); }
       if (flag !== (row.samsara_flag || '')) { sets.push('samsara_flag = ?'); vals.push(flag); if (flag) summary.flags++; }
 
-      // terminal tag → suggestion ONLY while the truck has no division (⚑ NUEVO)
+      // terminal → suggestion ONLY while the truck has no division (⚑ NUEVO).
+      // KT: la letra del nombre ("KT-7040 P") manda; si no hay letra, el tag de terminal.
       if (!row.division) {
         const tagIds = (v.tags || []).map(t => String(t.id));
-        const div = tagIds.map(t => tagToDiv.get(t)).find(Boolean);
+        const div = (org.id === 'KT' && ktDivisionHint(v.name || '')) || tagIds.map(t => tagToDiv.get(t)).find(Boolean);
         if (div && div !== row.suggested_division) { sets.push('suggested_division = ?'); vals.push(div); summary.suggestions++; }
       }
       if (sets.length) {

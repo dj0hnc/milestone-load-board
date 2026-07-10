@@ -25,7 +25,7 @@
  *     first load lands — no double-marking a truck that is already dispatched.
  */
 const { all, get, run, metaSet, nowISO } = require('./db');
-const { normNum, splitNameFlag, canonicalTruckNumber, normLoadTruck, todayCT, shiftISO, reportDateToISO } = require('./util');
+const { normNum, splitNameFlag, canonicalTruckNumber, ktDivisionHint, normLoadTruck, todayCT, shiftISO, reportDateToISO } = require('./util');
 
 const ACTIVITY_WINDOW_DAYS = 21;   // enough history to compute "X días sin carga" up to red (>=14)
 
@@ -100,10 +100,12 @@ async function syncRoster(client) {
       const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', org.id, number);
       if (!row) {
         // NEVER silently missing: create with ⚑ NUEVO, no division until I assign it.
+        // KT names carry the terminal letter ("KT-7040 P") → pre-fill the suggestion.
+        const hint = org.id === 'KT' ? ktDivisionHint(t.truck_number || t.number || '') : null;
         run(`INSERT INTO trucks (org_id, number, division, area, driver, trailer_type, detected_flag,
-               nm_truck_id, is_new, updated_at)
-             VALUES (?,?,NULL,'(SIN YARD)',?,?,?,?,1,?)`,
-          org.id, number, driver, trailer, flag, nmId, nowISO());
+               nm_truck_id, suggested_division, is_new, updated_at)
+             VALUES (?,?,NULL,'(SIN YARD)',?,?,?,?,?,1,?)`,
+          org.id, number, driver, trailer, flag, nmId, hint, nowISO());
         summary.created++;
         continue;
       }
@@ -125,12 +127,19 @@ async function syncRoster(client) {
     }
 
     // ¿de baja? — only fleet trucks (subs live in other fleets); flag, never delete.
-    const missing = all(
+    // Guard: a truncated/failed pull must never flag half the fleet — if NewMile
+    // returned less than half of my active roster for this org, skip the check.
+    const active = all(
       `SELECT number FROM trucks WHERE org_id = ? AND is_sub = 0 AND archived = 0 AND maybe_removed = 0`,
-      org.id).filter(r => !seen.has(r.number));
-    for (const r of missing) {
-      run(`UPDATE trucks SET maybe_removed = 1, updated_at = ? WHERE org_id = ? AND number = ?`, nowISO(), org.id, r.number);
-      summary.flaggedRemoved++;
+      org.id);
+    if (active.length >= 4 && seen.size < active.length / 2) {
+      summary.removalCheckSkipped = (summary.removalCheckSkipped || []).concat(
+        `${org.id}: pull trajo ${seen.size} de ${active.length} activos`);
+    } else {
+      for (const r of active.filter(r => !seen.has(r.number))) {
+        run(`UPDATE trucks SET maybe_removed = 1, updated_at = ? WHERE org_id = ? AND number = ?`, nowISO(), org.id, r.number);
+        summary.flaggedRemoved++;
+      }
     }
   }
 

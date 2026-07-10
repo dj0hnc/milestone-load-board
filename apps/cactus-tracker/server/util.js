@@ -26,6 +26,14 @@ function splitNameFlag(raw) {
   return { number: m[1].replace(/\s+/g, ''), flag };
 }
 
+// KT names carry the terminal as a trailing letter (verified live vs Samsara 7/10/26:
+// "KT-7040 P" = Powderly, "KT-7044 W" = Whitewright, "KT-4799 R" = Rhome).
+function ktDivisionHint(raw) {
+  const m = /^(?:KT|CKJ)-?\d+\s+([PRW])$/.exec(normNum(raw));
+  if (!m) return null;
+  return { P: 'POWDERLY', R: 'RHOME', W: 'WHITEWRIGHT' }[m[1]] || null;
+}
+
 // Org-specific canonical number. CKJ/KT trucks appear as "KT-7040 P" in the truck
 // resource, "CKJ7040" in load tickets and "KT-7040" in Samsara — canonical is the
 // bare digits (same rule as the desktop's rotation.js). Everything else as-is.
@@ -104,4 +112,4 @@ function reportDateToISO(s) {
   return `${y}-${String(m[1]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`;
 }
 
-module.exports = { normNum, splitNameFlag, canonicalTruckNumber, normLoadTruck, ctParts, todayCT, shiftISO, daysBetween, weekDatesCT, reportDateToISO, CT };
+module.exports = { normNum, splitNameFlag, canonicalTruckNumber, ktDivisionHint, normLoadTruck, ctParts, todayCT, shiftISO, daysBetween, weekDatesCT, reportDateToISO, CT };

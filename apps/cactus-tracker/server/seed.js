@@ -50,10 +50,10 @@ function seedOrgs() {
   const divs = [
     { org: 'CACTUS', id: 'NORTH', label: 'Cactus NORTH', tag: '4218297', sort: 1 }, // Paris Terminal
     { org: 'CACTUS', id: 'SOUTH', label: 'Cactus SOUTH', tag: '4218296', sort: 2 }, // Lufkin Terminal
-    // Terminales de KT (sin tag de Samsara conocido; el GPS nocturno sugiere por ciudad)
-    { org: 'KT', id: 'POWDERLY', label: 'KT POWDERLY', tag: null, sort: 1 },
-    { org: 'KT', id: 'RHOME', label: 'KT RHOME', tag: null, sort: 2 },
-    { org: 'KT', id: 'WHITEWRIGHT', label: 'KT WHITEWRIGHT', tag: null, sort: 3 }
+    // Terminales de KT — tag IDs verificados en vivo contra Samsara 7/10/26
+    { org: 'KT', id: 'POWDERLY', label: 'KT POWDERLY', tag: '2706160', sort: 1 },
+    { org: 'KT', id: 'RHOME', label: 'KT RHOME', tag: '3645002', sort: 2 },
+    { org: 'KT', id: 'WHITEWRIGHT', label: 'KT WHITEWRIGHT', tag: '2706161', sort: 3 }
   ];
   for (const d of divs) {
     run(`INSERT INTO divisions (org_id,id,label,samsara_tag_id,sort) VALUES (?,?,?,?,?)
@@ -131,10 +131,14 @@ function main(force) {
   if (!get(`SELECT 1 AS x FROM divisions WHERE org_id = 'KT'`)) {
     run(`UPDATE orgs SET enabled = 1, nm_fleet_names = ?, truck_prefix = 'CKJ' WHERE id = 'KT'`,
       JSON.stringify(['CKJ Transport', 'Kennemer']));
-    for (const d of [['POWDERLY', 1], ['RHOME', 2], ['WHITEWRIGHT', 3]]) {
-      run(`INSERT INTO divisions (org_id,id,label,samsara_tag_id,sort) VALUES ('KT',?,?,NULL,?) ON CONFLICT(org_id,id) DO NOTHING`,
-        d[0], 'KT ' + d[0], d[1]);
+    for (const d of [['POWDERLY', '2706160', 1], ['RHOME', '3645002', 2], ['WHITEWRIGHT', '2706161', 3]]) {
+      run(`INSERT INTO divisions (org_id,id,label,samsara_tag_id,sort) VALUES ('KT',?,?,?,?) ON CONFLICT(org_id,id) DO NOTHING`,
+        d[0], 'KT ' + d[0], d[1], d[2]);
     }
+  }
+  // backfill de tag IDs para DBs que crearon las divisiones de KT sin ellos
+  for (const d of [['POWDERLY', '2706160'], ['RHOME', '3645002'], ['WHITEWRIGHT', '2706161']]) {
+    run(`UPDATE divisions SET samsara_tag_id = ? WHERE org_id = 'KT' AND id = ? AND samsara_tag_id IS NULL`, d[1], d[0]);
   }
   const existing = get('SELECT COUNT(*) AS c FROM trucks').c;
   if (existing > 0) {

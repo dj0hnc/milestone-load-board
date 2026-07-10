@@ -13,6 +13,8 @@
   },
   "samsara": {
     "_comment": "Tokens read-only por org de Samsara. SUBS NO van aquí: los subhaulers no están en Samsara, su info sale solo de NewMile. El token de Cactus no tiene scope de trips/driver-assignments: solo vehicles + tags (suficiente).",
+    "_tokensFile": "Opción sin copiar nada: apunta tokensFile al config del otro tool que ya los tiene (p.ej. el newmile.config.json del Load Board de escritorio o el config del office bundle). Los nombres deben ser 'Cactus Express' y 'CKJ Transport'.",
+    "tokensFile": "",
     "tokens": [
       { "name": "Cactus Express", "token": "" },
       { "name": "CKJ Transport", "token": "" }

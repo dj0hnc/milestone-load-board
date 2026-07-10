@@ -17,8 +17,10 @@ npm start              # http://localhost:8791/cactus-tracker/
 ```
 
 Config opcional: copia `data/config.template.json` a `data/config.json` y llena
-`publicBase` (URL del tunnel) + tokens de Samsara. Sin config el board funciona igual
-(marcas, notas, FALTAN); solo los syncs quedan apagados.
+`publicBase` (URL del tunnel) + Samsara. Para Samsara NO hace falta copiar tokens:
+apunta `samsara.tokensFile` al `newmile.config.json` del Load Board de escritorio (o
+al config del office bundle) y reutiliza los que ya viven ahí. Sin config el board
+funciona igual (marcas, notas, FALTAN); solo los syncs quedan apagados.
 
 Por truck se controla: status (OK / en shop / down / sin driver / **vacaciones** / de-leased)
 con fecha de regreso, días fijos que no trabaja (Mon–Sat), nota libre, teléfono, tags,
@@ -79,9 +81,12 @@ exclusivamente de NewMile; el sync de Samsara los salta por diseño (`is_sub = 1
 ## CKJ / KT (activo)
 
 Tabs **KT POWDERLY / RHOME / WHITEWRIGHT** junto a los de Cactus. Sin seed manual: el
-primer sync de NewMile (fleet 6) trae todos los trucks de KT como ⚑ NUEVO y los asignas
-a su terminal con dos taps. Samsara de CKJ funciona igual que el de Cactus (token
-"CKJ Transport" en config): GPS de dónde duermen, sugerencia de área y flags de nombres.
+primer sync de NewMile (fleet 6) trae todos los trucks de KT como ⚑ NUEVO **ya con su
+terminal sugerida** — la letra final del nombre es la terminal (verificado en vivo
+7/10/26: "KT-7040 P"=Powderly, "KT-7044 W"=Whitewright, "KT-4799 R"=Rhome) y los tags
+de Samsara la respaldan (Powderly 2706160, Rhome 3645002, Whitewright 2706161).
+Samsara de CKJ funciona igual que el de Cactus: GPS de dónde duermen, sugerencia de
+área y flags de nombres.
 Normalización verificada contra el desktop: "KT-7040 P" (roster) = "CKJ7040" (loads) =
 "KT-7040" (Samsara) = truck **7040**; los CKJ### de 3 dígitos son subs afiliados y otros
 carriers (Arango) nunca se auto-crean en el board de KT.
