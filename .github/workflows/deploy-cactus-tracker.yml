@@ -34,6 +34,39 @@ jobs:
         working-directory: apps/cactus-tracker
         run: npm install --omit=dev --no-audit --no-fund
 
+      # Escribe el PIN de equipo en /home/data/config.json (disco persistente) via la
+      # API de Kudu, ANTES del deploy para que el reinicio lo cargue. El PIN sale del
+      # secret ACCESS_PIN si existe; si no, usa el default del equipo. Merge-safe: no
+      # pisa otras llaves del config.
+      - name: Set team PIN
+        env:
+          PROFILE: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          PIN: ${{ secrets.ACCESS_PIN }}
+        run: |
+          python3 - <<'EOF'
+          import os, re, json, base64, urllib.request
+          prof = os.environ['PROFILE']
+          pin = os.environ.get('PIN') or '2585'
+          host = re.search(r'publishUrl="([^"]*\.scm\.[^":]*)', prof).group(1)
+          user = re.search(r'userName="(\$[^"]+)"', prof).group(1)
+          pwd = re.search(r'userPWD="([^"]+)"', prof).group(1)
+          auth = base64.b64encode(f'{user}:{pwd}'.encode()).decode()
+          def req(method, path, data=None, hdrs=None):
+              r = urllib.request.Request(f'https://{host}{path}', data=data, method=method)
+              r.add_header('Authorization', 'Basic ' + auth)
+              for k, v in (hdrs or {}).items(): r.add_header(k, v)
+              try: return urllib.request.urlopen(r, timeout=60).read()
+              except Exception as e: return getattr(e, 'read', lambda: b'')()
+          try: cur = json.loads(req('GET', '/api/vfs/data/config.json') or b'{}')
+          except Exception: cur = {}
+          if not isinstance(cur, dict): cur = {}
+          cur['accessPin'] = pin
+          req('PUT', '/api/vfs/data/')  # asegura el directorio
+          req('PUT', '/api/vfs/data/config.json', data=json.dumps(cur, indent=1).encode(),
+              hdrs={'If-Match': '*', 'Content-Type': 'application/json'})
+          print('team PIN set in /home/data/config.json')
+          EOF
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:

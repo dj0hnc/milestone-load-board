@@ -37,13 +37,13 @@ function createRouter({ config, newmile, log }) {
       if (OPEN_PATHS.includes(req.path)) return next();
       const cookie = (req.headers.cookie || '').split(/;\s*/).find(c => c.startsWith('ct_auth='));
       if (cookie && cookie.slice(8) === pinCookie) return next();
-      if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'PIN requerido' });
+      if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'PIN required' });
       return res.redirect(req.baseUrl + '/login.html');
     });
   }
   router.post('/api/login', (req, res) => {
     if (!PIN) return res.json({ ok: true });
-    if (String((req.body || {}).pin || '') !== PIN) return res.status(401).json({ error: 'PIN incorrecto' });
+    if (String((req.body || {}).pin || '') !== PIN) return res.status(401).json({ error: 'wrong PIN' });
     res.setHeader('Set-Cookie', `ct_auth=${pinCookie}; Path=${req.baseUrl || '/'}; Max-Age=15552000; HttpOnly; SameSite=Lax`);
     res.json({ ok: true });
   });
@@ -79,7 +79,7 @@ function createRouter({ config, newmile, log }) {
     const orgId = normNum(req.query.org || 'CACTUS');
     const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : todayCT();
     const org = get('SELECT * FROM orgs WHERE id = ?', orgId);
-    if (!org) return res.status(404).json({ error: 'org desconocida: ' + orgId });
+    if (!org) return res.status(404).json({ error: 'unknown org: ' + orgId });
 
     const divisions = all('SELECT * FROM divisions WHERE org_id = ? ORDER BY sort', orgId);
     const trucks = all('SELECT * FROM trucks WHERE org_id = ? AND archived = 0', orgId);
@@ -160,21 +160,21 @@ function createRouter({ config, newmile, log }) {
   router.post('/api/truck/:org/:number', (req, res) => {
     const orgId = normNum(req.params.org), number = normNum(req.params.number);
     const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number);
-    if (!row) return res.status(404).json({ error: 'truck no existe' });
+    if (!row) return res.status(404).json({ error: 'truck not found' });
     const sets = [], vals = [];
     for (const f of EDITABLE) {
       if (!(f in (req.body || {}))) continue;
       let v = req.body[f];
-      if (f === 'status' && !VALID_STATUS.includes(v)) return res.status(400).json({ error: 'status inválido' });
+      if (f === 'status' && !VALID_STATUS.includes(v)) return res.status(400).json({ error: 'invalid status' });
       if (f === 'rip_rap') v = v ? 1 : 0;
       if (f === 'division' && v != null && v !== '') {
         const d = get('SELECT 1 AS x FROM divisions WHERE org_id = ? AND id = ?', orgId, normNum(v));
-        if (!d) return res.status(400).json({ error: 'división inválida' });
+        if (!d) return res.status(400).json({ error: 'invalid division' });
         v = normNum(v);
       }
       sets.push(`${f} = ?`); vals.push(v == null ? '' : v);
     }
-    if (!sets.length) return res.status(400).json({ error: 'nada que actualizar' });
+    if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
     // corregir el tipo a mano lo blinda contra el sync de NewMile
     if ('trailer_type' in (req.body || {})) sets.push('trailer_override = 1');
     sets.push('updated_at = ?'); vals.push(nowISO());
@@ -197,7 +197,7 @@ function createRouter({ config, newmile, log }) {
     const orgId = normNum(req.params.org), number = normNum(req.params.number);
     const { action, by } = req.body || {};
     const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number);
-    if (!row) return res.status(404).json({ error: 'truck no existe' });
+    if (!row) return res.status(404).json({ error: 'truck not found' });
     if (action === 'accept') {
       run(`UPDATE trucks SET rip_rap = 1, rip_suggested = 0, updated_at = ? WHERE org_id = ? AND number = ?`, nowISO(), orgId, number);
       logChange(orgId, number, 'rip_rap', row.rip_rap, 1, by);
@@ -213,7 +213,7 @@ function createRouter({ config, newmile, log }) {
     const orgId = normNum(req.params.org), number = normNum(req.params.number);
     const { action, by } = req.body || {};
     const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number);
-    if (!row) return res.status(404).json({ error: 'truck no existe' });
+    if (!row) return res.status(404).json({ error: 'truck not found' });
     if (action === 'accept' && row.suggested_area) {
       run(`UPDATE trucks SET area = ?, suggested_area = '', updated_at = ? WHERE org_id = ? AND number = ?`,
         row.suggested_area, nowISO(), orgId, number);
@@ -227,10 +227,10 @@ function createRouter({ config, newmile, log }) {
 
   // Escaneo manual de RIP RAP sobre una ventana de días (default 30).
   router.post('/api/scan/riprap', async (req, res) => {
-    if (!newmile) return res.status(503).json({ error: 'NewMile no configurado' });
+    if (!newmile) return res.status(503).json({ error: 'NewMile not configured' });
     try {
       if (!newmile.connected && !(await newmile.resume())) {
-        return res.status(401).json({ error: 'NOT_CONNECTED', hint: 'abre /api/newmile/connect' });
+        return res.status(401).json({ error: 'NOT_CONNECTED', hint: 'open /api/newmile/connect' });
       }
       res.json({ ok: true, ...(await scanRipRap(newmile, Number((req.body || {}).days) || 30)) });
     } catch (e) {
@@ -242,13 +242,13 @@ function createRouter({ config, newmile, log }) {
   router.post('/api/truck/:org/:number/confirm-new', (req, res) => {
     const orgId = normNum(req.params.org), number = normNum(req.params.number);
     const { division, area } = req.body || {};
-    if (!division) return res.status(400).json({ error: 'division requerida para confirmar un NUEVO' });
+    if (!division) return res.status(400).json({ error: 'division is required to confirm a NEW truck' });
     const d = get('SELECT 1 AS x FROM divisions WHERE org_id = ? AND id = ?', orgId, normNum(division));
-    if (!d) return res.status(400).json({ error: 'división inválida' });
+    if (!d) return res.status(400).json({ error: 'invalid division' });
     const r = run(`UPDATE trucks SET is_new = 0, division = ?, area = COALESCE(NULLIF(?, ''), area), suggested_division = NULL, updated_at = ?
                    WHERE org_id = ? AND number = ?`,
       normNum(division), normNum(area || ''), nowISO(), orgId, number);
-    if (!r.changes) return res.status(404).json({ error: 'truck no existe' });
+    if (!r.changes) return res.status(404).json({ error: 'truck not found' });
     res.json({ ok: true });
   });
 
@@ -259,7 +259,7 @@ function createRouter({ config, newmile, log }) {
     if (!['archive', 'keep'].includes(action)) return res.status(400).json({ error: "action: 'archive' | 'keep'" });
     const r = run(`UPDATE trucks SET maybe_removed = 0, archived = ?, updated_at = ? WHERE org_id = ? AND number = ?`,
       action === 'archive' ? 1 : 0, nowISO(), orgId, number);
-    if (!r.changes) return res.status(404).json({ error: 'truck no existe' });
+    if (!r.changes) return res.status(404).json({ error: 'truck not found' });
     res.json({ ok: true });
   });
 
@@ -270,7 +270,7 @@ function createRouter({ config, newmile, log }) {
     const { source, action } = req.body || {}; // source: 'samsara'|'newmile'; action: 'accept'|'dismiss'
     const col = source === 'newmile' ? 'detected_flag' : 'samsara_flag';
     const row = get(`SELECT * FROM trucks WHERE org_id = ? AND number = ?`, orgId, number);
-    if (!row) return res.status(404).json({ error: 'truck no existe' });
+    if (!row) return res.status(404).json({ error: 'truck not found' });
     const flag = row[col] || '';
     if (action === 'accept' && flag) {
       let status = row.status;
@@ -293,10 +293,10 @@ function createRouter({ config, newmile, log }) {
 
   // ---------- syncs (manual "Sync ahora" + used by the scheduler) ----------
   router.post('/api/sync/newmile', async (req, res) => {
-    if (!newmile) return res.status(503).json({ error: 'NewMile no configurado' });
+    if (!newmile) return res.status(503).json({ error: 'NewMile not configured' });
     try {
       if (!newmile.connected && !(await newmile.resume())) {
-        return res.status(401).json({ error: 'NOT_CONNECTED', hint: 'abre /api/newmile/connect' });
+        return res.status(401).json({ error: 'NOT_CONNECTED', hint: 'open /api/newmile/connect' });
       }
       const roster = await syncRoster(newmile);
       const activity = await syncActivity(newmile);
@@ -350,20 +350,20 @@ function createRouter({ config, newmile, log }) {
   router.get('/api/newmile/status', (req, res) => res.json(newmile ? newmile.status() : { connected: false }));
 
   router.get('/api/newmile/connect', async (req, res) => {
-    if (!newmile) return res.status(503).send('NewMile no configurado');
+    if (!newmile) return res.status(503).send('NewMile not configured');
     try {
       if (await newmile.resume()) return res.redirect(req.baseUrl + '/?connected=1');
       const { authUrl } = await newmile.beginAuth(callbackUri(req));
       res.redirect(authUrl);
-    } catch (e) { res.status(500).send('Error iniciando sign-in: ' + e.message); }
+    } catch (e) { res.status(500).send('Error starting sign-in: ' + e.message); }
   });
 
   router.get('/api/newmile/callback', async (req, res) => {
-    if (!newmile) return res.status(503).send('NewMile no configurado');
+    if (!newmile) return res.status(503).send('NewMile not configured');
     try {
       await newmile.finishAuth(req.query);
       res.redirect(req.baseUrl + '/?connected=1');
-    } catch (e) { res.status(500).send('Sign-in falló: ' + e.message + '. Regresa e intenta de nuevo.'); }
+    } catch (e) { res.status(500).send('Sign-in failed: ' + e.message + '. Go back and try again.'); }
   });
 
   router.post('/api/newmile/disconnect', (req, res) => res.json(newmile ? newmile.disconnect() : { connected: false }));

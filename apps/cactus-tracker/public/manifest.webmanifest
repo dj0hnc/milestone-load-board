@@ -1,6 +1,6 @@
 {
-  "name": "Cactus Tracker",
-  "short_name": "Cactus",
+  "name": "Milestone Texas Tracker",
+  "short_name": "Milestone TX",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
