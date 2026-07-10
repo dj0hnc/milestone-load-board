@@ -163,7 +163,10 @@ footer{text-align:center;color:var(--mut);font-size:12px;padding:18px;}
   <div class="pills" id="pills"></div>
 
   <div class="searchrow">
-    <input id="fSearch" type="text" placeholder="Search # / driver / area / note / type…">
+    <div style="flex:1;position:relative;">
+      <input id="fSearch" type="text" placeholder="Search # / driver / area / note / type…" style="width:100%;padding-right:38px;">
+      <button id="fClear" onclick="clearSearch()" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);width:26px;height:26px;border-radius:50%;border:none;background:#cdd3df;color:#4a5164;font-size:14px;font-weight:700;cursor:pointer;line-height:1;">✕</button>
+    </div>
     <select id="fArea" onchange="render()" style="max-width:150px;border:1.5px solid #cdd3df;border-radius:10px;padding:0 8px;font-family:'Barlow Condensed';font-weight:700;font-size:15px;background:#fff;"></select>
     <button class="btn-reset" id="btnReset">Reset day</button>
   </div>
@@ -543,7 +546,8 @@ $("btnReset").onclick=()=>{
   queuePush({path:"/api/reset",body:{date,org:ORG,division}});
   render();
 };
-$("fSearch").oninput=render;
+$("fSearch").oninput=()=>{$("fClear").style.display=$("fSearch").value?"block":"none";render();};
+function clearSearch(){$("fSearch").value="";$("fClear").style.display="none";$("fSearch").focus();render();}
 
 // ---------- sync ----------
 async function syncNow(){
