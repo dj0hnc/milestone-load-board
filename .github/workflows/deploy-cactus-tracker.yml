@@ -34,14 +34,15 @@ jobs:
         working-directory: apps/cactus-tracker
         run: npm install --omit=dev --no-audit --no-fund
 
-      # Escribe el PIN de equipo en /home/data/config.json (disco persistente) via la
-      # API de Kudu, ANTES del deploy para que el reinicio lo cargue. El PIN sale del
-      # secret ACCESS_PIN si existe; si no, usa el default del equipo. Merge-safe: no
-      # pisa otras llaves del config.
-      - name: Set team PIN
+      # Escribe la config privada en /home/data/config.json (disco persistente) via la
+      # API de Kudu, ANTES del deploy para que el reinicio la cargue: PIN de equipo y
+      # tokens de Samsara desde secrets del repo. Merge-safe: no pisa otras llaves.
+      - name: Set team PIN + Samsara tokens
         env:
           PROFILE: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
           PIN: ${{ secrets.ACCESS_PIN }}
+          TOK_CACTUS: ${{ secrets.SAMSARA_TOKEN_CACTUS }}
+          TOK_CKJ: ${{ secrets.SAMSARA_TOKEN_CKJ }}
         run: |
           python3 - <<'EOF'
           import os, re, json, base64, urllib.request
@@ -61,10 +62,17 @@ jobs:
           except Exception: cur = {}
           if not isinstance(cur, dict): cur = {}
           cur['accessPin'] = pin
+          toks = [{'name': n, 'token': os.environ.get(k, '')}
+                  for k, n in [('TOK_CACTUS', 'Cactus Express'), ('TOK_CKJ', 'CKJ Transport')]
+                  if os.environ.get(k)]
+          if toks:
+              cur.setdefault('samsara', {})
+              keep = [t for t in cur['samsara'].get('tokens', []) if t.get('name') not in [x['name'] for x in toks]]
+              cur['samsara']['tokens'] = toks + keep
           req('PUT', '/api/vfs/data/')  # asegura el directorio
           req('PUT', '/api/vfs/data/config.json', data=json.dumps(cur, indent=1).encode(),
               hdrs={'If-Match': '*', 'Content-Type': 'application/json'})
-          print('team PIN set in /home/data/config.json')
+          print('config listo: PIN' + (' + %d tokens de Samsara' % len(toks) if toks else ' (sin tokens aun)'))
           EOF
 
       - name: Deploy to Azure Web App
