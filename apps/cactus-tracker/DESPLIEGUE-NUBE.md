@@ -1,5 +1,28 @@
 # Nube con link fijo (sin depender de ninguna compu)
 
+## Ruta MÁS FÁCIL: deploy automático desde GitHub (ya está armado)
+
+El workflow `.github/workflows/deploy-cactus-tracker.yml` despliega solo en cada push.
+Tu parte son 4 pasos de navegador, una vez:
+
+1. **Portal de Azure** → Create a resource → **Web App**: nombre `cactus-tracker-mab`
+   (o el que quieras), Publish **Code**, runtime **Node 22 LTS**, OS **Linux**, plan
+   **F1 (Free)**, región South Central US → Create.
+2. En la app: **Overview → Download publish profile** (si el botón está gris:
+   Configuration → General settings → **SCM Basic Auth = On** → Save, y reintenta).
+   Abre el archivo con el Bloc de notas y copia TODO su contenido.
+3. **GitHub** → repo `milestone-load-board` → Settings → Secrets and variables →
+   Actions → **New repository secret**: nombre `AZURE_WEBAPP_PUBLISH_PROFILE`, valor
+   = lo que copiaste. (Si tu app no se llama `cactus-tracker-mab`, crea también una
+   **Variable** `AZURE_WEBAPP_NAME` con el nombre real.)
+4. En Azure: tu app → **Configuration → Application settings** → agrega
+   `CACTUS_DATA_DIR` = `/home/data` y `PUBLIC_BASE` = `https://TU-APP.azurewebsites.net`
+   (y los `SAMSARA_TOKEN_CACTUS` / `SAMSARA_TOKEN_CKJ` cuando los tengas) → Save.
+
+Avísale a Claude (o entra a GitHub → Actions → Deploy Cactus Tracker → Run workflow)
+y en ~2 minutos tu link vive en
+`https://TU-APP.azurewebsites.net/cactus-tracker/`.
+
 El tracker ya está preparado para esto: scheduler con **catch-up** (si el host estaba
 dormido a las 4:30, los jobs corren al primer despertar del día), datos en un solo
 directorio configurable (`CACTUS_DATA_DIR`) y seed a prueba de volúmenes.

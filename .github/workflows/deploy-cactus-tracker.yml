@@ -1,0 +1,42 @@
+# Deploy del Cactus Tracker a Azure App Service.
+#
+# Requisitos (una vez, en el navegador):
+#  1. Crear la Web App en el portal de Azure (Linux, Node 22 LTS, plan F1 gratis).
+#  2. En la app: Overview → "Download publish profile" (si sale gris: Configuration →
+#     General settings → SCM Basic Auth = On → Save, y reintentar).
+#  3. En GitHub: Settings → Secrets and variables → Actions → New repository secret
+#     AZURE_WEBAPP_PUBLISH_PROFILE = contenido completo del archivo descargado.
+#  4. Si la app NO se llama cactus-tracker-mab: en la pestaña Variables crear
+#     AZURE_WEBAPP_NAME con el nombre real.
+#
+# Después: cada push a la rama del tracker despliega solo, o córrelo a mano desde
+# la pestaña Actions (Run workflow).
+name: Deploy Cactus Tracker
+on:
+  push:
+    branches: [claude/planning-tool-strategy-k3pvy9, master]
+    paths: ['apps/cactus-tracker/**', '.github/workflows/deploy-cactus-tracker.yml']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # node:sqlite es built-in y express es JS puro: el node_modules va en el zip
+      # y App Service no necesita build (arranca con npm start del package.json).
+      - name: Install production deps
+        working-directory: apps/cactus-tracker
+        run: npm install --omit=dev --no-audit --no-fund
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME || 'cactus-tracker-mab' }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: apps/cactus-tracker
