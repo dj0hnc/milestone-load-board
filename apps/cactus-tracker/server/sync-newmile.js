@@ -95,7 +95,7 @@ async function syncRoster(client) {
       seen.add(number);
       const driver = (t.driver_name || t.driver || '').trim();
       const trailer = (t.truck_type || t.trailer_type || '').trim();
-      const nmId = t.id != null ? t.id : t.truck_id;
+      const nmId = t.id != null ? t.id : (t.truck_id != null ? t.truck_id : null);
 
       const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', org.id, number);
       if (!row) {
@@ -115,7 +115,7 @@ async function syncRoster(client) {
         vals.push(row.driver || '', driver, nowISO());
         summary.driverChanges++;
       }
-      if (trailer && trailer !== row.trailer_type) { sets.push('trailer_type = ?'); vals.push(trailer); }
+      if (trailer && trailer !== row.trailer_type && !row.trailer_override) { sets.push('trailer_type = ?'); vals.push(trailer); }
       if (nmId != null && nmId !== row.nm_truck_id) { sets.push('nm_truck_id = ?'); vals.push(nmId); }
       if (flag && flag !== row.detected_flag) { sets.push('detected_flag = ?'); vals.push(flag); summary.detectedFlags++; }
       if (row.maybe_removed) { sets.push('maybe_removed = 0'); } // it's back in the fleet

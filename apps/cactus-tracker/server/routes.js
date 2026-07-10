@@ -15,12 +15,38 @@ const { syncSamsara } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
 
 const VALID_STATUS = ['ok', 'shop', 'down', 'no_driver', 'vacation', 'deleased'];
-const EDITABLE = ['note', 'status', 'status_note', 'return_date', 'rest_days', 'area', 'division', 'rip_rap', 'phone', 'tags', 'driver'];
+const EDITABLE = ['note', 'status', 'status_note', 'return_date', 'rest_days', 'area', 'division', 'rip_rap', 'phone', 'tags', 'driver', 'trailer_type'];
 
 function createRouter({ config, newmile, log }) {
   const router = express.Router();
   router.use(express.json());
   const say = log || (() => {});
+
+  // ---------- candado opcional con PIN ----------
+  // El board trae nombres y teléfonos de drivers: con el link en la nube conviene un
+  // PIN de equipo. Se activa poniendo ACCESS_PIN (App Setting en Azure) o
+  // config.accessPin — sin eso, todo queda abierto como antes. El PIN se pide UNA vez
+  // por dispositivo (cookie de 180 días); el OAuth callback de NewMile pasa con la
+  // cookie del mismo navegador.
+  const PIN = process.env.ACCESS_PIN || config.accessPin || '';
+  const crypto = require('crypto');
+  const pinCookie = PIN ? crypto.createHash('sha256').update('cactus|' + PIN).digest('hex').slice(0, 40) : '';
+  const OPEN_PATHS = ['/api/login', '/api/health', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
+  if (PIN) {
+    router.use((req, res, next) => {
+      if (OPEN_PATHS.includes(req.path)) return next();
+      const cookie = (req.headers.cookie || '').split(/;\s*/).find(c => c.startsWith('ct_auth='));
+      if (cookie && cookie.slice(8) === pinCookie) return next();
+      if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'PIN requerido' });
+      return res.redirect(req.baseUrl + '/login.html');
+    });
+  }
+  router.post('/api/login', (req, res) => {
+    if (!PIN) return res.json({ ok: true });
+    if (String((req.body || {}).pin || '') !== PIN) return res.status(401).json({ error: 'PIN incorrecto' });
+    res.setHeader('Set-Cookie', `ct_auth=${pinCookie}; Path=${req.baseUrl || '/'}; Max-Age=15552000; HttpOnly; SameSite=Lax`);
+    res.json({ ok: true });
+  });
 
   // Abrir la app ES el sync: si al pedir el board la actividad tiene más de 20 min,
   // se dispara un sync en segundo plano (el board responde al instante con lo que hay
@@ -149,6 +175,8 @@ function createRouter({ config, newmile, log }) {
       sets.push(`${f} = ?`); vals.push(v == null ? '' : v);
     }
     if (!sets.length) return res.status(400).json({ error: 'nada que actualizar' });
+    // corregir el tipo a mano lo blinda contra el sync de NewMile
+    if ('trailer_type' in (req.body || {})) sets.push('trailer_override = 1');
     sets.push('updated_at = ?'); vals.push(nowISO());
     run(`UPDATE trucks SET ${sets.join(', ')} WHERE org_id = ? AND number = ?`, ...vals, orgId, number);
     const updated = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number);

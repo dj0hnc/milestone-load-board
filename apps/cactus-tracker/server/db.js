@@ -32,9 +32,19 @@ function open() {
   if (db) return db;
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
   db = new DatabaseSync(DB_PATH);
-  db.exec('PRAGMA journal_mode = WAL;');
+  // /home en Azure App Service es un share SMB: WAL sobre red es frágil (locking) —
+  // ahí usamos TRUNCATE. En disco local, WAL normal.
+  db.exec(onAzure ? 'PRAGMA journal_mode = TRUNCATE;' : 'PRAGMA journal_mode = WAL;');
+  db.exec('PRAGMA busy_timeout = 5000;');
   migrate(db);
   return db;
+}
+
+// Snapshot consistente de la DB (VACUUM INTO es atómico aunque haya escrituras).
+function backupTo(destPath) {
+  fs.mkdirSync(path.dirname(destPath), { recursive: true });
+  try { fs.unlinkSync(destPath); } catch (e) {}
+  open().exec(`VACUUM INTO '${destPath.replace(/'/g, "''")}'`);
 }
 
 function migrate(d) {
@@ -67,6 +77,7 @@ function migrate(d) {
     driver_prev TEXT,
     driver_changed_at TEXT,           -- ISO datetime; badge shows for 48 h
     trailer_type TEXT DEFAULT '',
+    trailer_override INTEGER DEFAULT 0, -- lo corregí a mano: el sync de NewMile no lo pisa
     rip_rap INTEGER DEFAULT 0,
     tags TEXT DEFAULT '',             -- '3X8', 'SUBHAULER' (comma separated)
     is_sub INTEGER DEFAULT 0,         -- subhauler: Samsara sync skips, fleet-5 baja check skips
@@ -153,6 +164,7 @@ function migrate(d) {
   addCol(d, 'trucks', 'parked_at', "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'suggested_area', "TEXT DEFAULT ''");
   addCol(d, 'dispatch_state', 'marked_by', "TEXT DEFAULT ''");
+  addCol(d, 'trucks', 'trailer_override', 'INTEGER DEFAULT 0');
 }
 
 function addCol(d, table, col, decl) {
@@ -174,4 +186,4 @@ function metaSet(key, value) {
 
 function nowISO() { return new Date().toISOString(); }
 
-module.exports = { open, get, all, run, metaGet, metaSet, nowISO, DB_PATH, DATA_DIR };
+module.exports = { open, get, all, run, metaGet, metaSet, nowISO, backupTo, DB_PATH, DATA_DIR };

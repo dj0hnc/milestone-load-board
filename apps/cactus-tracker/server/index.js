@@ -17,7 +17,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const { open, metaGet, metaSet, DATA_DIR } = require('./db');
+const { open, metaGet, metaSet, backupTo, DATA_DIR } = require('./db');
 const seed = require('./seed');
 const { createRouter } = require('./routes');
 const { NewMileClient } = require('./newmile-client');
@@ -91,6 +91,18 @@ function createTracker(opts) {
       if (afterOr(4, 10) && metaGet('job_samsara_day') !== dateISO) {
         metaSet('job_samsara_day', dateISO);
         log('samsara sync → ' + JSON.stringify(await syncSamsara(config)));
+      }
+      // Respaldo diario de la DB (20:00 o al primer despertar después): VACUUM INTO
+      // un snapshot consistente en DATA_DIR/backups, conserva los últimos 14.
+      if (hour >= 20 && metaGet('job_backup_day') !== dateISO) {
+        metaSet('job_backup_day', dateISO);
+        try {
+          const dir = path.join(DATA_DIR, 'backups');
+          backupTo(path.join(dir, 'cactus-' + dateISO + '.db'));
+          const old = fs.readdirSync(dir).filter(f => /^cactus-\d{4}-\d{2}-\d{2}\.db$/.test(f)).sort().slice(0, -14);
+          for (const f of old) { try { fs.unlinkSync(path.join(dir, f)); } catch (e) {} }
+          log('backup diario listo: cactus-' + dateISO + '.db');
+        } catch (e) { log('backup falló: ' + (e.message || e)); }
       }
       const hourKey = dateISO + ':' + hour;
       if (hour >= 4 && hour <= 19 && lastActivityHourKey !== hourKey) {

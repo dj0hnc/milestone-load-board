@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cactus Tracker</title>
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<meta name="theme-color" content="#1C2333">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Barlow:wght@500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Barlow',Arial,sans-serif;background:#1C2333;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;}
+.card{text-align:center;padding:30px;}
+img{width:96px;height:96px;border-radius:22px;margin-bottom:18px;}
+h1{font-family:'Barlow Condensed';font-weight:800;font-size:30px;letter-spacing:1px;text-transform:uppercase;}
+h1 span{color:#C8991F;}
+p{color:#8f97ab;margin:8px 0 20px;font-size:14px;}
+input{width:220px;padding:14px;border-radius:12px;border:2px solid #3a4460;background:#252e42;color:#fff;font-size:24px;text-align:center;letter-spacing:6px;font-family:'Barlow Condensed';}
+input:focus{outline:none;border-color:#C8991F;}
+button{display:block;width:220px;margin:14px auto 0;padding:13px;border:none;border-radius:12px;background:#C8991F;color:#1C2333;font-family:'Barlow Condensed';font-weight:800;font-size:18px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;}
+.err{color:#ff8a8a;font-size:14px;margin-top:12px;min-height:18px;}
+</style>
+</head>
+<body>
+<div class="card">
+  <img src="icon-180.png" alt="">
+  <h1>CACTUS <span>TRACKER</span></h1>
+  <p>PIN del equipo</p>
+  <form onsubmit="return go(event)">
+    <input id="pin" type="password" inputmode="numeric" autocomplete="current-password" autofocus>
+    <button>Entrar</button>
+  </form>
+  <div class="err" id="err"></div>
+</div>
+<script>
+async function go(e){
+  e.preventDefault();
+  const r=await fetch('api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:document.getElementById('pin').value})});
+  if(r.ok)location.href='./';
+  else document.getElementById('err').textContent='PIN incorrecto';
+  return false;
+}
+</script>
+</body>
+</html>
