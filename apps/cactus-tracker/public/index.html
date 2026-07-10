@@ -258,15 +258,15 @@ setInterval(flushQueue,15000);
 window.addEventListener("online",()=>{flushQueue();fetchBoard();});
 
 // ---------- state taps ----------
-function truckOf(num){return (board.trucks||[]).find(t=>t.number===num);}
+function truckOf(org,num){return (board.trucks||[]).find(t=>t.org_id===org&&t.number===num);}
 function setSt(t,s){
   ensureWho();
   t.state=s; t.state_source="manual"; t.state_by=WHO;
-  queuePush({path:"/api/state",body:{date,org:ORG,number:t.number,state:s,by:WHO}});
+  queuePush({path:"/api/state",body:{date,org:t.org_id,number:t.number,state:s,by:WHO}});
   render();
 }
-function tapChip(num){const t=truckOf(num);if(!t)return; setSt(t,t.state==="a"?"p":"a");}
-function tapDown(ev,num){ev.stopPropagation();const t=truckOf(num);if(!t)return; setSt(t,t.state==="d"?"p":"d");}
+function tapChip(org,num){const t=truckOf(org,num);if(!t)return; setSt(t,t.state==="a"?"p":"a");}
+function tapDown(ev,org,num){ev.stopPropagation();const t=truckOf(org,num);if(!t)return; setSt(t,t.state==="d"?"p":"d");}
 
 // ---------- helpers ----------
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
@@ -296,7 +296,7 @@ function matchType(t){
 // la búsqueda encuentra por número, driver, área, nota, tipo, tags o teléfono
 function matchSearch(t,q){
   if(!q)return true;
-  return [t.number,t.driver,t.area,t.note,t.trailer_type,t.tags,t.phone,t.status_note]
+  return [t.number,t.display_number,t.driver,t.area,t.note,t.trailer_type,t.tags,t.phone,t.status_note]
     .some(v=>(v||"").toLowerCase().includes(q));
 }
 function actHtml(t){
@@ -309,19 +309,27 @@ function actHtml(t){
   return `<div class="act">🟢 last: ${md}${t.last_load_driver?" · "+esc(t.last_load_driver):""}</div>`;
 }
 function toggleFaltan(){showFaltan=!showFaltan;render();}
-function jumpTo(num){
+function jumpTo(org,num){
   typeFilter="";$("fSearch").value="";showFaltan=false;render();
-  const el=$("chip-"+cssId(num));
+  const el=$("chip-"+cssId(org+"-"+num));
   if(el){el.scrollIntoView({behavior:"smooth",block:"center"});el.style.boxShadow="0 0 0 4px var(--gold)";setTimeout(()=>el.style.boxShadow="",1200);}
 }
 function areaLbl(a){return a==="(SIN YARD)"?"(NO YARD)":a;}
+function dnum(t){return t.display_number||t.number;} // el número COMO EN NEWMILE
+function isVirtual(){return ORG==="ALL"||ORG==="SUBS";}
+function tabLbl(t){
+  const tab=(board.tabs||[]).find(x=>x.org_id===t.org_id&&x.id===t.division);
+  return tab?tab.label:(t.org_id+(t.division?" "+t.division:" ⚑ UNASSIGNED"));
+}
 function cssId(n){return String(n).replace(/[^A-Za-z0-9_-]/g,"_");}
 function fmtTime(iso){if(!iso)return "—";const d=new Date(iso);return d.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});}
 
 // ---------- render ----------
 function render(){
   if(!board){$("board").innerHTML="<p style='color:var(--mut);padding:20px'>Loading…</p>";return;}
-  const divTrucks=(board.trucks||[]).filter(t=>t.division===division&&!t.archived);
+  const virtual=isVirtual();
+  const divTrucks=(board.trucks||[]).filter(t=>!t.archived&&(virtual||t.division===division));
+  $("btnReset").style.display=virtual?"none":""; // reset es por división concreta
 
   // FALTAN
   const pend=divTrucks.filter(countsForFaltan);
@@ -343,7 +351,7 @@ function render(){
     $("faltanList").innerHTML=Object.keys(byArea).sort().map(area=>{
       const list=byArea[area].sort((x,y)=>(y.rip_rap?1:0)-(x.rip_rap?1:0));
       return `<div style="margin-top:8px;"><span style="font-family:'Barlow Condensed';font-weight:700;font-size:14px;color:#8a6a10;">${esc(areaLbl(area))} · ${list.length}</span><br>`+
-        list.map(t=>`<span class="chip-mini ${t.rip_rap?"rip":""}" onclick="jumpTo('${esc(t.number)}')">${esc(t.number)}${t.rip_rap?" · RIP":""}</span>`).join("")+`</div>`;
+        list.map(t=>`<span class="chip-mini ${t.rip_rap?"rip":""}" onclick="jumpTo('${t.org_id}','${esc(t.number)}')">${esc(dnum(t))}${t.rip_rap?" · RIP":""}</span>`).join("")+`</div>`;
     }).join("");
   }
 
@@ -360,11 +368,12 @@ function render(){
   const q=$("fSearch").value.trim().toLowerCase();
   const groups={};
   for(const t of divTrucks){
-    if(t.is_new)continue; // NUEVOS live in the red banner until placed
+    if(t.is_new)continue; // NEW trucks live in Review until placed
     if(!matchType(t))continue;
     if(!matchSearch(t,q))continue;
-    const g=t.area||"(SIN YARD)";
-    if(areaSel.value&&g!==areaSel.value)continue;
+    const a=t.area||"(SIN YARD)";
+    if(areaSel.value&&a!==areaSel.value)continue;
+    const g=virtual?`${tabLbl(t)} — ${areaLbl(a)}`:a; // en ALL/SUBS el header dice de qué board es
     (groups[g]=groups[g]||[]).push(t);
   }
   let html="";
@@ -387,19 +396,19 @@ function chipHtml(t){
   const cls=t.state==="a"?"s-a":t.state==="d"?"s-d":"";
   const flag=t.samsara_flag||t.detected_flag;
   const drvChg=t.driver_changed_recent;
-  return `<div class="chip ${cls} ${rest?"rest":""} ${off?"status-off":""}" id="chip-${cssId(t.number)}" onclick="tapChip('${esc(t.number)}')">
+  return `<div class="chip ${cls} ${rest?"rest":""} ${off?"status-off":""}" id="chip-${cssId(t.org_id+"-"+t.number)}" onclick="tapChip('${t.org_id}','${esc(t.number)}')">
     ${t.rip_rap?'<div class="ripflag"></div>':""}
     ${t.state==="a"?`<div class="check ${t.state_source==="auto"?"auto":""}" title="${t.state_source==="auto"?"auto-covered: hauled or assigned today in NewMile":"assigned"}">${t.state_source==="auto"?"⚡":"✓"}</div>`:""}
-    <button class="btn-edit" onclick="event.stopPropagation();openEdit('${esc(t.number)}')" title="Edit">✎</button>
-    <button class="btn-down" onclick="tapDown(event,'${esc(t.number)}')" title="Mark down">✕</button>
-    <div class="top"><span class="num">${esc(t.number)}</span>${t.trailer_type?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(t.trailer_type)}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}</div>
+    <button class="btn-edit" onclick="event.stopPropagation();openEdit('${t.org_id}','${esc(t.number)}')" title="Edit">✎</button>
+    <button class="btn-down" onclick="tapDown(event,'${t.org_id}','${esc(t.number)}')" title="Mark down">✕</button>
+    <div class="top"><span class="num">${esc(dnum(t))}</span>${t.trailer_type?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(t.trailer_type)}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}</div>
     <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ NO DRIVER"}</div>
     ${actHtml(t)}
     ${rest?'<span class="badge status">OFF TODAY</span>':""}
     ${off?`<span class="badge status">${STATUS_LBL[t.status]||esc(t.status)}${t.return_date?" · "+esc(t.return_date):""}</span>`:""}
     ${drvChg?`<span class="badge drvchg" title="driver changed">driver changed: was ${esc(drvChg.prev||"?")}</span>`:""}
-    ${flag?`<span class="badge flag" onclick="event.stopPropagation();openFlag('${esc(t.number)}')">⚑ ${esc(flag)}</span>`:""}
-    ${t.suggested_area&&!board.historical?`<span class="badge" style="background:var(--blue-bg);color:var(--blue);cursor:pointer;" onclick="event.stopPropagation();openAreaSuggest('${esc(t.number)}')">📍 sleeps in ${esc(t.suggested_area)}</span>`:""}
+    ${flag?`<span class="badge flag" onclick="event.stopPropagation();openFlag('${t.org_id}','${esc(t.number)}')">⚑ ${esc(flag)}</span>`:""}
+    ${t.suggested_area&&!board.historical?`<span class="badge" style="background:var(--blue-bg);color:var(--blue);cursor:pointer;" onclick="event.stopPropagation();openAreaSuggest('${t.org_id}','${esc(t.number)}')">📍 sleeps in ${esc(t.suggested_area)}</span>`:""}
     ${t.note?`<div class="note">${esc(t.note)}</div>`:""}
   </div>`;
 }
@@ -414,25 +423,56 @@ function renderBanners(){
     const at=c?new Date(JSON.parse(c).at):null;
     html+=`<div class="banner off"><b>OFFLINE</b> — showing the last good data${at?" from "+at.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"}):""}. Your taps are saved and upload on their own when signal returns.</div>`;
   }
-  const nuevos=(board.trucks||[]).filter(t=>t.is_new&&!t.archived);
-  if(nuevos.length){
-    html+=`<div class="banner new"><b>⚑ ${nuevos.length} NEW TRUCK${nuevos.length>1?"S":""} — assign division + area</b><div>`+
-      nuevos.map(t=>`<span class="chip-mini" onclick="openConfirmNew('${esc(t.number)}')">${esc(t.number)}${t.driver?" · "+esc(t.driver):""}${t.suggested_division?" · sug: "+esc(t.suggested_division):""}</span>`).join("")+`</div></div>`;
-  }
-  const bajas=(board.trucks||[]).filter(t=>t.maybe_removed&&!t.archived);
-  if(bajas.length){
-    html+=`<div class="banner baja"><b>REMOVED? — no longer in the NewMile fleet</b><div>`+
-      bajas.map(t=>`<span class="chip-mini" onclick="openResolveRemoved('${esc(t.number)}')">${esc(t.number)}</span>`).join("")+`</div></div>`;
-  }
-  // cargaron RIP RAP en NewMile pero no están marcados como RIP — confirmar con un tap
-  const ripSug=(board.trucks||[]).filter(t=>t.rip_suggested&&!t.rip_rap&&!t.archived);
-  if(ripSug.length){
-    html+=`<div class="banner" style="background:var(--blue-bg);border:1.5px solid var(--blue);"><b style="color:var(--blue);">🪨 ${ripSug.length} HAULED RIP RAP (NewMile) — mark them as RIP?</b><div>`+
-      ripSug.map(t=>{const ev=ripEv(t);return `<span class="chip-mini" style="border-color:var(--blue);color:var(--blue);" onclick="openRipSuggest('${esc(t.number)}')">${esc(t.number)}${ev?` · ${ev.loads} load${ev.loads>1?"s":""}`:""}</span>`;}).join("")+`</div></div>`;
+  // Barra de revisión compacta: una sola línea con contadores; cada uno abre su lista.
+  const rv=reviewSets();
+  const chips=[
+    ["new","⚑ NEW",rv.nuevos.length,"var(--red)","var(--red-bg)"],
+    ["removed","❓ REMOVED",rv.bajas.length,"#8a5a10","#fdf3e3"],
+    ["rip","🪨 RIP",rv.rip.length,"var(--blue)","var(--blue-bg)"],
+    ["area","📍 AREA",rv.areas.length,"var(--blue)","var(--blue-bg)"],
+    ["flag","⚑ FLAGS",rv.flags.length,"#7a2fa8","#f3e8fb"]
+  ].filter(c=>c[2]>0);
+  if(chips.length){
+    html+=`<div class="banner" style="background:#fff;border:1.5px solid #cdd3df;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px;">
+      <b style="font-size:15px;color:var(--mut);">REVIEW</b>`+
+      chips.map(c=>`<button onclick="openReview('${c[0]}')" style="border:1.5px solid ${c[3]};background:${c[4]};color:${c[3]};border-radius:999px;padding:5px 12px;font-family:'Barlow Condensed';font-weight:800;font-size:14px;letter-spacing:.4px;cursor:pointer;">${c[1]} · ${c[2]}</button>`).join("")+
+      `</div>`;
   }
   $("banners").innerHTML=html;
 }
 function ripEv(t){try{return JSON.parse(t.rip_evidence||"");}catch(e){return null;}}
+function reviewSets(){
+  const ts=(board&&board.trucks||[]).filter(t=>!t.archived);
+  return {
+    nuevos:ts.filter(t=>t.is_new),
+    bajas:ts.filter(t=>t.maybe_removed&&!t.is_new),
+    rip:ts.filter(t=>t.rip_suggested&&!t.rip_rap),
+    areas:ts.filter(t=>t.suggested_area&&!t.is_new),
+    flags:ts.filter(t=>(t.samsara_flag||t.detected_flag)&&!t.is_new)
+  };
+}
+function openReview(cat){
+  const rv=reviewSets();
+  const cfg={
+    new:{title:"⚑ NEW trucks — assign division + area",list:rv.nuevos,info:t=>`${esc(t.driver||"no driver")}${t.trailer_type?" · "+esc(t.trailer_type):""}${t.suggested_division?" · suggested: <b>"+esc(t.suggested_division)+"</b>":""}`,fn:"openConfirmNew"},
+    removed:{title:"❓ Removed? — no longer in the NewMile fleet",list:rv.bajas,info:t=>`${esc(t.driver||"")} · ${esc(tabLbl(t))}`,fn:"openResolveRemoved"},
+    rip:{title:"🪨 Hauled RIP RAP — mark as RIP?",list:rv.rip,info:t=>{const ev=ripEv(t);return ev?`${ev.loads} load${ev.loads>1?"s":""} · last ${ev.last}`:"";},fn:"openRipSuggest"},
+    area:{title:"📍 Sleeping somewhere else — move area?",list:rv.areas,info:t=>`${esc(areaLbl(t.area||"(SIN YARD)"))} → <b>${esc(t.suggested_area)}</b>`,fn:"openAreaSuggest"},
+    flag:{title:"⚑ Detected flags — accept or dismiss",list:rv.flags,info:t=>esc(t.samsara_flag||t.detected_flag),fn:"openFlag"}
+  }[cat];
+  if(!cfg)return;
+  openModal(`
+    <h3>${cfg.title}</h3>
+    <div style="max-height:60vh;overflow:auto;">
+      ${cfg.list.map(t=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid #eef0f5;">
+          <span style="font-family:'Barlow Condensed';font-weight:800;font-size:20px;min-width:86px;">${esc(dnum(t))}</span>
+          <span style="flex:1;font-size:13px;color:#4a5164;">${cfg.info(t)}</span>
+          <button class="b-save" style="flex:none;padding:8px 14px;font-size:14px;" onclick="${cfg.fn}('${t.org_id}','${esc(t.number)}')">Review</button>
+        </div>`).join("")||"<p style='color:var(--mut)'>Nothing pending.</p>"}
+    </div>
+    <div class="actions"><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
+}
 
 function renderStatusbar(){
   const m=(board&&board.meta)||{};
@@ -475,6 +515,7 @@ function setTab(org,div){
   if(org!==ORG){ORG=org;board=null;render();fetchBoard();}
   else render();
 }
+// marca el tab activo también para las vistas virtuales (ALL/SUBS traen id===org)
 function setDate(iso){if(!iso)return;date=iso;fetchBoard();}
 
 $("btnReset").onclick=()=>{
@@ -503,12 +544,12 @@ async function syncNow(){
 function closeModal(){$("modalBg").classList.remove("show");}
 function openModal(html){$("modalBody").innerHTML=html;$("modalBg").classList.add("show");}
 
-function openEdit(num){
-  const t=truckOf(num);if(!t)return;
+function openEdit(org,num){
+  const t=truckOf(org,num);if(!t)return;
   const rest=(t.rest_days||"").split(",").map(s=>s.trim()).filter(Boolean);
-  const divs=(board.divisions||[]).map(d=>`<option value="${d.id}" ${t.division===d.id?"selected":""}>${esc(d.label)}</option>`).join("");
+  const divs=(board.divisions||[]).filter(d=>d.org_id===t.org_id||!d.org_id).map(d=>`<option value="${d.id}" ${t.division===d.id?"selected":""}>${esc(d.label)}</option>`).join("");
   openModal(`
-    <h3>✎ Truck ${esc(t.number)}</h3>
+    <h3>✎ Truck ${esc(dnum(t))}</h3>
     <label>Note</label><input type="text" id="eNote" value="${esc(t.note)}" placeholder="in the shop, DEL Zotto only, owner phone…">
     <div class="row2">
       <div><label>Status</label><select id="eStatus">${Object.entries(STATUS_LBL).map(([k,v])=>`<option value="${k}" ${t.status===k?"selected":""}>${v}</option>`).join("")}</select></div>
@@ -534,13 +575,13 @@ function openEdit(num){
     <div class="chk"><input type="checkbox" id="eRip" ${t.rip_rap?"checked":""}><label for="eRip" style="margin:0;text-transform:none;color:var(--ink);font-size:14px;">Can haul RIP RAP (blue stripe)</label></div>
     ${t.parked_city?`<p style="font-size:12px;color:var(--mut);margin-top:10px;">📍 last position (Samsara): <b>${esc(t.parked_city)}</b>${t.parked_at?" · "+new Date(t.parked_at).toLocaleString("en-US",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}):""}</p>`:""}
     <div class="actions">
-      <button class="b-cancel" onclick="openHistory('${esc(t.number)}')">History</button>
+      <button class="b-cancel" onclick="openHistory('${t.org_id}','${esc(t.number)}')">History</button>
       <button class="b-cancel" onclick="closeModal()">Cancel</button>
-      <button class="b-save" onclick="saveEdit('${esc(t.number)}')">Save</button>
+      <button class="b-save" onclick="saveEdit('${t.org_id}','${esc(t.number)}')">Save</button>
     </div>`);
 }
-function saveEdit(num){
-  const t=truckOf(num);if(!t)return;
+function saveEdit(org,num){
+  const t=truckOf(org,num);if(!t)return;
   ensureWho();
   const rest=[...document.querySelectorAll("#eRest label.on input")].map(i=>i.value).join(",");
   const body={
@@ -553,17 +594,17 @@ function saveEdit(num){
   if($("eTrailer").value!==t.trailer_type)body.trailer_type=$("eTrailer").value;
   if($("eDriver").value!==t.driver)body.driver=$("eDriver").value;
   Object.assign(t,body,{rip_rap:body.rip_rap});
-  queuePush({path:`/api/truck/${ORG}/${encodeURIComponent(num)}`,body});
+  queuePush({path:`/api/truck/${t.org_id}/${encodeURIComponent(num)}`,body});
   closeModal();render();
 }
 
-async function openHistory(num){
-  const t=truckOf(num);if(!t)return;
+async function openHistory(org,num){
+  const t=truckOf(org,num);if(!t)return;
   let h={changes:[],activity:[],parking:[]};
-  try{h=await(await fetch(`${API}/api/truck/${ORG}/${encodeURIComponent(num)}/history`)).json();}catch(e){}
+  try{h=await(await fetch(`${API}/api/truck/${t.org_id}/${encodeURIComponent(num)}/history`)).json();}catch(e){}
   const fmt=ts=>new Date(ts).toLocaleString("en-US",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
   openModal(`
-    <h3>History — Truck ${esc(num)}</h3>
+    <h3>History — Truck ${esc(dnum(t))}</h3>
     ${h.parking.length?`<label>Where it slept (GPS)</label><div style="font-size:13px;">${h.parking.map(p=>`${p.date.slice(5)}: <b>${esc(p.city)}</b>`).join(" · ")}</div>`:""}
     <label>Changes (who and when)</label>
     <div style="font-size:13px;max-height:200px;overflow:auto;">
@@ -573,110 +614,110 @@ async function openHistory(num){
     <div style="font-size:13px;max-height:140px;overflow:auto;">
       ${h.activity.length?h.activity.map(a=>`<div>${a.load_date.slice(5)}: ${a.loads} load${a.loads>1?"s":""}${a.driver?" · "+esc(a.driver):""}</div>`).join(""):"<span style='color:var(--mut)'>no loads</span>"}
     </div>
-    <div class="actions"><button class="b-cancel" onclick="openEdit('${esc(num)}')">← Edit</button><button class="b-save" onclick="closeModal()">Close</button></div>`);
+    <div class="actions"><button class="b-cancel" onclick="openEdit('${t.org_id}','${esc(num)}')">← Edit</button><button class="b-save" onclick="closeModal()">Close</button></div>`);
 }
 
-function openRipSuggest(num){
-  const t=truckOf(num);if(!t)return;
+function openRipSuggest(org,num){
+  const t=truckOf(org,num);if(!t)return;
   const ev=ripEv(t);
   openModal(`
-    <h3>🪨 RIP RAP — Truck ${esc(num)}</h3>
+    <h3>🪨 RIP RAP — Truck ${esc(dnum(t))}</h3>
     <p style="font-size:14px;">Per NewMile it hauled rip rap${ev?`: <b>${ev.loads} load${ev.loads>1?"s":""}</b> between ${ev.first} and ${ev.last} (${(ev.materials||[]).map(esc).join(", ")})`:""}.</p>
     <p style="font-size:13px;color:var(--mut);">Accepting marks it RIP (blue stripe + counted as RIP-capable). Your mark rules: this only suggests.</p>
     <div class="actions">
-      <button class="b-cancel" onclick="applyRip('${esc(num)}','dismiss')">Can&#39;t / dismiss</button>
-      <button class="b-save" style="background:var(--blue)" onclick="applyRip('${esc(num)}','accept')">Yes, mark RIP</button>
+      <button class="b-cancel" onclick="applyRip('${t.org_id}','${esc(num)}','dismiss')">Can&#39;t / dismiss</button>
+      <button class="b-save" style="background:var(--blue)" onclick="applyRip('${t.org_id}','${esc(num)}','accept')">Yes, mark RIP</button>
     </div>`);
 }
-function applyRip(num,action){
-  const t=truckOf(num);if(!t)return;
+function applyRip(org,num,action){
+  const t=truckOf(org,num);if(!t)return;
   ensureWho();
   if(action==="accept"){t.rip_rap=1;}
   t.rip_suggested=0;
-  queuePush({path:`/api/truck/${ORG}/${encodeURIComponent(num)}/rip`,body:{action,by:WHO}});
+  queuePush({path:`/api/truck/${t.org_id}/${encodeURIComponent(num)}/rip`,body:{action,by:WHO}});
   closeModal();render();
 }
 
-function openAreaSuggest(num){
-  const t=truckOf(num);if(!t)return;
+function openAreaSuggest(org,num){
+  const t=truckOf(org,num);if(!t)return;
   openModal(`
-    <h3>📍 Truck ${esc(num)} sleeps in ${esc(t.suggested_area)}</h3>
+    <h3>📍 Truck ${esc(dnum(t))} sleeps in ${esc(t.suggested_area)}</h3>
     <p style="font-size:14px;">Samsara overnight GPS: it is parking in <b>${esc(t.suggested_area)}</b>, but you have it under <b>${esc(areaLbl(t.area||"(SIN YARD)"))}</b>.</p>
     <div class="actions">
-      <button class="b-cancel" onclick="applyAreaSuggest('${esc(num)}','dismiss')">Leave it where it is</button>
-      <button class="b-save" onclick="applyAreaSuggest('${esc(num)}','accept')">Move it to ${esc(t.suggested_area)}</button>
+      <button class="b-cancel" onclick="applyAreaSuggest('${t.org_id}','${esc(num)}','dismiss')">Leave it where it is</button>
+      <button class="b-save" onclick="applyAreaSuggest('${t.org_id}','${esc(num)}','accept')">Move it to ${esc(t.suggested_area)}</button>
     </div>`);
 }
-function applyAreaSuggest(num,action){
-  const t=truckOf(num);if(!t)return;
+function applyAreaSuggest(org,num,action){
+  const t=truckOf(org,num);if(!t)return;
   ensureWho();
   if(action==="accept"){t.area=t.suggested_area;}
   t.suggested_area="";
-  queuePush({path:`/api/truck/${ORG}/${encodeURIComponent(num)}/area-suggest`,body:{action,by:WHO}});
+  queuePush({path:`/api/truck/${t.org_id}/${encodeURIComponent(num)}/area-suggest`,body:{action,by:WHO}});
   closeModal();render();
 }
 
-function openConfirmNew(num){
-  const t=truckOf(num);if(!t)return;
-  const divs=(board.divisions||[]).map(d=>`<option value="${d.id}" ${(t.suggested_division||"NORTH")===d.id?"selected":""}>${esc(d.label)}</option>`).join("");
+function openConfirmNew(org,num){
+  const t=truckOf(org,num);if(!t)return;
+  const divs=(board.divisions||[]).filter(d=>d.org_id===t.org_id||!d.org_id).map(d=>`<option value="${d.id}" ${(t.suggested_division||"")===d.id?"selected":""}>${esc(d.label)}</option>`).join("");
   openModal(`
-    <h3>⚑ NEW — Truck ${esc(t.number)}</h3>
+    <h3>⚑ NEW — Truck ${esc(dnum(t))}</h3>
     <p style="font-size:14px;color:var(--mut);">${esc(t.driver||"no driver")}${t.trailer_type?" · "+esc(t.trailer_type):""}${t.suggested_division?" · Samsara suggests: <b>"+esc(t.suggested_division)+"</b>":""}</p>
     <label>Division</label><select id="cnDiv">${divs}</select>
     <label>Area / yard</label><input type="text" id="cnArea" placeholder="PARIS, TYLER, CORSICANA…" value="${esc(t.area==="(SIN YARD)"?"":t.area)}">
     <div class="actions">
       <button class="b-cancel" onclick="closeModal()">Later</button>
-      <button class="b-save" onclick="confirmNew('${esc(t.number)}')">Confirm</button>
+      <button class="b-save" onclick="confirmNew('${t.org_id}','${esc(t.number)}')">Confirm</button>
     </div>`);
 }
-function confirmNew(num){
-  const t=truckOf(num);if(!t)return;
+function confirmNew(org,num){
+  const t=truckOf(org,num);if(!t)return;
   ensureWho();
   const division_=$("cnDiv").value, area=$("cnArea").value.toUpperCase();
   Object.assign(t,{is_new:0,division:division_,area:area||t.area});
-  queuePush({path:`/api/truck/${ORG}/${encodeURIComponent(num)}/confirm-new`,body:{division:division_,area,by:WHO}});
+  queuePush({path:`/api/truck/${t.org_id}/${encodeURIComponent(num)}/confirm-new`,body:{division:division_,area,by:WHO}});
   closeModal();render();
 }
 
-function openResolveRemoved(num){
-  const t=truckOf(num);if(!t)return;
+function openResolveRemoved(org,num){
+  const t=truckOf(org,num);if(!t)return;
   openModal(`
-    <h3>Removed? — Truck ${esc(t.number)}</h3>
+    <h3>Removed? — Truck ${esc(dnum(t))}</h3>
     <p style="font-size:14px;color:var(--mut);">No longer in the NewMile fleet. Nothing gets deleted on its own: you decide.</p>
     <div class="actions">
-      <button class="b-cancel" onclick="resolveRemoved('${esc(t.number)}','keep')">Still active</button>
-      <button class="b-save" style="background:var(--red)" onclick="resolveRemoved('${esc(t.number)}','archive')">Confirm removal</button>
+      <button class="b-cancel" onclick="resolveRemoved('${t.org_id}','${esc(t.number)}','keep')">Still active</button>
+      <button class="b-save" style="background:var(--red)" onclick="resolveRemoved('${t.org_id}','${esc(t.number)}','archive')">Confirm removal</button>
     </div>`);
 }
-function resolveRemoved(num,action){
-  const t=truckOf(num);if(!t)return;
+function resolveRemoved(org,num,action){
+  const t=truckOf(org,num);if(!t)return;
   if(action==="archive")t.archived=1; t.maybe_removed=0;
-  queuePush({path:`/api/truck/${ORG}/${encodeURIComponent(num)}/resolve-removed`,body:{action}});
+  queuePush({path:`/api/truck/${t.org_id}/${encodeURIComponent(num)}/resolve-removed`,body:{action}});
   closeModal();render();
 }
 
-function openFlag(num){
-  const t=truckOf(num);if(!t)return;
+function openFlag(org,num){
+  const t=truckOf(org,num);if(!t)return;
   const src=t.samsara_flag?"samsara":"newmile";
   const flag=t.samsara_flag||t.detected_flag;
   openModal(`
-    <h3>⚑ Detected flag — Truck ${esc(t.number)}</h3>
+    <h3>⚑ Detected flag — Truck ${esc(dnum(t))}</h3>
     <p style="font-size:15px;"><b>"${esc(flag)}"</b> <span style="color:var(--mut)">(from the ${src==="samsara"?"Samsara":"NewMile"} name)</span></p>
     <p style="font-size:13px;color:var(--mut);">Accepting turns it into a status (shop/down/de-leased based on the text) and keeps the text as the status note.</p>
     <div class="actions">
-      <button class="b-cancel" onclick="applyFlag('${esc(t.number)}','${src}','dismiss')">Dismiss</button>
-      <button class="b-save" onclick="applyFlag('${esc(t.number)}','${src}','accept')">Accept flag</button>
+      <button class="b-cancel" onclick="applyFlag('${t.org_id}','${esc(t.number)}','${src}','dismiss')">Dismiss</button>
+      <button class="b-save" onclick="applyFlag('${t.org_id}','${esc(t.number)}','${src}','accept')">Accept flag</button>
     </div>`);
 }
-function applyFlag(num,source,action){
-  const t=truckOf(num);if(!t)return;
+function applyFlag(org,num,source,action){
+  const t=truckOf(org,num);if(!t)return;
   if(action==="accept"){
     const flag=source==="samsara"?t.samsara_flag:t.detected_flag;
     if(/DELEAS/i.test(flag))t.status="deleased";else if(/SHOP/i.test(flag))t.status="shop";else if(/DOWN/i.test(flag))t.status="down";
     t.status_note=flag;
   }
   if(source==="samsara")t.samsara_flag="";else t.detected_flag="";
-  queuePush({path:`/api/truck/${ORG}/${encodeURIComponent(num)}/flag`,body:{source,action}});
+  queuePush({path:`/api/truck/${t.org_id}/${encodeURIComponent(num)}/flag`,body:{source,action}});
   closeModal();render();
 }
 

@@ -68,9 +68,9 @@ function seedOrgs() {
 
 function seedTrucks(seed) {
   const ins = open().prepare(`
-    INSERT INTO trucks (org_id, number, division, area, driver, trailer_type, rip_rap, tags, is_sub,
+    INSERT INTO trucks (org_id, number, display_number, division, area, driver, trailer_type, rip_rap, tags, is_sub,
                         status, note, is_new, updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(org_id, number) DO NOTHING`);
   let n = 0;
   for (const [division, list] of [['NORTH', seed.north], ['SOUTH', seed.south]]) {
@@ -81,7 +81,7 @@ function seedTrucks(seed) {
       const note = t.n || '';
       const isNew = /NUEVO/i.test(note) ? 1 : 0;
       const status = t.st === 'd' ? 'down' : 'ok';
-      ins.run('CACTUS', num, division, normNum(t.c || '(SIN YARD)'), t.d || '', t.tt || '',
+      ins.run('CACTUS', num, num, division, normNum(t.c || '(SIN YARD)'), t.d || '', t.tt || '',
         t.rip ? 1 : 0, tags, sub, status, note, isNew, nowISO());
       n++;
     }
@@ -145,6 +145,10 @@ function main(force) {
   for (const d of [['POWDERLY', '2706160'], ['RHOME', '3645002'], ['WHITEWRIGHT', '2706161']]) {
     run(`UPDATE divisions SET samsara_tag_id = ? WHERE org_id = 'KT' AND id = ? AND samsara_tag_id IS NULL`, d[1], d[0]);
   }
+  // terminal virtual para los CKJ ICs (independent contractors, CKJ### en las cargas)
+  run(`INSERT INTO divisions (org_id,id,label,samsara_tag_id,sort) VALUES ('KT','ICS','KT ICS',NULL,4) ON CONFLICT(org_id,id) DO NOTHING`);
+  // display_number para DBs anteriores a la columna
+  run(`UPDATE trucks SET display_number = number WHERE display_number IS NULL OR display_number = ''`);
   const existing = get('SELECT COUNT(*) AS c FROM trucks').c;
   if (existing > 0) {
     console.log(`seed: DB already has ${existing} trucks — skipping (use --force to reload)`);

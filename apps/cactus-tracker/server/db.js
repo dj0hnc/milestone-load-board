@@ -70,7 +70,8 @@ function migrate(d) {
   );
   CREATE TABLE IF NOT EXISTS trucks (
     org_id TEXT NOT NULL,
-    number TEXT NOT NULL,             -- normalized: no C prefix, no name suffixes
+    number TEXT NOT NULL,             -- canonical key for matching (no prefixes/suffixes)
+    display_number TEXT DEFAULT '',   -- the number EXACTLY as NewMile shows it ("KT-7040 P")
     division TEXT,                    -- NULL while ⚑ NUEVO (until I assign it)
     area TEXT,
     driver TEXT DEFAULT '',
@@ -165,6 +166,7 @@ function migrate(d) {
   addCol(d, 'trucks', 'suggested_area', "TEXT DEFAULT ''");
   addCol(d, 'dispatch_state', 'marked_by', "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'trailer_override', 'INTEGER DEFAULT 0');
+  addCol(d, 'trucks', 'display_number', "TEXT DEFAULT ''");
 }
 
 function addCol(d, table, col, decl) {

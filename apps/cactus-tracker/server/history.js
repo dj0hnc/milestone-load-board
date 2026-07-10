@@ -47,10 +47,12 @@ function historyOf(orgId, number, limit) {
   };
 }
 
-// Snapshot rows for a past date, keyed by truck number.
+// Snapshot rows for a past date, keyed by org|number. orgId null = every org (ALL view).
 function daySnapshots(orgId, date) {
-  const rows = all('SELECT * FROM truck_days WHERE org_id = ? AND date = ?', orgId, date);
-  return new Map(rows.map(r => [r.number, r]));
+  const rows = orgId
+    ? all('SELECT * FROM truck_days WHERE org_id = ? AND date = ?', orgId, date)
+    : all('SELECT * FROM truck_days WHERE date = ?', date);
+  return new Map(rows.map(r => [r.org_id + '|' + r.number, r]));
 }
 
 module.exports = { logChange, snapshotTruckDay, snapshotAllToday, historyOf, daySnapshots, SNAP_FIELDS };

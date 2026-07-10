@@ -34,6 +34,16 @@ function ktDivisionHint(raw) {
   return { P: 'POWDERLY', R: 'RHOME', W: 'WHITEWRIGHT' }[m[1]] || null;
 }
 
+// The number AS NEWMILE SHOWS IT: keeps prefixes and terminal letters ("KT-7040 P"),
+// only drops status suffixes ("1082-DOWN 12/12/2024" → "1082").
+function displayTruckNumber(raw) {
+  const s = normNum(raw);
+  const { flag } = splitNameFlag(s);
+  if (!flag) return s;
+  const i = s.indexOf(flag);
+  return (i > 0 ? s.slice(0, i) : s).replace(/[\s\-–—]+$/, '');
+}
+
 // Org-specific canonical number. CKJ/KT trucks appear as "KT-7040 P" in the truck
 // resource, "CKJ7040" in load tickets and "KT-7040" in Samsara — canonical is the
 // bare digits (same rule as the desktop's rotation.js). Everything else as-is.
@@ -112,4 +122,4 @@ function reportDateToISO(s) {
   return `${y}-${String(m[1]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`;
 }
 
-module.exports = { normNum, splitNameFlag, canonicalTruckNumber, ktDivisionHint, normLoadTruck, ctParts, todayCT, shiftISO, daysBetween, weekDatesCT, reportDateToISO, CT };
+module.exports = { normNum, splitNameFlag, canonicalTruckNumber, displayTruckNumber, ktDivisionHint, normLoadTruck, ctParts, todayCT, shiftISO, daysBetween, weekDatesCT, reportDateToISO, CT };

@@ -25,7 +25,7 @@
  *     first load lands — no double-marking a truck that is already dispatched.
  */
 const { all, get, run, metaSet, nowISO } = require('./db');
-const { normNum, splitNameFlag, canonicalTruckNumber, ktDivisionHint, normLoadTruck, todayCT, shiftISO, reportDateToISO } = require('./util');
+const { normNum, splitNameFlag, canonicalTruckNumber, displayTruckNumber, ktDivisionHint, normLoadTruck, todayCT, shiftISO, reportDateToISO } = require('./util');
 
 const ACTIVITY_WINDOW_DAYS = 21;   // enough history to compute "X días sin carga" up to red (>=14)
 
@@ -56,7 +56,13 @@ function matchLoadRow(r, orgs, subNames) {
     if (orgHit.id === 'KT') {
       const digits = canonicalTruckNumber('KT', num);
       if (!/^\d{4,}$/.test(digits)) {
-        const cand = normNum(num).replace(/\s+/g, '');
+        const cand = normNum(r.truck_number).replace(/\s+/g, '');
+        // CKJ IC (independent contractor): CKJ + 1-3 dígitos → truck propio bajo KT ICS,
+        // con el número COMPLETO como llave y display (así lo ves en NewMile)
+        if (/^CKJ\d{1,3}$/.test(cand)) {
+          return { orgId: 'KT', num: cand, autoCreate: true, sub: true, tags: 'CKJ IC', suggestedDivision: 'ICS' };
+        }
+        // otros números ajenos rodando bajo el fleet CKJ (Arango…): solo si ya existen
         const hit = get('SELECT org_id, number FROM trucks WHERE number IN (?, ?) AND archived = 0', cand, digits);
         return hit ? { orgId: hit.org_id, num: hit.number, autoCreate: false } : null;
       }
@@ -65,7 +71,7 @@ function matchLoadRow(r, orgs, subNames) {
     return { orgId: orgHit.id, num, autoCreate: true };
   }
   if (subNames.some(n => normNum(n) === normNum(fleetName))) {
-    return { orgId: 'CACTUS', num: normNum(r.truck_number), autoCreate: true };
+    return { orgId: 'CACTUS', num: normNum(r.truck_number), autoCreate: true, sub: true, tags: 'SUBHAULER' };
   }
   const cand = normNum(r.truck_number);
   const hit = get('SELECT org_id, number FROM trucks WHERE number = ? AND archived = 0', cand);
@@ -88,8 +94,10 @@ async function syncRoster(client) {
     const seen = new Set();
 
     for (const t of mine) {
-      const parsed = splitNameFlag(t.truck_number || t.number || '');
-      const number = canonicalTruckNumber(org.id, parsed.number); // "KT-7040 P" → 7040
+      const rawName = t.truck_number || t.number || '';
+      const parsed = splitNameFlag(rawName);
+      const number = canonicalTruckNumber(org.id, parsed.number); // "KT-7040 P" → 7040 (llave)
+      const display = displayTruckNumber(rawName);                // "KT-7040 P" (como NewMile)
       const flag = parsed.flag;
       if (!number) continue;
       seen.add(number);
@@ -101,11 +109,11 @@ async function syncRoster(client) {
       if (!row) {
         // NEVER silently missing: create with ⚑ NUEVO, no division until I assign it.
         // KT names carry the terminal letter ("KT-7040 P") → pre-fill the suggestion.
-        const hint = org.id === 'KT' ? ktDivisionHint(t.truck_number || t.number || '') : null;
-        run(`INSERT INTO trucks (org_id, number, division, area, driver, trailer_type, detected_flag,
+        const hint = org.id === 'KT' ? ktDivisionHint(rawName) : null;
+        run(`INSERT INTO trucks (org_id, number, display_number, division, area, driver, trailer_type, detected_flag,
                nm_truck_id, suggested_division, is_new, updated_at)
-             VALUES (?,?,NULL,'(SIN YARD)',?,?,?,?,?,1,?)`,
-          org.id, number, driver, trailer, flag, nmId, hint, nowISO());
+             VALUES (?,?,?,NULL,'(SIN YARD)',?,?,?,?,?,1,?)`,
+          org.id, number, display, driver, trailer, flag, nmId, hint, nowISO());
         summary.created++;
         continue;
       }
@@ -116,6 +124,7 @@ async function syncRoster(client) {
         summary.driverChanges++;
       }
       if (trailer && trailer !== row.trailer_type && !row.trailer_override) { sets.push('trailer_type = ?'); vals.push(trailer); }
+      if (display && display !== row.display_number) { sets.push('display_number = ?'); vals.push(display); }
       if (nmId != null && nmId !== row.nm_truck_id) { sets.push('nm_truck_id = ?'); vals.push(nmId); }
       if (flag && flag !== row.detected_flag) { sets.push('detected_flag = ?'); vals.push(flag); summary.detectedFlags++; }
       if (row.maybe_removed) { sets.push('maybe_removed = 0'); } // it's back in the fleet
@@ -168,23 +177,23 @@ async function syncActivity(client) {
     const m = matchLoadRow(r, orgs, subNames);
     if (!m) { summary.unmatched++; continue; }
 
-    const key = m.orgId + '|' + m.num + '|' + iso + '|' + (m.autoCreate ? 1 : 0);
-    const cur = agg.get(key) || { loads: 0, driver: '' };
+    const key = m.orgId + '|' + m.num + '|' + iso;
+    const cur = agg.get(key) || { loads: 0, driver: '', m };
     cur.loads++;
     if (r.driver_name) cur.driver = String(r.driver_name).trim();
     agg.set(key, cur);
   }
 
   for (const [key, v] of agg) {
-    const [orgId, num, iso, autoCreate] = key.split('|');
+    const [orgId, num, iso] = key.split('|');
     let row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, num);
     if (!row) {
-      if (autoCreate !== '1') { summary.unmatched += v.loads; continue; }
+      if (!v.m.autoCreate) { summary.unmatched += v.loads; continue; }
       // Ran a load but is not on my roster → ⚑ NUEVO immediately (never wait for 4:30 AM).
-      const sub = orgId === 'CACTUS' && /^(BT|BW|HS|AE)\d/i.test(num) ? 1 : 0;
-      run(`INSERT INTO trucks (org_id, number, division, area, driver, tags, is_sub, is_new, updated_at)
-           VALUES (?,?,NULL,'(SIN YARD)',?,?,?,1,?)`,
-        orgId, num, v.driver || '', sub ? 'SUBHAULER' : '', sub, nowISO());
+      const sub = v.m.sub || (orgId === 'CACTUS' && /^(BT|BW|HS|AE)\d/i.test(num)) ? 1 : 0;
+      run(`INSERT INTO trucks (org_id, number, display_number, division, area, driver, tags, is_sub, suggested_division, is_new, updated_at)
+           VALUES (?,?,?,NULL,'(SIN YARD)',?,?,?,?,1,?)`,
+        orgId, num, num, v.driver || '', v.m.tags || (sub ? 'SUBHAULER' : ''), sub, v.m.suggestedDivision || null, nowISO());
       row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, num);
       summary.createdNew++;
     }

@@ -75,25 +75,38 @@ function createRouter({ config, newmile, log }) {
   }
 
   // ---------- board ----------
+  // Vistas: un org real (CACTUS, KT), o virtual: ALL = todo junto, SUBS = todos los
+  // subhaulers/ICs sin importar en qué org viven (los de Cactus North se quedan ahí
+  // Y salen aquí — misma data, otra vista).
   router.get('/api/board', (req, res) => {
     const orgId = normNum(req.query.org || 'CACTUS');
     const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : todayCT();
-    const org = get('SELECT * FROM orgs WHERE id = ?', orgId);
+    const virtual = orgId === 'ALL' || orgId === 'SUBS';
+    const org = virtual
+      ? { id: orgId, label: orgId === 'ALL' ? 'All fleets' : 'Subhaulers' }
+      : get('SELECT * FROM orgs WHERE id = ?', orgId);
     if (!org) return res.status(404).json({ error: 'unknown org: ' + orgId });
 
-    const divisions = all('SELECT * FROM divisions WHERE org_id = ? ORDER BY sort', orgId);
-    const trucks = all('SELECT * FROM trucks WHERE org_id = ? AND archived = 0', orgId);
-    const states = all('SELECT * FROM dispatch_state WHERE date = ? AND org_id = ?', date, orgId);
-    const stMap = new Map(states.map(s => [s.number, s]));
+    const divisions = virtual
+      ? all(`SELECT d.* FROM divisions d JOIN orgs o ON o.id = d.org_id WHERE o.enabled = 1 ORDER BY o.sort, d.sort`)
+      : all('SELECT * FROM divisions WHERE org_id = ? ORDER BY sort', orgId);
+    const trucks = virtual
+      ? all(`SELECT t.* FROM trucks t JOIN orgs o ON o.id = t.org_id
+             WHERE o.enabled = 1 AND t.archived = 0 ${orgId === 'SUBS' ? 'AND t.is_sub = 1' : ''}`)
+      : all('SELECT * FROM trucks WHERE org_id = ? AND archived = 0', orgId);
+    const states = virtual
+      ? all('SELECT * FROM dispatch_state WHERE date = ?', date)
+      : all('SELECT * FROM dispatch_state WHERE date = ? AND org_id = ?', date, orgId);
+    const stMap = new Map(states.map(s => [s.org_id + '|' + s.number, s]));
     const today = todayCT();
     // past date → overlay how each truck WAS that day (status/notas de ese día)
     const historical = date < today;
-    const snaps = historical ? daySnapshots(orgId, date) : null;
+    const snaps = historical ? daySnapshots(virtual ? null : orgId, date) : null;
 
     const outTrucks = trucks.map(t => {
-      const s = stMap.get(t.number);
+      const s = stMap.get(t.org_id + '|' + t.number);
       const driverChangedRecent = t.driver_changed_at && (Date.now() - Date.parse(t.driver_changed_at)) < 48 * 3600 * 1000;
-      const snap = snaps ? snaps.get(t.number) : null;
+      const snap = snaps ? snaps.get(t.org_id + '|' + t.number) : null;
       return {
         ...t,
         ...(snap ? {
@@ -114,9 +127,11 @@ function createRouter({ config, newmile, log }) {
       org: { id: org.id, label: org.label },
       orgs: all('SELECT id, label, enabled FROM orgs ORDER BY sort'),
       divisions,
-      // one tab per division of every enabled org (Cactus NORTH/SOUTH, KT POWDERLY/RHOME/…)
-      tabs: all(`SELECT d.org_id, d.id, d.label FROM divisions d JOIN orgs o ON o.id = d.org_id
-                 WHERE o.enabled = 1 ORDER BY o.sort, d.sort`),
+      // ALL primero, luego una por división de cada org, y SUBS al final (vistas virtuales)
+      tabs: [{ org_id: 'ALL', id: 'ALL', label: 'ALL' }]
+        .concat(all(`SELECT d.org_id, d.id, d.label FROM divisions d JOIN orgs o ON o.id = d.org_id
+                     WHERE o.enabled = 1 ORDER BY o.sort, d.sort`))
+        .concat([{ org_id: 'SUBS', id: 'SUBS', label: 'SUBS' }]),
       date, today, historical,
       week: weekDatesCT(date),
       trucks: outTrucks,
