@@ -188,6 +188,7 @@ footer{text-align:center;color:var(--mut);font-size:12px;padding:18px;}
     <select id="fArea" onchange="render()" style="flex:1;max-width:170px;"></select>
     <button class="btn-reset" id="btnReset">Reset day</button>
   </div>
+  <div id="bulkBar" style="display:none;background:var(--blue-bg);border:1.5px solid var(--blue);border-radius:12px;padding:9px 12px;margin:-6px 0 12px;font-size:13.5px;color:var(--blue);align-items:center;gap:10px;flex-wrap:wrap;"></div>
 
   <div id="board"></div>
 </div>
@@ -407,12 +408,29 @@ function render(){
 
   renderSeg(divTrucks);
   const q=$("fSearch").value.trim().toLowerCase();
+  // MULTI-BÚSQUEDA: pegar una lista ("972 1 927 1 1083 1" o "629 633 1386…") encuentra
+  // todos esos trucks a la vez; los números de cargas se ignoran solos (no matchean)
+  const tokens=q.split(/[\s,;]+/).filter(Boolean);
+  let bulk=null;
+  if(tokens.length>=2){
+    bulk={set:new Set(),matched:[],found:new Set()};
+    for(const t of divTrucks){
+      if(t.is_new)continue;
+      const keys=[t.number,dnum(t),String(dnum(t)).replace(/[\s-]/g,"")].map(x=>String(x).toLowerCase());
+      const hit=tokens.filter(tk=>keys.includes(tk.toLowerCase()));
+      if(hit.length){bulk.set.add(t.org_id+"|"+t.number);bulk.matched.push(t);hit.forEach(tk=>bulk.found.add(tk.toLowerCase()));}
+    }
+    // para el reporte de faltantes, los números de 1-2 dígitos se asumen conteos de cargas
+    bulk.missing=[...new Set(tokens.filter(tk=>!bulk.found.has(tk.toLowerCase())&&!/^\d{1,2}$/.test(tk)))];
+  }
+  renderBulkBar(bulk);
   const groups={};
   for(const t of divTrucks){
     if(t.is_new)continue; // NEW trucks live in Review until placed
     if(!matchStatus(t))continue;
     if(!matchTypeSel(t))continue;
-    if(!matchSearch(t,q))continue;
+    if(bulk){if(!bulk.set.has(t.org_id+"|"+t.number))continue;}
+    else if(!matchSearch(t,q))continue;
     const a=t.area||"(SIN YARD)";
     if(areaSel.value&&a!==areaSel.value)continue;
     // vista por ZONA: en ALL/SUBS se agrupa por área pura — Cactus, KT e ICs de la
@@ -607,6 +625,27 @@ $("btnReset").onclick=()=>{
 };
 $("fSearch").oninput=()=>{$("fClear").style.display=$("fSearch").value?"block":"none";render();};
 function clearSearch(){$("fSearch").value="";$("fClear").style.display="none";$("fSearch").focus();render();}
+let _bulkMatched=[];
+function renderBulkBar(bulk){
+  const b=$("bulkBar");
+  if(!bulk){b.style.display="none";_bulkMatched=[];return;}
+  _bulkMatched=bulk.matched;
+  const toCover=bulk.matched.filter(t=>t.state!=="a").length;
+  b.style.display="flex";
+  b.innerHTML=`<b>⚡ Multi-search: ${bulk.matched.length} truck${bulk.matched.length===1?"":"s"} found</b>`+
+    (bulk.missing.length?`<span style="color:var(--red);">not on this tab: ${bulk.missing.map(esc).join(", ")}${ORG!=="ALL"?` — <a href="#" onclick="setTab('ALL','ALL');return false;" style="color:var(--blue);font-weight:700;">try ALL</a>`:""}</span>`:"")+
+    (toCover?`<button onclick="coverAllBulk()" style="margin-left:auto;border:none;background:var(--green);color:#fff;border-radius:8px;padding:7px 14px;font-family:'Barlow Condensed';font-weight:800;font-size:14px;letter-spacing:.4px;cursor:pointer;">✓ COVER ALL (${toCover})</button>`:
+      (bulk.matched.length?`<span style="margin-left:auto;color:var(--green);font-weight:700;">✓ all covered</span>`:""));
+}
+function coverAllBulk(){
+  ensureWho();
+  for(const t of _bulkMatched){
+    if(t.state==="a")continue;
+    t.state="a";t.state_source="manual";t.state_by=WHO;
+    queuePush({path:"/api/state",body:{date,org:t.org_id,number:t.number,state:"a",by:WHO}});
+  }
+  render();
+}
 
 // ---------- sync ----------
 async function syncNow(){
