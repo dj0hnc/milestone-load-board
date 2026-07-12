@@ -151,6 +151,8 @@ function main(force) {
   run(`UPDATE divisions SET label = 'CKJ ICS' WHERE org_id = 'KT' AND id = 'ICS' AND label != 'CKJ ICS'`);
   // display_number para DBs anteriores a la columna
   run(`UPDATE trucks SET display_number = number WHERE display_number IS NULL OR display_number = ''`);
+  // los ICs se muestran con número pelón (CKJ450 → "450")
+  run(`UPDATE trucks SET display_number = substr(number, 4) WHERE org_id = 'KT' AND number LIKE 'CKJ%' AND display_number = number`);
   // one-time: aplicar los tipos de trailer DE LAS LISTAS del despacho como base blindada
   // (trailer_override=1: el sync de NewMile ya no los pisa). Corre también en producción.
   if (!metaGet('mig_seed_trailers') && SEED_PATH) {

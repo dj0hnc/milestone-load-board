@@ -71,24 +71,34 @@ function tokenFor(cfg, orgName) {
 // Busca el truck que corresponde a un vehículo de Samsara. Los subs de CACTUS no
 // están en Samsara (excluidos), pero los KT ICs SÍ: en Samsara aparecen como dígitos
 // pelones ("211") y en el roster viven como "CKJ211".
-function samsaraTruck(orgId, number) {
+// REGLA DE ORO DE LOS ICs (del despacho): en el Samsara de CKJ, TODO vehículo cuyo
+// nombre NO empieza con "KT-" es un IC — número pelón de 1-4 dígitos ("450", "7078").
+// Se guardan como CKJ#### (llave, sin chocar con la flota KT-) pero SE MUESTRAN pelones.
+function resolveSamsaraTruck(orgId, rawName) {
+  const parsed = splitNameFlag(rawName).number.replace(/\s+/g, '');
+  if (orgId === 'KT' && /^\d{1,4}$/.test(parsed)) {
+    return { icBare: parsed, row: get(`SELECT * FROM trucks WHERE org_id = 'KT' AND number = ?`, 'CKJ' + parsed) };
+  }
+  const canon = canonicalTruckNumber(orgId, parsed);
+  return { icBare: null, row: get(`SELECT * FROM trucks WHERE org_id = ? AND number = ? AND (is_sub = 0 OR org_id = 'KT')`, orgId, canon) };
+}
+function samsaraTruck(orgId, number) { // compat: lookup por número ya canónico
   let row = get(`SELECT * FROM trucks WHERE org_id = ? AND number = ? AND (is_sub = 0 OR org_id = 'KT')`, orgId, number);
-  if (!row && orgId === 'KT' && /^\d{1,3}$/.test(number)) {
+  if (!row && orgId === 'KT' && /^\d{1,4}$/.test(number)) {
     row = get(`SELECT * FROM trucks WHERE org_id = 'KT' AND number = ?`, 'CKJ' + number);
   }
   return row;
 }
 
-// DESCUBRIMIENTO de CKJ ICs desde Samsara: un vehículo del org CKJ con nombre de puros
-// 1-3 dígitos ("450", "479") ES un IC. Si no está en el roster, se crea CONFIRMADO bajo
-// CKJ ICS con su ciudad de estacionamiento — sin esperar a que corra una carga en NewMile.
+// Crea un IC CONFIRMADO bajo CKJ ICS con su ciudad de estacionamiento — sin esperar
+// a que corra una carga en NewMile. Display = número pelón, como en Samsara.
 function discoverIC(orgId, number, city, lat, lon, summary) {
-  if (orgId !== 'KT' || !/^\d{1,3}$/.test(number)) return null;
+  if (orgId !== 'KT' || !/^\d{1,4}$/.test(number)) return null;
   const icNum = 'CKJ' + number;
   run(`INSERT INTO trucks (org_id, number, display_number, division, area, tags, is_sub, is_new, updated_at)
        VALUES ('KT', ?, ?, 'ICS', ?, 'CKJ IC', 1, 0, ?)
        ON CONFLICT(org_id, number) DO NOTHING`,
-    icNum, icNum, city || '(SIN YARD)', nowISO());
+    icNum, number, city || '(SIN YARD)', nowISO());
   if (city) {
     run(`INSERT INTO parking_log (org_id, number, date, city, lat, lon) VALUES ('KT', ?, ?, ?, ?, ?)
          ON CONFLICT(org_id, number, date) DO UPDATE SET city = excluded.city`,
@@ -220,16 +230,14 @@ async function backfillParking(cfg, days) {
       try {
         const vehicles = await fetchGpsHistory(token, day + 'T08:00:00Z', day + 'T11:00:00Z');
         for (const v of vehicles) {
-          const { number: rawNum } = splitNameFlag(v.name || '');
-          const number = canonicalTruckNumber(org.id, rawNum);
-          if (!number) continue;
           const pts = (v.gps || []).filter(g => g.speedMilesPerHour == null || g.speedMilesPerHour < 3);
           if (!pts.length) continue;
           const p = pts[Math.floor(pts.length / 2)]; // punto de media madrugada
           const city = cityFrom(p.reverseGeo && p.reverseGeo.formattedLocation) || nearestTown(p.latitude, p.longitude);
           if (!city) continue;
-          let row = samsaraTruck(org.id, number);
-          if (!row) row = discoverIC(org.id, number, city, p.latitude, p.longitude, summary);
+          const res = resolveSamsaraTruck(org.id, v.name || '');
+          let row = res.row;
+          if (!row && res.icBare) row = discoverIC(org.id, res.icBare, city, p.latitude, p.longitude, summary);
           if (!row) continue;
           run(`INSERT INTO parking_log (org_id, number, date, city, lat, lon) VALUES (?,?,?,?,?,?)
                ON CONFLICT(org_id, number, date) DO UPDATE SET city = excluded.city, lat = excluded.lat, lon = excluded.lon`,
@@ -295,10 +303,9 @@ async function syncSamsara(cfg) {
 
     for (const v of vehicles) {
       const parsed = splitNameFlag(v.name || '');
-      const number = canonicalTruckNumber(org.id, parsed.number); // CKJ: "KT-7045" → 7045
       const flag = parsed.flag;
-      if (!number) continue;
-      const row = samsaraTruck(org.id, number);
+      const res = resolveSamsaraTruck(org.id, v.name || '');
+      const row = res.row;
       if (!row) continue;
       summary.matched++;
 
@@ -327,9 +334,9 @@ async function syncSamsara(cfg) {
       const isSleepWindow = hour >= 3 && hour < 6;
       const today = todayCT();
       for (const [rawNumber, g] of Object.entries(gps)) {
-        const number = canonicalTruckNumber(org.id, rawNumber);
-        let row = samsaraTruck(org.id, number);
-        if (!row) row = discoverIC(org.id, number, g.city, g.lat, g.lon, summary);
+        const res = resolveSamsaraTruck(org.id, rawNumber);
+        let row = res.row;
+        if (!row && res.icBare) row = discoverIC(org.id, res.icBare, g.city, g.lat, g.lon, summary);
         if (!row) continue;
         summary.gps++;
         run(`UPDATE trucks SET parked_city = ?, parked_at = ? WHERE org_id = ? AND number = ?`,
@@ -353,4 +360,4 @@ async function syncSamsara(cfg) {
   return summary;
 }
 
-module.exports = { syncSamsara, backfillParking, applyPlacements, nearestTown, discoverIC };
+module.exports = { syncSamsara, backfillParking, applyPlacements, nearestTown, discoverIC, resolveSamsaraTruck };

@@ -60,11 +60,17 @@ function matchLoadRow(r, orgs, subNames) {
         // CKJ IC (independent contractor): CKJ + 1-3 dígitos → truck propio bajo KT ICS,
         // con el número COMPLETO como llave y display (así lo ves en NewMile)
         if (/^CKJ\d{1,3}$/.test(cand)) {
-          return { orgId: 'KT', num: cand, autoCreate: true, sub: true, tags: 'CKJ IC', suggestedDivision: 'ICS' };
+          return { orgId: 'KT', num: cand, autoCreate: true, sub: true, tags: 'CKJ IC', suggestedDivision: 'ICS', display: cand.slice(3) };
         }
         // otros números ajenos rodando bajo el fleet CKJ (Arango…): solo si ya existen
         const hit = get('SELECT org_id, number FROM trucks WHERE number IN (?, ?) AND archived = 0', cand, digits);
         return hit ? { orgId: hit.org_id, num: hit.number, autoCreate: false } : null;
+      }
+      // CKJ#### de 4 dígitos: normalmente flota KT, pero si NO hay truck de flota con
+      // esos dígitos y SÍ existe el IC (CKJ7078 descubierto por Samsara), es el IC
+      if (!get(`SELECT 1 AS x FROM trucks WHERE org_id = 'KT' AND number = ?`, digits) &&
+          get(`SELECT 1 AS x FROM trucks WHERE org_id = 'KT' AND number = ?`, 'CKJ' + digits)) {
+        return { orgId: 'KT', num: 'CKJ' + digits, autoCreate: false };
       }
       num = digits;
     }
@@ -193,7 +199,7 @@ async function syncActivity(client) {
       const sub = v.m.sub || (orgId === 'CACTUS' && /^(BT|BW|HS|AE)\d/i.test(num)) ? 1 : 0;
       run(`INSERT INTO trucks (org_id, number, display_number, division, area, driver, tags, is_sub, suggested_division, is_new, updated_at)
            VALUES (?,?,?,NULL,'(SIN YARD)',?,?,?,?,1,?)`,
-        orgId, num, num, v.driver || '', v.m.tags || (sub ? 'SUBHAULER' : ''), sub, v.m.suggestedDivision || null, nowISO());
+        orgId, num, v.m.display || num, v.driver || '', v.m.tags || (sub ? 'SUBHAULER' : ''), sub, v.m.suggestedDivision || null, nowISO());
       row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, num);
       summary.createdNew++;
     }
