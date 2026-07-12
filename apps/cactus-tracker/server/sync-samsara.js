@@ -79,6 +79,25 @@ function samsaraTruck(orgId, number) {
   return row;
 }
 
+// DESCUBRIMIENTO de CKJ ICs desde Samsara: un vehículo del org CKJ con nombre de puros
+// 1-3 dígitos ("450", "479") ES un IC. Si no está en el roster, se crea CONFIRMADO bajo
+// CKJ ICS con su ciudad de estacionamiento — sin esperar a que corra una carga en NewMile.
+function discoverIC(orgId, number, city, lat, lon, summary) {
+  if (orgId !== 'KT' || !/^\d{1,3}$/.test(number)) return null;
+  const icNum = 'CKJ' + number;
+  run(`INSERT INTO trucks (org_id, number, display_number, division, area, tags, is_sub, is_new, updated_at)
+       VALUES ('KT', ?, ?, 'ICS', ?, 'CKJ IC', 1, 0, ?)
+       ON CONFLICT(org_id, number) DO NOTHING`,
+    icNum, icNum, city || '(SIN YARD)', nowISO());
+  if (city) {
+    run(`INSERT INTO parking_log (org_id, number, date, city, lat, lon) VALUES ('KT', ?, ?, ?, ?, ?)
+         ON CONFLICT(org_id, number, date) DO UPDATE SET city = excluded.city`,
+      icNum, todayCT(), city, lat == null ? null : lat, lon == null ? null : lon);
+  }
+  if (summary) summary.icsDiscovered = (summary.icsDiscovered || 0) + 1;
+  return get(`SELECT * FROM trucks WHERE org_id = 'KT' AND number = ?`, icNum);
+}
+
 async function fetchVehicles(token) {
   let out = [], after = '', pages = 0;
   do {
@@ -204,13 +223,14 @@ async function backfillParking(cfg, days) {
           const { number: rawNum } = splitNameFlag(v.name || '');
           const number = canonicalTruckNumber(org.id, rawNum);
           if (!number) continue;
-          const row = samsaraTruck(org.id, number);
-          if (!row) continue;
           const pts = (v.gps || []).filter(g => g.speedMilesPerHour == null || g.speedMilesPerHour < 3);
           if (!pts.length) continue;
           const p = pts[Math.floor(pts.length / 2)]; // punto de media madrugada
           const city = cityFrom(p.reverseGeo && p.reverseGeo.formattedLocation) || nearestTown(p.latitude, p.longitude);
           if (!city) continue;
+          let row = samsaraTruck(org.id, number);
+          if (!row) row = discoverIC(org.id, number, city, p.latitude, p.longitude, summary);
+          if (!row) continue;
           run(`INSERT INTO parking_log (org_id, number, date, city, lat, lon) VALUES (?,?,?,?,?,?)
                ON CONFLICT(org_id, number, date) DO UPDATE SET city = excluded.city, lat = excluded.lat, lon = excluded.lon`,
             org.id, row.number, day, city, p.latitude, p.longitude);
@@ -308,7 +328,8 @@ async function syncSamsara(cfg) {
       const today = todayCT();
       for (const [rawNumber, g] of Object.entries(gps)) {
         const number = canonicalTruckNumber(org.id, rawNumber);
-        const row = samsaraTruck(org.id, number);
+        let row = samsaraTruck(org.id, number);
+        if (!row) row = discoverIC(org.id, number, g.city, g.lat, g.lon, summary);
         if (!row) continue;
         summary.gps++;
         run(`UPDATE trucks SET parked_city = ?, parked_at = ? WHERE org_id = ? AND number = ?`,
@@ -332,4 +353,4 @@ async function syncSamsara(cfg) {
   return summary;
 }
 
-module.exports = { syncSamsara, backfillParking, applyPlacements, nearestTown };
+module.exports = { syncSamsara, backfillParking, applyPlacements, nearestTown, discoverIC };

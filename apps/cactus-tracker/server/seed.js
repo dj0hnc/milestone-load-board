@@ -58,7 +58,8 @@ function seedOrgs() {
     // Terminales de KT — tag IDs verificados en vivo contra Samsara 7/10/26
     { org: 'KT', id: 'POWDERLY', label: 'KT POWDERLY', tag: '2706160', sort: 1 },
     { org: 'KT', id: 'RHOME', label: 'KT RHOME', tag: '3645002', sort: 2 },
-    { org: 'KT', id: 'WHITEWRIGHT', label: 'KT WHITEWRIGHT', tag: '2706161', sort: 3 }
+    { org: 'KT', id: 'WHITEWRIGHT', label: 'KT WHITEWRIGHT', tag: '2706161', sort: 3 },
+    { org: 'KT', id: 'ICS', label: 'CKJ ICS', tag: null, sort: 4 }
   ];
   for (const d of divs) {
     run(`INSERT INTO divisions (org_id,id,label,samsara_tag_id,sort) VALUES (?,?,?,?,?)
@@ -146,7 +147,8 @@ function main(force) {
     run(`UPDATE divisions SET samsara_tag_id = ? WHERE org_id = 'KT' AND id = ? AND samsara_tag_id IS NULL`, d[1], d[0]);
   }
   // terminal virtual para los CKJ ICs (independent contractors, CKJ### en las cargas)
-  run(`INSERT INTO divisions (org_id,id,label,samsara_tag_id,sort) VALUES ('KT','ICS','KT ICS',NULL,4) ON CONFLICT(org_id,id) DO NOTHING`);
+  run(`INSERT INTO divisions (org_id,id,label,samsara_tag_id,sort) VALUES ('KT','ICS','CKJ ICS',NULL,4) ON CONFLICT(org_id,id) DO NOTHING`);
+  run(`UPDATE divisions SET label = 'CKJ ICS' WHERE org_id = 'KT' AND id = 'ICS' AND label != 'CKJ ICS'`);
   // display_number para DBs anteriores a la columna
   run(`UPDATE trucks SET display_number = number WHERE display_number IS NULL OR display_number = ''`);
   // one-time: aplicar los tipos de trailer DE LAS LISTAS del despacho como base blindada

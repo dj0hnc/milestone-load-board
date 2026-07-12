@@ -178,9 +178,12 @@ footer{text-align:center;color:var(--mut);font-size:12px;padding:18px;}
     </div>
     <select id="fType" onchange="typeFilter=this.value;render()" style="flex:1;">
       <option value="">Type: all</option>
+      <option value="ALED">AL-ED (aluminum)</option>
+      <option value="STED">ST-ED (steel)</option>
+      <option value="RBED">RB-ED</option>
+      <option value="ED">End Dump (any)</option>
       <option value="SD">Super Dump</option>
       <option value="BD">Belly Dump</option>
-      <option value="ED">End Dump</option>
       <option value="ALTT">AL-TT</option>
       <option value="3X8">3X8</option>
       <option value="SUB">Subhaulers</option>
@@ -311,12 +314,16 @@ function matchStatus(t){
   return true;
 }
 function matchTypeSel(t){
+  const tt=t.trailer_type||"";
   switch(typeFilter){
     case "": return true;
-    case "SD": return /SD|Super/i.test(t.trailer_type||"");
-    case "BD": return /^BD$|Belly/i.test(t.trailer_type||"");
-    case "ED": return /ED|End Dump/i.test(t.trailer_type||"")&&!/SD|Super/i.test(t.trailer_type||"");
-    case "ALTT": return /AL-?TT|Tractor/i.test(t.trailer_type||"");
+    case "ALED": return /^AL-ED/i.test(tt)||/Aluminum End/i.test(tt);
+    case "STED": return /^ST-ED/i.test(tt)||/Steel End/i.test(tt);
+    case "RBED": return /^RB-ED/i.test(tt)||/Round Body/i.test(tt);
+    case "ED": return /ED|End Dump/i.test(tt)&&!/SD|Super/i.test(tt);
+    case "SD": return /SD|Super/i.test(tt);
+    case "BD": return /^BD$|Belly/i.test(tt);
+    case "ALTT": return /AL-?TT|Tractor/i.test(tt);
     case "3X8": return (t.tags||"").includes("3X8");
     case "SUB": return !!t.is_sub;
   }
