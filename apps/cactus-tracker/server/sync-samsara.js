@@ -23,27 +23,29 @@ const fs = require('fs');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
 const { splitNameFlag, canonicalTruckNumber, ktDivisionHint, ctParts, todayCT, shiftISO, normNum } = require('./util');
 
-// Fallback de ciudad cuando el reverse-geo no viene: pueblo más cercano de la operación.
+// Fallback cuando el reverse-geo no da ciudad: pueblo más cercano de la operación.
 const TOWNS = [
-  ['PARIS', 33.662, -95.548], ['POWDERLY', 33.811, -95.506], ['HUGO', 34.011, -95.510],
-  ['BLOSSOM', 33.662, -95.385], ['CLARKSVILLE', 33.611, -95.053], ['DETROIT', 33.662, -95.267],
-  ['BOGATA', 33.470, -95.213], ['COOPER', 33.373, -95.692], ['CAMPBELL', 33.148, -95.951],
-  ['PECAN GAP', 33.438, -95.851], ['SAVOY', 33.600, -96.366], ['SCROGGINS', 33.023, -95.211],
-  ['MT VERNON', 33.188, -95.221], ['SULPHUR SPRINGS', 33.138, -95.601], ['ALBA', 32.792, -95.634],
-  ['GILMER', 32.729, -94.942], ['SAWYER', 34.023, -95.364], ['VALLIANT', 34.004, -95.093],
-  ['EAGLETOWN', 34.036, -94.565], ['TYLER', 32.351, -95.301], ['DALLAS', 32.777, -96.797],
-  ['KAUFMAN', 32.589, -96.309], ['ATHENS', 32.205, -95.856], ['LONGVIEW', 32.501, -94.740],
-  ['CORSICANA', 32.095, -96.469], ['KERENS', 32.132, -96.228], ['ENNIS', 32.329, -96.625],
-  ['RHOME', 33.054, -97.472], ['WHITEWRIGHT', 33.513, -96.407], ['GREENVILLE', 33.138, -96.111]
+  ['PARIS', 'TX', 33.662, -95.548], ['POWDERLY', 'TX', 33.811, -95.506], ['HUGO', 'OK', 34.011, -95.510],
+  ['BLOSSOM', 'TX', 33.662, -95.385], ['CLARKSVILLE', 'TX', 33.611, -95.053], ['DETROIT', 'TX', 33.662, -95.267],
+  ['BOGATA', 'TX', 33.470, -95.213], ['COOPER', 'TX', 33.373, -95.692], ['CAMPBELL', 'TX', 33.148, -95.951],
+  ['PECAN GAP', 'TX', 33.438, -95.851], ['SAVOY', 'TX', 33.600, -96.366], ['SCROGGINS', 'TX', 33.023, -95.211],
+  ['MT VERNON', 'TX', 33.188, -95.221], ['SULPHUR SPRINGS', 'TX', 33.138, -95.601], ['ALBA', 'TX', 32.792, -95.634],
+  ['GILMER', 'TX', 32.729, -94.942], ['SAWYER', 'OK', 34.023, -95.364], ['VALLIANT', 'OK', 34.004, -95.093],
+  ['EAGLETOWN', 'OK', 34.036, -94.565], ['TYLER', 'TX', 32.351, -95.301], ['DALLAS', 'TX', 32.777, -96.797],
+  ['KAUFMAN', 'TX', 32.589, -96.309], ['ATHENS', 'TX', 32.205, -95.856], ['LONGVIEW', 'TX', 32.501, -94.740],
+  ['CORSICANA', 'TX', 32.095, -96.469], ['KERENS', 'TX', 32.132, -96.228], ['ENNIS', 'TX', 32.329, -96.625],
+  ['RHOME', 'TX', 33.054, -97.472], ['WHITEWRIGHT', 'TX', 33.513, -96.407], ['GREENVILLE', 'TX', 33.138, -96.111],
+  ['FORT WORTH', 'TX', 32.756, -97.331], ['MCKINNEY', 'TX', 33.198, -96.615], ['SHERMAN', 'TX', 33.635, -96.609],
+  ['TERRELL', 'TX', 32.736, -96.275], ['WAXAHACHIE', 'TX', 32.387, -96.848], ['MOUNT PLEASANT', 'TX', 33.157, -94.968]
 ];
 function nearestTown(lat, lon) {
   if (lat == null || lon == null) return '';
   let best = '', bestD = Infinity;
-  for (const [name, tl, tn] of TOWNS) {
+  for (const [name, st, tl, tn] of TOWNS) {
     const d = Math.pow((lat - tl) * 111, 2) + Math.pow((lon - tn) * 92, 2); // km² aprox
-    if (d < bestD) { bestD = d; best = name; }
+    if (d < bestD) { bestD = d; best = name + ', ' + st; }
   }
-  return bestD <= 40 * 40 ? best : ''; // más de ~40 km de todo lo conocido: no adivinar
+  return bestD <= 45 * 45 ? best : ''; // más de ~45 km de todo lo conocido: no adivinar
 }
 
 // Tokens: los propios (config.samsara.tokens) Y/O los del otro tool via
@@ -95,10 +97,13 @@ function samsaraTruck(orgId, number) { // compat: lookup por número ya canónic
 function discoverIC(orgId, number, city, lat, lon, summary) {
   if (orgId !== 'KT' || !/^\d{1,4}$/.test(number)) return null;
   const icNum = 'CKJ' + number;
+  const areas = all(`SELECT DISTINCT t.area FROM trucks t JOIN orgs o ON o.id = t.org_id
+                     WHERE o.enabled = 1 AND t.area IS NOT NULL AND t.area != '' AND t.area != '(SIN YARD)'`).map(r => r.area);
+  const area = city ? mapCityToArea(city, areas) : '(SIN YARD)';
   run(`INSERT INTO trucks (org_id, number, display_number, division, area, tags, is_sub, is_new, updated_at)
        VALUES ('KT', ?, ?, 'ICS', ?, 'CKJ IC', 1, 0, ?)
        ON CONFLICT(org_id, number) DO NOTHING`,
-    icNum, number, city || '(SIN YARD)', nowISO());
+    icNum, number, area || '(SIN YARD)', nowISO());
   if (city) {
     run(`INSERT INTO parking_log (org_id, number, date, city, lat, lon) VALUES ('KT', ?, ?, ?, ?, ?)
          ON CONFLICT(org_id, number, date) DO UPDATE SET city = excluded.city`,
@@ -148,12 +153,24 @@ async function fetchGps(token) {
   return out;
 }
 
-// "123 CR 4520, Paris, TX 75462" → PARIS · "Tyler, TX" → TYLER
+// PARKING LOCATION = "CIUDAD, ST" siempre. Parsea del FINAL de la dirección:
+// "1301 W Washington St, Paris, TX 75460, USA" → "PARIS, TX"
+// "Tyler, TX" → "TYLER, TX" · "US-69, TX 75453" → "" (solo carretera: usar nearestTown)
+const ROAD_RE = /^(US|I|FM|CR|SH|TX|OK)[-\s]?\d|\b(HWY|HIGHWAY|ROAD|COUNTY|LOOP|INTERSTATE)\b|\bRD$/i;
 function cityFrom(formatted) {
-  const parts = String(formatted || '').split(',').map(s => s.trim()).filter(Boolean);
+  let parts = String(formatted || '').split(',').map(s => s.trim()).filter(Boolean);
   if (!parts.length) return '';
-  const raw = parts.length >= 3 ? parts[parts.length - 2] : parts[0];
-  return normNum(raw.replace(/\d+/g, '').trim());
+  if (/^(USA|UNITED STATES|MEXICO|MX)$/i.test(parts[parts.length - 1])) parts.pop();
+  let state = '';
+  const m = /^([A-Za-z]{2})(\s+\d{5}(-\d{4})?)?$/.exec(parts[parts.length - 1] || '');
+  if (m) { state = m[1].toUpperCase(); parts.pop(); }
+  if (!parts.length) return '';
+  const rawLast = parts[parts.length - 1];
+  // si lo único que quedó parece carretera/calle (no hubo componente de ciudad), no adivinar
+  if (parts.length === 1 && ROAD_RE.test(normNum(rawLast))) return '';
+  let city = normNum(rawLast.replace(/\d+/g, '').replace(/\s+/g, ' ').trim());
+  if (!city || /^[-\s]*$/.test(city)) return '';
+  return state ? city + ', ' + state : city;
 }
 
 // Map a parked city onto MY area names (fuzzy: exact, prefix either way, MT↔MOUNT).
@@ -255,14 +272,23 @@ async function backfillParking(cfg, days) {
 
 const KT_TERMINALS = ['POWDERLY', 'RHOME', 'WHITEWRIGHT'];
 function applyPlacements(org, summary) {
-  const areas = all(`SELECT DISTINCT area FROM trucks WHERE org_id = ? AND area IS NOT NULL AND area != ''`, org.id).map(r => r.area);
+  // las ZONAS son operativas y cruzan compañías: mapear contra todas las áreas existentes
+  const areas = all(`SELECT DISTINCT t.area FROM trucks t JOIN orgs o ON o.id = t.org_id
+                     WHERE o.enabled = 1 AND t.area IS NOT NULL AND t.area != '' AND t.area != '(SIN YARD)'`).map(r => r.area);
   // los KT ICs sí entran (tienen Samsara); los subs de Cactus no
   for (const t of all(`SELECT * FROM trucks WHERE org_id = ? AND archived = 0 AND (is_sub = 0 OR org_id = 'KT')`, org.id)) {
-    const nights = all(`SELECT city FROM parking_log WHERE org_id = ? AND number = ? AND city != '' ORDER BY date DESC LIMIT 7`, org.id, t.number);
+    const nights = all(`SELECT city, lat, lon FROM parking_log WHERE org_id = ? AND number = ? AND city != '' ORDER BY date DESC LIMIT 7`, org.id, t.number);
     const count = {};
     for (const n of nights) count[n.city] = (count[n.city] || 0) + 1;
     const topCity = Object.entries(count).sort((a, b) => b[1] - a[1]).map(e => e[0])[0] || '';
-    const target = topCity ? mapCityToArea(topCity, areas) : '';
+    let target = topCity ? mapCityToArea(topCity, areas) : '';
+    // ciudad que no es zona conocida → alinear a la zona de operación más cercana
+    if (target && target === topCity && !areas.some(a => normNum(a) === normNum(target))) {
+      const pt = nights.find(n => n.city === topCity && n.lat != null);
+      const town = pt ? nearestTown(pt.lat, pt.lon) : '';
+      const t2 = town ? mapCityToArea(town, areas) : '';
+      if (t2 && areas.some(a => normNum(a) === normNum(t2))) target = t2;
+    }
     const sets = [], vals = [];
 
     if (org.id === 'KT') {
@@ -331,7 +357,8 @@ async function syncSamsara(cfg) {
     try {
       const gps = await fetchGps(token);
       const { hour } = ctParts();
-      const isSleepWindow = hour >= 3 && hour < 6;
+      // parking real: madrugada (3-6) o FIN DEL DÍA (7-11 PM) — donde queda parado
+      const isSleepWindow = (hour >= 3 && hour < 6) || (hour >= 19 && hour <= 23);
       const today = todayCT();
       for (const [rawNumber, g] of Object.entries(gps)) {
         const res = resolveSamsaraTruck(org.id, rawNumber);

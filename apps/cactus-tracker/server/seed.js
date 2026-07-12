@@ -153,6 +153,11 @@ function main(force) {
   run(`UPDATE trucks SET display_number = number WHERE display_number IS NULL OR display_number = ''`);
   // los ICs se muestran con número pelón (CKJ450 → "450")
   run(`UPDATE trucks SET display_number = substr(number, 4) WHERE org_id = 'KT' AND number LIKE 'CKJ%' AND display_number = number`);
+  // limpieza: "TX"/"OK" solos se colaron como ciudad por un parser viejo — fuera
+  run(`UPDATE trucks SET suggested_area = '' WHERE length(suggested_area) <= 3 AND suggested_area != ''`);
+  run(`UPDATE trucks SET parked_city = '' WHERE length(parked_city) <= 3 AND parked_city != ''`);
+  run(`UPDATE trucks SET area = '(SIN YARD)' WHERE length(area) <= 3 AND area != ''`);
+  run(`DELETE FROM parking_log WHERE length(city) <= 3`);
   // one-time: aplicar los tipos de trailer DE LAS LISTAS del despacho como base blindada
   // (trailer_override=1: el sync de NewMile ya no los pisa). Corre también en producción.
   if (!metaGet('mig_seed_trailers') && SEED_PATH) {
