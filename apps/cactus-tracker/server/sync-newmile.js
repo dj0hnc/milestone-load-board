@@ -231,16 +231,18 @@ async function syncActivity(client) {
     }
   }
 
-  // Assignments of today: cover trucks that are PLANNED even if they haven't hauled yet.
-  if (autoOn) {
+  // Assignments: cover trucks that are PLANNED even if they haven't hauled yet — for
+  // TODAY and for the NEXT WORKING DAY (dispatch plans a day ahead: a refresh must show
+  // tomorrow's board already covered with what was pushed to NewMile).
+  async function coverFromAssignments(dateISO, label) {
     try {
-      const assigns = await client.assignmentsToday(today);
+      const assigns = await client.assignmentsToday(dateISO);
       const nums = new Set();
       for (const a of assigns) {
         const raw = a.truck_number || (a.truck && (a.truck.truck_number || a.truck.number)) || '';
         if (raw) nums.add(normNum(raw).replace(/\s+/g, ''));
       }
-      summary.assignments = assigns.length;
+      summary[label + 'Assignments'] = assigns.length;
       for (const n of nums) {
         // assignment numbers usually match the truck resource, but tolerate the
         // load-report styles too: "C1127" (Cactus) and "KT-7040 P"/"CKJ7040" (KT)
@@ -254,16 +256,22 @@ async function syncActivity(client) {
           if (hit) break;
         }
         if (!hit) continue;
-        const st = get('SELECT * FROM dispatch_state WHERE date = ? AND org_id = ? AND number = ?', today, hit.org_id, hit.number);
+        const st = get('SELECT * FROM dispatch_state WHERE date = ? AND org_id = ? AND number = ?', dateISO, hit.org_id, hit.number);
         if (!st) {
           run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_at) VALUES (?,?,?,'a','auto',?)`,
-            today, hit.org_id, hit.number, nowISO());
-          summary.autoCovered++;
+            dateISO, hit.org_id, hit.number, nowISO());
+          summary[label + 'Covered'] = (summary[label + 'Covered'] || 0) + 1;
         }
       }
     } catch (e) {
-      summary.assignmentsError = String(e.message || e); // assignments are best-effort; loads already covered actives
+      summary[label + 'AssignmentsError'] = String(e.message || e); // best-effort
     }
+  }
+  if (autoOn) {
+    await coverFromAssignments(today, 'today');
+    const wd = new Date(today + 'T12:00:00Z').getUTCDay();
+    const nextWork = shiftISO(today, wd === 6 ? 2 : 1); // sábado planea el lunes
+    await coverFromAssignments(nextWork, 'tomorrow');
   }
 
   // zero out loads_today for trucks that had none today

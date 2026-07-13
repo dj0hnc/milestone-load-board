@@ -31,7 +31,8 @@ h1 span{color:var(--gold);}
 .fleet-tab{font-family:'Barlow Condensed';font-weight:700;font-size:17px;letter-spacing:1px;text-transform:uppercase;padding:8px 18px;background:transparent;border:none;color:#8f97ab;cursor:pointer;border-bottom:4px solid transparent;}
 .fleet-tab.on{color:#fff;border-bottom-color:var(--gold);}
 .days{display:flex;gap:5px;margin-left:auto;padding-bottom:6px;}
-.day{width:42px;height:34px;border-radius:8px;border:1px solid #3a4460;background:var(--navy2);color:#c6cddd;font-family:'Barlow Condensed';font-weight:700;font-size:14px;cursor:pointer;}
+.day{width:42px;height:40px;border-radius:8px;border:1px solid #3a4460;background:var(--navy2);color:#c6cddd;font-family:'Barlow Condensed';font-weight:700;font-size:13px;cursor:pointer;line-height:1.05;padding:2px 0;}
+.day small{display:block;font-size:11px;opacity:.75;font-weight:800;}
 .day.on{background:var(--gold);border-color:var(--gold);color:var(--navy);}
 .day.today{border-color:var(--gold);}
 .wrap{max-width:1280px;margin:0 auto;padding:14px 16px 70px;}
@@ -598,9 +599,10 @@ function buildHeader(){
     `<button class="day" onclick="shiftWeek(-7)" title="Previous week">◀</button>`+
     DAYS.map(dd=>{
       const iso=week[dd];
-      return `<button class="day ${iso===date?"on":""} ${iso===board.today?"today":""}" onclick="setDate('${iso}')" title="${iso||""}">${dd}</button>`;
+      return `<button class="day ${iso===date?"on":""} ${iso===board.today?"today":""}" onclick="setDate('${iso}')" title="${iso||""}">${dd}<small>${iso?Number(iso.slice(8)):""}</small></button>`;
     }).join("")+
     `<button class="day" onclick="shiftWeek(7)" title="Next week">▶</button>`+
+    `<button class="day" style="width:auto;padding:2px 9px;border-color:var(--gold);color:var(--gold);" onclick="goTomorrow()" title="Plan tomorrow (next working day)">TMRW</button>`+
     `<button class="day" style="width:auto;padding:0 9px" onclick="openCal()" title="Jump to any date">📅</button>`+
     `<input type="date" id="calJump" style="position:absolute;width:1px;height:1px;opacity:0;" onchange="if(this.value)setDate(this.value)">`+
     (date!==board.today?`<button class="day" style="width:auto;padding:0 10px" onclick="setDate('${board.today}')" title="Back to today">TODAY</button>`:"");
@@ -609,6 +611,11 @@ function openCal(){
   const c=$("calJump");c.value=date;
   if(c.showPicker)try{c.showPicker();return;}catch(e){}
   c.focus();c.click();
+}
+function goTomorrow(){
+  const d=new Date(board.today+"T12:00:00Z");
+  d.setUTCDate(d.getUTCDate()+(d.getUTCDay()===6?2:1)); // sábado brinca al lunes
+  setDate(d.toISOString().slice(0,10));
 }
 function shiftWeek(days){
   const d=new Date(date+"T12:00:00Z"); d.setUTCDate(d.getUTCDate()+days);
