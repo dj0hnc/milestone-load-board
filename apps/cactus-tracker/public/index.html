@@ -73,6 +73,9 @@ h1 span{color:var(--gold);}
 .group h2{font-family:'Barlow Condensed';font-size:20px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--navy);border-bottom:2px solid var(--gold);padding-bottom:3px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:baseline;}
 .group h2 small{font-size:14px;color:var(--mut);font-family:'Barlow Condensed';}
 .group h2 small.full{color:var(--green);}
+.group h2 .chev{display:inline-block;width:16px;color:var(--gold);font-size:14px;}
+.group.closed h2{opacity:.75;border-bottom-style:dashed;}
+.group.closed .grid{display:none;}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;}
 .chip{background:var(--card);border:2px solid #dde1ea;border-radius:12px;padding:10px 12px;cursor:pointer;user-select:none;position:relative;box-shadow:0 1px 3px rgba(0,0,0,.07);transition:transform .05s;min-height:78px;}
 .chip:active{transform:scale(.97);}
@@ -391,8 +394,23 @@ function actHtml(t){
   return `<div class="act">🟢 last: ${md}${t.last_load_driver?" · "+esc(t.last_load_driver):""}</div>`;
 }
 function toggleFaltan(){showFaltan=!showFaltan;render();}
+// zonas colapsables: se guardan cerradas por tab, sobreviven recargas
+let collapsed=new Set(JSON.parse(localStorage.getItem("ct-collapsed")||"[]"));
+function groupKey(g){return ORG+"|"+(isVirtual()?"":(division||""))+"|"+g;}
+function toggleGroup(k){
+  collapsed.has(k)?collapsed.delete(k):collapsed.add(k);
+  localStorage.setItem("ct-collapsed",JSON.stringify([...collapsed]));
+  render();
+}
 function jumpTo(org,num){
-  typeFilter="";$("fSearch").value="";showFaltan=false;render();
+  typeFilter="";$("fSearch").value="";showFaltan=false;
+  const t=truckOf(org,num);
+  if(t){
+    // mismo cálculo de grupo que render(): área pura pasada por areaLbl
+    collapsed.delete(groupKey(areaLbl(t.area||"(SIN YARD)")));
+    localStorage.setItem("ct-collapsed",JSON.stringify([...collapsed]));
+  }
+  render();
   const el=$("chip-"+cssId(org+"-"+num));
   if(el){el.scrollIntoView({behavior:"smooth",block:"center"});el.style.boxShadow="0 0 0 4px var(--gold)";setTimeout(()=>el.style.boxShadow="",1200);}
 }
@@ -480,11 +498,13 @@ function render(){
   let html="";
   for(const g of Object.keys(groups).sort()){
     const list=groups[g];
+    const key=groupKey(g);
+    const closed=collapsed.has(key);
     const asig=list.filter(t=>t.state==="a").length;
     const act=list.filter(t=>t.state!=="d"&&!restsToday(t)&&!outOfService(t)).length;
     const full=act>0&&asig>=act;
-    html+=`<div class="group"><h2>${esc(areaLbl(g))}<small class="${full?"full":""}">${full?"✔ COMPLETE":asig+"/"+act+" assigned"}</small></h2><div class="grid">`;
-    for(const t of list)html+=chipHtml(t);
+    html+=`<div class="group ${closed?"closed":""}"><h2 onclick="toggleGroup('${esc(key)}')"><span><span class="chev">${closed?"▸":"▾"}</span>${esc(areaLbl(g))}</span><small class="${full&&!closed?"full":""}">${closed?list.length+(list.length===1?" truck hidden":" trucks hidden"):(full?"✔ COMPLETE":asig+"/"+act+" assigned")}</small></h2><div class="grid">`;
+    if(!closed)for(const t of list)html+=chipHtml(t);
     html+="</div></div>";
   }
   $("board").innerHTML=html||"<p style='color:var(--mut);padding:20px'>No results.</p>";
