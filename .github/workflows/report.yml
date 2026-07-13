@@ -24,7 +24,12 @@ name: MAB Reports
 
 on:
   schedule:
-    - cron: '11,41 * * * *'   # twice an hour; the job itself gates on the real Central hour
+    - cron: '11,41 * * * *'        # twice an hour; the job itself gates on the real Central hour
+    # GitHub starves scheduled runs hardest in the 01:00-05:00 UTC band (US evening peak) — the
+    # night reports of 7/10 and 7/11 were missed entirely because no run landed inside the whole
+    # 4-hour window. Fire every 15 min during the window hours (both DST offsets) to buy more
+    # lottery tickets; out-of-window runs exit in seconds and the once-per-day lock dedupes.
+    - cron: '*/15 1-6,12-17 * * *'
   workflow_dispatch:
     inputs:
       kind:
