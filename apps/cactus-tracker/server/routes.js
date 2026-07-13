@@ -11,7 +11,7 @@ const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
 const { todayCT, weekDatesCT, daysBetween, normNum } = require('./util');
 const { syncRoster, syncActivity, scanRipRap } = require('./sync-newmile');
-const { syncSamsara, backfillParking } = require('./sync-samsara');
+const { syncSamsara, backfillParking, locateTruck } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
 
 const VALID_STATUS = ['ok', 'shop', 'down', 'no_driver', 'vacation', 'deleased'];
@@ -277,6 +277,21 @@ function createRouter({ config, newmile, log }) {
       run(`UPDATE trucks SET suggested_area = '' WHERE org_id = ? AND number = ?`, orgId, number);
     }
     res.json({ ok: true });
+  });
+
+  // GPS en vivo de UN truck (botón ↻ del cuadrito).
+  router.post('/api/truck/:org/:number/locate', async (req, res) => {
+    const orgId = normNum(req.params.org), number = normNum(req.params.number);
+    const t = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number);
+    if (!t) return res.status(404).json({ error: 'truck not found' });
+    if (t.org_id === 'CACTUS' && t.is_sub) return res.status(400).json({ error: 'Cactus subs have no Samsara' });
+    const orgRow = get('SELECT * FROM orgs WHERE id = ?', t.org_id);
+    try {
+      const loc = await locateTruck(config, orgRow, t);
+      res.json({ ok: true, ...loc, truck: get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number) });
+    } catch (e) {
+      res.status(502).json({ error: String(e.message || e) });
+    }
   });
 
   // Re-corre el acomodo por GPS a demanda (noches de los últimos {days}, default 2).

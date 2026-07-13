@@ -88,6 +88,12 @@ h1 span{color:var(--gold);}
 .chip .act.warn{color:#b8853a;}
 .chip .act.bad{color:var(--red);}
 .chip .note{font-size:11px;color:#a8622f;margin-top:3px;line-height:1.25;}
+.chip .park{font-size:11px;font-weight:700;color:var(--blue);margin-top:3px;}
+.chip .park.mut{color:#9aa1b2;font-weight:600;}
+.btn-loc{position:absolute;bottom:6px;right:6px;width:24px;height:24px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:12px;cursor:pointer;line-height:1;}
+.btn-loc:hover{border-color:var(--blue);color:var(--blue);}
+.btn-loc.busy{border-color:var(--blue);color:var(--blue);animation:locspin 1s linear infinite;}
+@keyframes locspin{to{transform:rotate(360deg)}}
 .chip .badge{display:inline-block;font-size:10px;font-weight:800;border-radius:5px;padding:2px 6px;margin-top:3px;margin-right:4px;}
 .chip .badge.drvchg{background:#f3e8fb;color:#7a2fa8;}
 .chip .badge.flag{background:var(--red-bg);color:var(--red);cursor:pointer;}
@@ -350,6 +356,31 @@ function matchSearch(t,q){
   return [t.number,t.display_number,t.driver,t.area,t.note,t.trailer_type,t.tags,t.phone,t.status_note]
     .some(v=>(v||"").toLowerCase().includes(q));
 }
+function hasGPS(t){return !(t.org_id==="CACTUS"&&t.is_sub);} // subs de Cactus: sin Samsara
+function parkHtml(t){
+  if(!hasGPS(t))return `<div class="park mut">🅿 no Samsara</div>`;
+  if(!t.parked_city)return `<div class="park mut">🅿 no GPS yet — tap ⟳</div>`;
+  const tm=t.parked_at?new Date(t.parked_at):null;
+  return `<div class="park">🅿 ${esc(t.parked_city)}${tm?` · ${tm.toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"})}`:""}</div>`;
+}
+let _locating=new Set();
+async function locateNow(org,num){
+  const key=org+"|"+num;
+  if(_locating.has(key))return;
+  _locating.add(key);
+  const btn=document.querySelector(`[id="chip-${cssId(org+"-"+num)}"] .btn-loc`);
+  if(btn)btn.classList.add("busy");
+  try{
+    const r=await fetch(`${API}/api/truck/${org}/${encodeURIComponent(num)}/locate`,{method:"POST"});
+    const j=await r.json().catch(()=>({}));
+    if(r.ok&&j.truck){
+      const t=truckOf(org,num);
+      if(t){t.parked_city=j.truck.parked_city;t.parked_at=j.truck.parked_at;}
+    }else if(!r.ok){alert("GPS refresh failed: "+(j.error||r.status));}
+  }catch(e){alert("GPS refresh failed: no connection");}
+  _locating.delete(key);
+  render();
+}
 function actHtml(t){
   if(t.loads_today>0)return `<div class="act">🟢 today: ${t.loads_today} load${t.loads_today>1?"s":""}${t.last_load_driver?" · "+esc(t.last_load_driver):""}</div>`;
   if(t.days_since_last_load==null)return `<div class="act bad">⚠ no load on record</div>`;
@@ -476,9 +507,11 @@ function chipHtml(t){
     ${cls==="s-off"?`<div class="offmark" title="not available">${offEmoji}</div>`:""}
     <button class="btn-edit" onclick="event.stopPropagation();openEdit('${t.org_id}','${esc(t.number)}')" title="Edit">✎</button>
     <button class="btn-down" onclick="tapDown(event,'${t.org_id}','${esc(t.number)}')" title="Mark down">✕</button>
-    <div class="top"><span class="num">${esc(dnum(t))}${isVirtual()?`<span class="orgtag ${t.org_id==="KT"?(t.is_sub?"ic":"kt"):(t.is_sub?"sub":"")}">${t.org_id==="KT"?(t.is_sub?"IC":"KT"):(t.is_sub?"SUB":"CACTUS")}</span>`:""}${t.trailer_type?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(t.trailer_type)}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}</div>
+    <div class="top"><span class="num">${esc(dnum(t))}${isVirtual()?`<span class="orgtag ${t.org_id==="KT"?(t.is_sub?"ic":"kt"):(t.is_sub?"sub":"")}">${t.org_id==="KT"?(t.is_sub?"IC":"KT"):(t.is_sub?"SUB":"CACTUS")}</span>`:""}</span>${t.trailer_type?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(t.trailer_type)}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}</div>
     <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ NO DRIVER"}</div>
+    ${parkHtml(t)}
     ${actHtml(t)}
+    ${hasGPS(t)?`<button class="btn-loc" title="Refresh live GPS" onclick="event.stopPropagation();locateNow('${t.org_id}','${esc(t.number)}')">⟳</button>`:""}
     ${rest?'<span class="badge status">OFF TODAY</span>':""}
     ${(()=>{const o=offOf(t);return o?`<span class="badge status" style="background:#fdeedd;color:#a8622f;">${OFF_LBL[o.reason]||o.reason} ${mdy(o.from_date)}–${mdy(o.to_date)}</span>`:"";})()}
     ${(()=>{const u=!offOf(t)&&upcomingOff(t);return u?`<span class="badge" style="background:#fdf3e3;border:1px solid #c98a2f;color:#8a5a10;" title="scheduled — goes off on ${u.from_date}">${OFF_EMOJI[u.reason]||"🗓"} ${esc(u.reason).toUpperCase()} STARTS ${mdy(u.from_date)}</span>`:"";})()}

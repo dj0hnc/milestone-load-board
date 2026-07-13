@@ -292,16 +292,29 @@ function applyPlacements(org, summary) {
     const sets = [], vals = [];
 
     if (org.id === 'KT') {
-      const divGuess = (KT_TERMINALS.includes(normNum(topCity)) ? normNum(topCity) : null)
-        || ktDivisionHint(t.display_number || '')
-        || (t.is_sub && nights.length ? 'ICS' : null) // IC con GPS confirmado → su terminal ICS
-        || null;
-      if (!t.division && divGuess) {
-        sets.push('division = ?'); vals.push(divGuess); summary.placedDivision++;
+      // ciudad base sin estado ("WHITEWRIGHT, TX" → WHITEWRIGHT) para comparar terminales
+      const cityBase = normNum(String(topCity).split(',')[0] || '');
+      const nightsAtTop = count[topCity] || 0;
+      // AUDITORÍA DE TERMINAL (flota KT, no ICs): el GPS es la verdad. Si la mayoría de
+      // noches está en una terminal distinta a la asignada, SE MUEVE — con 2+ noches de
+      // evidencia (o 1 si aún no tiene terminal). La letra del nombre solo desempata.
+      const gpsTerminal = KT_TERMINALS.includes(cityBase) && (nightsAtTop >= 2 || !t.division) ? cityBase : null;
+      if (!t.is_sub && gpsTerminal && t.division !== gpsTerminal) {
+        sets.push('division = ?', 'area = ?'); vals.push(gpsTerminal, gpsTerminal);
+        summary.terminalMoves = (summary.terminalMoves || 0) + 1;
         if (t.is_new) { sets.push('is_new = 0', "suggested_division = NULL"); summary.autoConfirmedNew++; }
+      } else {
+        const divGuess = gpsTerminal
+          || ktDivisionHint(t.display_number || '')
+          || (t.is_sub && nights.length ? 'ICS' : null) // IC con GPS confirmado → su terminal ICS
+          || null;
+        if (!t.division && divGuess) {
+          sets.push('division = ?'); vals.push(divGuess); summary.placedDivision++;
+          if (t.is_new) { sets.push('is_new = 0', "suggested_division = NULL"); summary.autoConfirmedNew++; }
+        }
+        if (target && (!t.area || t.area === '(SIN YARD)')) { sets.push('area = ?'); vals.push(target); summary.placedArea++; }
+        else if (target && normNum(target) !== normNum(t.area || '') && t.suggested_area !== target) { sets.push('suggested_area = ?'); vals.push(target); summary.suggested++; }
       }
-      if (target && (!t.area || t.area === '(SIN YARD)')) { sets.push('area = ?'); vals.push(target); summary.placedArea++; }
-      else if (target && normNum(target) !== normNum(t.area || '') && t.suggested_area !== target) { sets.push('suggested_area = ?'); vals.push(target); summary.suggested++; }
     } else {
       if (target && (!t.area || t.area === '(SIN YARD)')) { sets.push('area = ?'); vals.push(target); summary.placedArea++; }
       else if (target && normNum(target) !== normNum(t.area || '') && t.suggested_area !== target) { sets.push('suggested_area = ?'); vals.push(target); summary.suggested++; }
@@ -387,4 +400,29 @@ async function syncSamsara(cfg) {
   return summary;
 }
 
-module.exports = { syncSamsara, backfillParking, applyPlacements, nearestTown, discoverIC, resolveSamsaraTruck };
+// GPS en vivo de UN truck (botón ↻ del cuadrito): consulta Samsara al momento y
+// actualiza su parking location real.
+async function locateTruck(cfg, orgRow, truck) {
+  const token = tokenFor(cfg, orgRow.samsara_org);
+  if (!token) throw new Error('no Samsara token for ' + orgRow.id);
+  let g = null;
+  if (truck.samsara_id) {
+    const r = await fetch('https://api.samsara.com/fleet/vehicles/stats?types=gps&vehicleIds=' + encodeURIComponent(truck.samsara_id),
+      { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
+    if (r.ok) { const j = await r.json(); const v = (j.data || [])[0]; if (v && v.gps) g = v.gps; }
+  }
+  if (!g) { // sin id guardado: snapshot completo y matchear por nombre
+    const snap = await fetchGps(token);
+    for (const [rawName, gg] of Object.entries(snap)) {
+      const res = resolveSamsaraTruck(orgRow.id, rawName);
+      if (res.row && res.row.number === truck.number) { g = { latitude: gg.lat, longitude: gg.lon, time: gg.time, speedMilesPerHour: gg.speed, reverseGeo: { formattedLocation: gg.rawGeo || '' } }; if (gg.city) g._city = gg.city; break; }
+    }
+  }
+  if (!g) throw new Error('truck not found in Samsara');
+  const city = g._city || cityFrom(g.reverseGeo && g.reverseGeo.formattedLocation) || nearestTown(g.latitude, g.longitude);
+  run(`UPDATE trucks SET parked_city = ?, parked_at = ?, updated_at = ? WHERE org_id = ? AND number = ?`,
+    city || '', g.time || nowISO(), nowISO(), truck.org_id, truck.number);
+  return { city: city || '', time: g.time || null, speed: g.speedMilesPerHour != null ? g.speedMilesPerHour : null };
+}
+
+module.exports = { syncSamsara, backfillParking, applyPlacements, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };
