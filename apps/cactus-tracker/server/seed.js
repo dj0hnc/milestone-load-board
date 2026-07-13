@@ -16,8 +16,8 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { open, run, get, metaGet, metaSet, nowISO } = require('./db');
-const { normNum, splitNameFlag } = require('./util');
+const { open, run, get, all, metaGet, metaSet, nowISO } = require('./db');
+const { normNum, splitNameFlag, canonArea, areaMergeKey } = require('./util');
 
 // data/ puede estar tapado por un volumen en la nube — el seed también vive en seed-data/
 const SEED_PATH = [
@@ -158,6 +158,28 @@ function main(force) {
   run(`UPDATE trucks SET parked_city = '' WHERE length(parked_city) <= 3 AND parked_city != ''`);
   run(`UPDATE trucks SET area = '(SIN YARD)' WHERE length(area) <= 3 AND area != ''`);
   run(`DELETE FROM parking_log WHERE length(city) <= 3`);
+  // CONSOLIDACIÓN DE ZONAS (corre cada boot, idempotente): "PARIS, TX" y "PARIS" son la
+  // MISMA zona — el estado no va en el nombre del área. Deletreos duplicados
+  // ("MT PLEASANT"/"MOUNT PLEASANT") se funden a la variante más usada.
+  for (const col of ['area', 'suggested_area']) {
+    const rows = all(`SELECT ${col} AS a, COUNT(*) AS c FROM trucks
+                      WHERE ${col} IS NOT NULL AND ${col} != '' AND ${col} != '(SIN YARD)' GROUP BY ${col}`);
+    const byKey = new Map();
+    for (const r of rows) {
+      const key = areaMergeKey(r.a);
+      if (!key) continue;
+      const cur = byKey.get(key);
+      // gana la variante con más trucks; a igual conteo, la más corta (la sin ", TX")
+      if (!cur || r.c > cur.c || (r.c === cur.c && canonArea(r.a).length < canonArea(cur.a).length)) byKey.set(key, r);
+    }
+    for (const r of rows) {
+      const win = byKey.get(areaMergeKey(r.a));
+      const winner = win ? canonArea(win.a) : '';
+      if (winner && winner !== r.a) run(`UPDATE trucks SET ${col} = ? WHERE ${col} = ?`, winner, r.a);
+    }
+  }
+  // tras el merge, sugerencias que quedaron iguales al área ya no dicen nada
+  run(`UPDATE trucks SET suggested_area = '' WHERE suggested_area != '' AND suggested_area = area`);
   // one-time: aplicar los tipos de trailer DE LAS LISTAS del despacho como base blindada
   // (trailer_override=1: el sync de NewMile ya no los pisa). Corre también en producción.
   if (!metaGet('mig_seed_trailers') && SEED_PATH) {

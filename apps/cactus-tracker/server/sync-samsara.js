@@ -14,14 +14,14 @@
  *    (Paris Terminal 4218297 = NORTH, Lufkin Terminal 4218296 = SOUTH). My manual
  *    assignment always wins — suggestions only fill the ⚑ NUEVO confirm form.
  *  - GPS PARKING (the real value): where does the truck SLEEP. Every sync stores the
- *    current position (reverse-geo city) as "última posición"; runs inside the 3–6 AM
- *    CT window also log it as that day's parking spot. The majority city of the last
- *    7 nights becomes suggested_area when it differs from my assignment — shown as a
- *    "📍 duerme en X" badge that I accept or dismiss. Nothing moves by itself.
+ *    current position (reverse-geo city) as "última posición"; runs inside the sleep
+ *    windows also log it as that day's parking spot. EL GPS ES LA VERDAD: si la última
+ *    noche fue en otra zona conocida (o en otra terminal de KT), el truck SE MUEVE
+ *    solo. Solo las ciudades desconocidas quedan como suggested_area (badge de un tap).
  */
 const fs = require('fs');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
-const { splitNameFlag, canonicalTruckNumber, ktDivisionHint, ctParts, todayCT, shiftISO, normNum } = require('./util');
+const { splitNameFlag, canonicalTruckNumber, ktDivisionHint, ctParts, todayCT, shiftISO, normNum, canonArea, areaMergeKey } = require('./util');
 
 // Fallback cuando el reverse-geo no da ciudad: pueblo más cercano de la operación.
 const TOWNS = [
@@ -97,9 +97,7 @@ function samsaraTruck(orgId, number) { // compat: lookup por número ya canónic
 function discoverIC(orgId, number, city, lat, lon, summary) {
   if (orgId !== 'KT' || !/^\d{1,4}$/.test(number)) return null;
   const icNum = 'CKJ' + number;
-  const areas = all(`SELECT DISTINCT t.area FROM trucks t JOIN orgs o ON o.id = t.org_id
-                     WHERE o.enabled = 1 AND t.area IS NOT NULL AND t.area != '' AND t.area != '(SIN YARD)'`).map(r => r.area);
-  const area = city ? mapCityToArea(city, areas) : '(SIN YARD)';
+  const area = city ? mapCityToArea(city, knownAreas()) : '(SIN YARD)';
   run(`INSERT INTO trucks (org_id, number, display_number, division, area, tags, is_sub, is_new, updated_at)
        VALUES ('KT', ?, ?, 'ICS', ?, 'CKJ IC', 1, 0, ?)
        ON CONFLICT(org_id, number) DO NOTHING`,
@@ -174,40 +172,17 @@ function cityFrom(formatted) {
 }
 
 // Map a parked city onto MY area names (fuzzy: exact, prefix either way, MT↔MOUNT).
+// Devuelve SIEMPRE un nombre canónico de zona (sin ", TX") — así jamás nacen duplicados.
 function mapCityToArea(city, areas) {
   if (!city) return '';
-  const norm = s => normNum(s).replace(/^MOUNT\b/, 'MT').replace(/[^A-Z0-9 ]/g, '');
-  const c = norm(city);
+  const c = areaMergeKey(city);
+  if (!c) return '';
   for (const a of areas) {
-    const n = norm(a);
-    if (!n || n === '(SIN YARD)') continue;
-    if (n === c || (c.length >= 4 && n.startsWith(c)) || (n.length >= 4 && c.startsWith(n))) return a;
+    const n = areaMergeKey(a);
+    if (!n || n === 'SIN YARD') continue;
+    if (n === c || (c.length >= 4 && n.startsWith(c)) || (n.length >= 4 && c.startsWith(n))) return canonArea(a);
   }
-  return city; // unknown city: propose the city itself (maybe a new yard)
-}
-
-// Majority parked city of the last 7 nights → suggested_area when it disagrees with me.
-function computeAreaSuggestions(orgId, summary) {
-  const areas = all(`SELECT DISTINCT area FROM trucks WHERE org_id = ? AND area IS NOT NULL AND area != ''`, orgId).map(r => r.area);
-  const trucks = all(`SELECT * FROM trucks WHERE org_id = ? AND is_sub = 0 AND archived = 0`, orgId);
-  for (const t of trucks) {
-    const nights = all(`SELECT city FROM parking_log WHERE org_id = ? AND number = ? AND city != '' ORDER BY date DESC LIMIT 7`, orgId, t.number);
-    if (!nights.length) continue;
-    const count = {};
-    for (const n of nights) count[n.city] = (count[n.city] || 0) + 1;
-    const [topCity, votes] = Object.entries(count).sort((a, b) => b[1] - a[1])[0];
-    // one lone night is not "vive ahí" unless the truck has no area yet
-    if (votes < 2 && t.area && t.area !== '(SIN YARD)') continue;
-    const suggestion = mapCityToArea(topCity, areas);
-    const cur = normNum(t.area || '');
-    if (suggestion && normNum(suggestion) !== cur && suggestion !== t.suggested_area) {
-      run(`UPDATE trucks SET suggested_area = ?, updated_at = ? WHERE org_id = ? AND number = ?`,
-        suggestion, nowISO(), orgId, t.number);
-      summary.areaSuggestions++;
-    } else if (suggestion && normNum(suggestion) === cur && t.suggested_area) {
-      run(`UPDATE trucks SET suggested_area = '' WHERE org_id = ? AND number = ?`, orgId, t.number); // moved back home
-    }
-  }
+  return canonArea(city); // unknown city: propose the city itself (maybe a new yard)
 }
 
 // Historia GPS de una ventana (para reconstruir dónde DURMIÓ cada truck).
@@ -271,58 +246,79 @@ async function backfillParking(cfg, days) {
 }
 
 const KT_TERMINALS = ['POWDERLY', 'RHOME', 'WHITEWRIGHT'];
+
+// zonas operativas EN USO (cruzan compañías) — contra esto se mapea todo GPS
+function knownAreas() {
+  return all(`SELECT DISTINCT t.area FROM trucks t JOIN orgs o ON o.id = t.org_id
+              WHERE o.enabled = 1 AND t.area IS NOT NULL AND t.area != '' AND t.area != '(SIN YARD)'`).map(r => r.area);
+}
+
+// EL GPS ES LA VERDAD (regla del despacho): el truck vive donde DURMIÓ la última noche.
+//  - última noche en una zona conocida distinta → SE MUEVE solo (área, y terminal si es KT)
+//  - ciudad desconocida → se alinea a la zona de operación más cercana; si ni así,
+//    solo suggested_area (zonas nuevas las apruebo yo con un tap)
+// Acomoda UN truck; lo usan el sync completo y el ⟳ de cada cuadrito.
+function placeTruck(org, t, areas, summary) {
+  const nights = all(`SELECT city, lat, lon FROM parking_log WHERE org_id = ? AND number = ? AND city != '' ORDER BY date DESC LIMIT 7`, org.id, t.number);
+  const lastCity = nights.length ? nights[0].city : '';
+  let target = lastCity ? mapCityToArea(lastCity, areas) : '';
+  const isKnown = x => x && areas.some(a => areaMergeKey(a) === areaMergeKey(x));
+  // ciudad que no es zona conocida → alinear a la zona de operación más cercana
+  if (target && !isKnown(target)) {
+    const pt = nights.find(n => n.city === lastCity && n.lat != null);
+    const town = pt ? nearestTown(pt.lat, pt.lon) : '';
+    const t2 = town ? mapCityToArea(town, areas) : '';
+    if (isKnown(t2)) target = t2;
+  }
+  const sets = [], vals = [];
+  let terminalMoved = false;
+
+  if (org.id === 'KT' && !t.is_sub) {
+    // terminal según dónde durmió ("WHITEWRIGHT, TX" → WHITEWRIGHT); una noche basta
+    const cityBase = canonArea(lastCity);
+    const gpsTerminal = KT_TERMINALS.includes(cityBase) ? cityBase : null;
+    if (gpsTerminal && t.division !== gpsTerminal) {
+      sets.push('division = ?', 'area = ?', "suggested_area = ''"); vals.push(gpsTerminal, gpsTerminal);
+      summary.terminalMoves = (summary.terminalMoves || 0) + 1;
+      terminalMoved = true;
+      if (t.is_new) { sets.push('is_new = 0', 'suggested_division = NULL'); summary.autoConfirmedNew = (summary.autoConfirmedNew || 0) + 1; }
+    } else if (!t.division) {
+      const divGuess = gpsTerminal || ktDivisionHint(t.display_number || '') || null;
+      if (divGuess) {
+        sets.push('division = ?'); vals.push(divGuess); summary.placedDivision = (summary.placedDivision || 0) + 1;
+        if (t.is_new) { sets.push('is_new = 0', 'suggested_division = NULL'); summary.autoConfirmedNew = (summary.autoConfirmedNew || 0) + 1; }
+      }
+    }
+  } else if (org.id === 'KT' && t.is_sub && !t.division && nights.length) {
+    sets.push('division = ?'); vals.push('ICS'); summary.placedDivision = (summary.placedDivision || 0) + 1; // IC con GPS confirmado
+  }
+
+  if (!terminalMoved && target) {
+    if (!t.area || t.area === '(SIN YARD)') {
+      sets.push('area = ?'); vals.push(target); summary.placedArea = (summary.placedArea || 0) + 1;
+    } else if (areaMergeKey(target) === areaMergeKey(t.area)) {
+      if (t.suggested_area) sets.push("suggested_area = ''"); // regresó a casa: limpiar el badge
+    } else if (isKnown(target)) {
+      // durmió en OTRA zona conocida → se mueve solo, sin preguntar
+      sets.push('area = ?', "suggested_area = ''"); vals.push(target);
+      summary.movedArea = (summary.movedArea || 0) + 1;
+    } else if (t.suggested_area !== target) {
+      sets.push('suggested_area = ?'); vals.push(target); summary.suggested = (summary.suggested || 0) + 1;
+    }
+  }
+  if (sets.length) {
+    sets.push('updated_at = ?'); vals.push(nowISO());
+    run(`UPDATE trucks SET ${sets.join(', ')} WHERE org_id = ? AND number = ?`, ...vals, org.id, t.number);
+    return get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', org.id, t.number);
+  }
+  return null;
+}
+
 function applyPlacements(org, summary) {
-  // las ZONAS son operativas y cruzan compañías: mapear contra todas las áreas existentes
-  const areas = all(`SELECT DISTINCT t.area FROM trucks t JOIN orgs o ON o.id = t.org_id
-                     WHERE o.enabled = 1 AND t.area IS NOT NULL AND t.area != '' AND t.area != '(SIN YARD)'`).map(r => r.area);
+  const areas = knownAreas();
   // los KT ICs sí entran (tienen Samsara); los subs de Cactus no
   for (const t of all(`SELECT * FROM trucks WHERE org_id = ? AND archived = 0 AND (is_sub = 0 OR org_id = 'KT')`, org.id)) {
-    const nights = all(`SELECT city, lat, lon FROM parking_log WHERE org_id = ? AND number = ? AND city != '' ORDER BY date DESC LIMIT 7`, org.id, t.number);
-    const count = {};
-    for (const n of nights) count[n.city] = (count[n.city] || 0) + 1;
-    const topCity = Object.entries(count).sort((a, b) => b[1] - a[1]).map(e => e[0])[0] || '';
-    let target = topCity ? mapCityToArea(topCity, areas) : '';
-    // ciudad que no es zona conocida → alinear a la zona de operación más cercana
-    if (target && target === topCity && !areas.some(a => normNum(a) === normNum(target))) {
-      const pt = nights.find(n => n.city === topCity && n.lat != null);
-      const town = pt ? nearestTown(pt.lat, pt.lon) : '';
-      const t2 = town ? mapCityToArea(town, areas) : '';
-      if (t2 && areas.some(a => normNum(a) === normNum(t2))) target = t2;
-    }
-    const sets = [], vals = [];
-
-    if (org.id === 'KT') {
-      // ciudad base sin estado ("WHITEWRIGHT, TX" → WHITEWRIGHT) para comparar terminales
-      const cityBase = normNum(String(topCity).split(',')[0] || '');
-      const nightsAtTop = count[topCity] || 0;
-      // AUDITORÍA DE TERMINAL (flota KT, no ICs): el GPS es la verdad. Si la mayoría de
-      // noches está en una terminal distinta a la asignada, SE MUEVE — con 2+ noches de
-      // evidencia (o 1 si aún no tiene terminal). La letra del nombre solo desempata.
-      const gpsTerminal = KT_TERMINALS.includes(cityBase) && (nightsAtTop >= 2 || !t.division) ? cityBase : null;
-      if (!t.is_sub && gpsTerminal && t.division !== gpsTerminal) {
-        sets.push('division = ?', 'area = ?'); vals.push(gpsTerminal, gpsTerminal);
-        summary.terminalMoves = (summary.terminalMoves || 0) + 1;
-        if (t.is_new) { sets.push('is_new = 0', "suggested_division = NULL"); summary.autoConfirmedNew++; }
-      } else {
-        const divGuess = gpsTerminal
-          || ktDivisionHint(t.display_number || '')
-          || (t.is_sub && nights.length ? 'ICS' : null) // IC con GPS confirmado → su terminal ICS
-          || null;
-        if (!t.division && divGuess) {
-          sets.push('division = ?'); vals.push(divGuess); summary.placedDivision++;
-          if (t.is_new) { sets.push('is_new = 0', "suggested_division = NULL"); summary.autoConfirmedNew++; }
-        }
-        if (target && (!t.area || t.area === '(SIN YARD)')) { sets.push('area = ?'); vals.push(target); summary.placedArea++; }
-        else if (target && normNum(target) !== normNum(t.area || '') && t.suggested_area !== target) { sets.push('suggested_area = ?'); vals.push(target); summary.suggested++; }
-      }
-    } else {
-      if (target && (!t.area || t.area === '(SIN YARD)')) { sets.push('area = ?'); vals.push(target); summary.placedArea++; }
-      else if (target && normNum(target) !== normNum(t.area || '') && t.suggested_area !== target) { sets.push('suggested_area = ?'); vals.push(target); summary.suggested++; }
-    }
-    if (sets.length) {
-      sets.push('updated_at = ?'); vals.push(nowISO());
-      run(`UPDATE trucks SET ${sets.join(', ')} WHERE org_id = ? AND number = ?`, ...vals, org.id, t.number);
-    }
+    placeTruck(org, t, areas, summary);
   }
 }
 
@@ -389,7 +385,8 @@ async function syncSamsara(cfg) {
           summary.parkingLogged++;
         }
       }
-      computeAreaSuggestions(org.id, summary);
+      // el sync TAMBIÉN re-acomoda por GPS: terminal/zona se corrigen solas aquí mismo
+      applyPlacements(org, summary);
     } catch (e) {
       summary.gpsError = String(e.message || e);
     }
@@ -422,7 +419,21 @@ async function locateTruck(cfg, orgRow, truck) {
   const city = g._city || cityFrom(g.reverseGeo && g.reverseGeo.formattedLocation) || nearestTown(g.latitude, g.longitude);
   run(`UPDATE trucks SET parked_city = ?, parked_at = ?, updated_at = ? WHERE org_id = ? AND number = ?`,
     city || '', g.time || nowISO(), nowISO(), truck.org_id, truck.number);
-  return { city: city || '', time: g.time || null, speed: g.speedMilesPerHour != null ? g.speedMilesPerHour : null };
+  // EL REFRESH ES LA VERDAD: si está estacionado (no rodando), esa es su ubicación de
+  // hoy → se registra y el truck se va SOLO a su terminal/zona correspondiente.
+  const speed = g.speedMilesPerHour != null ? g.speedMilesPerHour : null;
+  let moved = null;
+  if (city && (speed == null || speed < 3)) {
+    run(`INSERT INTO parking_log (org_id, number, date, city, lat, lon) VALUES (?,?,?,?,?,?)
+         ON CONFLICT(org_id, number, date) DO UPDATE SET city = excluded.city, lat = excluded.lat, lon = excluded.lon`,
+      truck.org_id, truck.number, todayCT(), city, g.latitude == null ? null : g.latitude, g.longitude == null ? null : g.longitude);
+    const fresh = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', truck.org_id, truck.number);
+    const after = placeTruck(orgRow, fresh, knownAreas(), {});
+    if (after && (after.area !== truck.area || after.division !== truck.division)) {
+      moved = { area: after.area, division: after.division };
+    }
+  }
+  return { city: city || '', time: g.time || null, speed, moved };
 }
 
-module.exports = { syncSamsara, backfillParking, applyPlacements, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };
+module.exports = { syncSamsara, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };

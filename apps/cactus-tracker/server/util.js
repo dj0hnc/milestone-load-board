@@ -13,6 +13,17 @@ function normNum(s) {
   return String(s == null ? '' : s).trim().toUpperCase().replace(/\s+/g, ' ');
 }
 
+// Nombre canónico de ZONA: sin estado. "PARIS, TX" y "PARIS" son la MISMA zona —
+// el estado vive en parked_city ("CIUDAD, ST"), nunca en el nombre del área.
+function canonArea(s) {
+  return normNum(s).replace(/\s*,\s*[A-Z]{2}$/, '').trim();
+}
+
+// Llave para detectar zonas duplicadas por deletreo ("MT PLEASANT" vs "MOUNT PLEASANT").
+function areaMergeKey(s) {
+  return canonArea(s).replace(/^MOUNT\b/, 'MT').replace(/[^A-Z0-9 ]/g, '').trim();
+}
+
 // Split a NewMile/Samsara vehicle name into { number, flag }.
 // "1082-DOWN 12/12/2024" → { number:'1082', flag:'DOWN 12/12/2024' }
 // "553 Deleased Need Camera" → { number:'553', flag:'Deleased Need Camera' }
@@ -134,4 +145,4 @@ function reportDateToISO(s) {
   return `${y}-${String(m[1]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`;
 }
 
-module.exports = { normNum, splitNameFlag, canonicalTruckNumber, displayTruckNumber, ktDivisionHint, shortTrailer, normLoadTruck, ctParts, todayCT, shiftISO, daysBetween, weekDatesCT, reportDateToISO, CT };
+module.exports = { normNum, canonArea, areaMergeKey, splitNameFlag, canonicalTruckNumber, displayTruckNumber, ktDivisionHint, shortTrailer, normLoadTruck, ctParts, todayCT, shiftISO, daysBetween, weekDatesCT, reportDateToISO, CT };

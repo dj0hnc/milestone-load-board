@@ -9,7 +9,7 @@
 const express = require('express');
 const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
-const { todayCT, weekDatesCT, daysBetween, normNum } = require('./util');
+const { todayCT, weekDatesCT, daysBetween, normNum, canonArea } = require('./util');
 const { syncRoster, syncActivity, scanRipRap } = require('./sync-newmile');
 const { syncSamsara, backfillParking, locateTruck } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
@@ -204,6 +204,7 @@ function createRouter({ config, newmile, log }) {
       let v = req.body[f];
       if (f === 'status' && !VALID_STATUS.includes(v)) return res.status(400).json({ error: 'invalid status' });
       if (f === 'rip_rap') v = v ? 1 : 0;
+      if (f === 'area' && v) v = canonArea(v); // zonas SIN estado: "PARIS, TX" → "PARIS"
       if (f === 'division' && v != null && v !== '') {
         const d = get('SELECT 1 AS x FROM divisions WHERE org_id = ? AND id = ?', orgId, normNum(v));
         if (!d) return res.status(400).json({ error: 'invalid division' });
@@ -281,9 +282,10 @@ function createRouter({ config, newmile, log }) {
     const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number);
     if (!row) return res.status(404).json({ error: 'truck not found' });
     if (action === 'accept' && row.suggested_area) {
+      const dest = canonArea(row.suggested_area);
       run(`UPDATE trucks SET area = ?, suggested_area = '', updated_at = ? WHERE org_id = ? AND number = ?`,
-        row.suggested_area, nowISO(), orgId, number);
-      logChange(orgId, number, 'area', row.area, row.suggested_area, by);
+        dest, nowISO(), orgId, number);
+      logChange(orgId, number, 'area', row.area, dest, by);
       snapshotTruckDay(get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number));
     } else {
       run(`UPDATE trucks SET suggested_area = '' WHERE org_id = ? AND number = ?`, orgId, number);
@@ -337,7 +339,7 @@ function createRouter({ config, newmile, log }) {
     if (!d) return res.status(400).json({ error: 'invalid division' });
     const r = run(`UPDATE trucks SET is_new = 0, division = ?, area = COALESCE(NULLIF(?, ''), area), suggested_division = NULL, updated_at = ?
                    WHERE org_id = ? AND number = ?`,
-      normNum(division), normNum(area || ''), nowISO(), orgId, number);
+      normNum(division), canonArea(area || ''), nowISO(), orgId, number);
     if (!r.changes) return res.status(404).json({ error: 'truck not found' });
     res.json({ ok: true });
   });

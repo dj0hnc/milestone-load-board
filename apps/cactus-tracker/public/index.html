@@ -378,7 +378,15 @@ async function locateNow(org,num){
     const j=await r.json().catch(()=>({}));
     if(r.ok&&j.truck){
       const t=truckOf(org,num);
-      if(t){t.parked_city=j.truck.parked_city;t.parked_at=j.truck.parked_at;}
+      if(t){
+        t.parked_city=j.truck.parked_city;t.parked_at=j.truck.parked_at;
+        // el GPS manda: si el server lo movió de zona/terminal, el cuadrito se muda ya
+        if(j.moved){
+          t.area=j.truck.area;t.division=j.truck.division;t.suggested_area=j.truck.suggested_area||"";
+          collapsed.delete(groupKey(areaLbl(t.area||"(SIN YARD)")));
+          localStorage.setItem("ct-collapsed",JSON.stringify([...collapsed]));
+        }
+      }
     }else if(!r.ok){alert("GPS refresh failed: "+(j.error||r.status));}
   }catch(e){alert("GPS refresh failed: no connection");}
   _locating.delete(key);
@@ -717,13 +725,18 @@ function coverAllBulk(){
 
 // ---------- sync ----------
 async function syncNow(){
-  const b=$("btnSync");b.disabled=true;b.textContent="⟳ Syncing…";
+  const b=$("btnSync");b.disabled=true;b.textContent="⟳ Syncing NewMile…";
   try{
     const r=await fetch(API+"/api/sync/newmile",{method:"POST"});
     const j=await r.json().catch(()=>({}));
     if(r.status===401){if(confirm("NewMile is not connected. Open the sign-in?"))location.href=API+"/api/newmile/connect";}
     else if(!r.ok)alert("Sync failed: "+(j.error||r.status));
-    try{await fetch(API+"/api/sync/samsara",{method:"POST"});}catch(e){}
+    // Samsara GPS: refresca dónde está CADA truck y los re-acomoda por zona/terminal
+    b.textContent="⟳ Syncing GPS…";
+    try{
+      const r2=await fetch(API+"/api/sync/samsara",{method:"POST"});
+      if(!r2.ok){const j2=await r2.json().catch(()=>({}));alert("GPS sync failed: "+(j2.error||r2.status));}
+    }catch(e){}
     await fetchBoard();
   }finally{b.disabled=false;b.textContent="⟳ Sync now";}
 }
