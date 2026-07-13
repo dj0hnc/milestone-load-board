@@ -79,9 +79,32 @@ function matchLoadRow(r, orgs, subNames) {
   if (subNames.some(n => normNum(n) === normNum(fleetName))) {
     return { orgId: 'CACTUS', num: normNum(r.truck_number), autoCreate: true, sub: true, tags: 'SUBHAULER' };
   }
-  const cand = normNum(r.truck_number);
+  const cand = normNum(r.truck_number).replace(/\s+/g, '');
   const hit = get('SELECT org_id, number FROM trucks WHERE number = ? AND archived = 0', cand);
-  return hit ? { orgId: hit.org_id, num: hit.number, autoCreate: false } : null;
+  if (hit) return { orgId: hit.org_id, num: hit.number, autoCreate: false };
+  // el display también cuenta ("LT245" guardado como display del sub "245")
+  const hd = get('SELECT org_id, number FROM trucks WHERE display_number = ? AND archived = 0', cand);
+  if (hd) return { orgId: hd.org_id, num: hd.number, autoCreate: false };
+  const pm = /^([A-Z]{1,4})-?(\d{1,4})$/.exec(cand);
+  if (pm) {
+    // sub ya en el roster con el número INCOMPLETO (Livingston "245" vs NewMile "LT245"):
+    // se matchea por los dígitos y de paso se le pone el número completo de NewMile
+    const bare = get(`SELECT org_id, number, display_number FROM trucks WHERE number = ? AND is_sub = 1 AND archived = 0`, pm[2]);
+    if (bare) {
+      if (bare.display_number === bare.number) {
+        run(`UPDATE trucks SET display_number = ?, updated_at = ? WHERE org_id = ? AND number = ?`, cand, nowISO(), bare.org_id, bare.number);
+      }
+      return { orgId: bare.org_id, num: bare.number, autoCreate: false };
+    }
+    // SUB EXTERNO (AMP6060, PDR1062, SL47…): SIN fleet en NewMile porque no es ni de
+    // Cactus ni de CKJ, pero corre en NUESTRAS órdenes → es de los que usamos. Se crea
+    // solo, directo al board: CACTUS NORTH, zona SUBS (al final), tag SUBHAULER.
+    // Con fleet ajeno (otra carrier) se queda como antes: match-only, nunca se crea.
+    if (!normNum(fleetName)) {
+      return { orgId: 'CACTUS', num: cand, autoCreate: true, sub: true, tags: 'SUBHAULER', division: 'NORTH', area: 'SUBS' };
+    }
+  }
+  return null;
 }
 
 // ---------- roster ----------
@@ -196,10 +219,12 @@ async function syncActivity(client) {
     if (!row) {
       if (!v.m.autoCreate) { summary.unmatched += v.loads; continue; }
       // Ran a load but is not on my roster → ⚑ NUEVO immediately (never wait for 4:30 AM).
+      // Los subs externos traen su lugar (NORTH / zona SUBS) → entran directo al board.
       const sub = v.m.sub || (orgId === 'CACTUS' && /^(BT|BW|HS|AE)\d/i.test(num)) ? 1 : 0;
       run(`INSERT INTO trucks (org_id, number, display_number, division, area, driver, tags, is_sub, suggested_division, is_new, updated_at)
-           VALUES (?,?,?,NULL,'(SIN YARD)',?,?,?,?,1,?)`,
-        orgId, num, v.m.display || num, v.driver || '', v.m.tags || (sub ? 'SUBHAULER' : ''), sub, v.m.suggestedDivision || null, nowISO());
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        orgId, num, v.m.display || num, v.m.division || null, v.m.area || '(SIN YARD)', v.driver || '',
+        v.m.tags || (sub ? 'SUBHAULER' : ''), sub, v.m.suggestedDivision || null, v.m.area ? 0 : 1, nowISO());
       row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, num);
       summary.createdNew++;
     }
@@ -340,4 +365,4 @@ async function scanRipRap(client, days) {
   return summary;
 }
 
-module.exports = { syncRoster, syncActivity, scanRipRap };
+module.exports = { syncRoster, syncActivity, scanRipRap, matchLoadRow };

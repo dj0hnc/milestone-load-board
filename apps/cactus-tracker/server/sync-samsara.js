@@ -38,6 +38,12 @@ const TOWNS = [
   ['FORT WORTH', 'TX', 32.756, -97.331], ['MCKINNEY', 'TX', 33.198, -96.615], ['SHERMAN', 'TX', 33.635, -96.609],
   ['TERRELL', 'TX', 32.736, -96.275], ['WAXAHACHIE', 'TX', 32.387, -96.848], ['MOUNT PLEASANT', 'TX', 33.157, -94.968]
 ];
+// distancia aproximada en km (suficiente para "¿se movió?" a estas latitudes)
+function distKm(lat1, lon1, lat2, lon2) {
+  if (lat1 == null || lat2 == null) return Infinity;
+  return Math.sqrt(Math.pow((lat1 - lat2) * 111, 2) + Math.pow((lon1 - lon2) * 92, 2));
+}
+
 function nearestTown(lat, lon) {
   if (lat == null || lon == null) return '';
   let best = '', bestD = Infinity;
@@ -186,11 +192,13 @@ function mapCityToArea(city, areas) {
 }
 
 // Historia GPS de una ventana (para reconstruir dónde DURMIÓ cada truck).
-async function fetchGpsHistory(token, startISO, endISO) {
+// vehicleIds opcional: limita a un truck (p. ej. para buscar su último movimiento).
+async function fetchGpsHistory(token, startISO, endISO, vehicleIds) {
   let out = [], after = '', pages = 0;
   do {
     const url = 'https://api.samsara.com/fleet/vehicles/stats/history?types=gps'
       + '&startTime=' + encodeURIComponent(startISO) + '&endTime=' + encodeURIComponent(endISO)
+      + (vehicleIds ? '&vehicleIds=' + encodeURIComponent(vehicleIds) : '')
       + (after ? '&after=' + encodeURIComponent(after) : '');
     const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
     if (!r.ok) throw new Error('Samsara gps history HTTP ' + r.status);
@@ -245,6 +253,25 @@ async function backfillParking(cfg, days) {
   return summary;
 }
 
+// ÚLTIMO MOVIMIENTO EXACTO de un truck: barre su historia GPS hacia atrás (día por
+// día, del más reciente al más viejo) y regresa el último instante con velocidad —
+// para que el "down since" sea REAL y no una fecha inventada.
+async function lastMovementFromHistory(token, vehicleId, days) {
+  const today = todayCT();
+  for (let d = 0; d < (days || 14); d++) {
+    const day = shiftISO(today, -d);
+    const rows = await fetchGpsHistory(token, day + 'T00:00:00Z', shiftISO(day, 1) + 'T00:00:00Z', vehicleId);
+    let best = null;
+    for (const v of rows) {
+      for (const p of (v.gps || [])) {
+        if (p.speedMilesPerHour != null && p.speedMilesPerHour >= 3 && p.time && (!best || p.time > best)) best = p.time;
+      }
+    }
+    if (best) return best; // el día más reciente con movimiento gana
+  }
+  return null;
+}
+
 const KT_TERMINALS = ['POWDERLY', 'RHOME', 'WHITEWRIGHT'];
 
 // zonas operativas EN USO (cruzan compañías) — contra esto se mapea todo GPS
@@ -260,12 +287,15 @@ function knownAreas() {
 // Acomoda UN truck; lo usan el sync completo y el ⟳ de cada cuadrito.
 function placeTruck(org, t, areas, summary) {
   const nights = all(`SELECT city, lat, lon FROM parking_log WHERE org_id = ? AND number = ? AND city != '' ORDER BY date DESC LIMIT 7`, org.id, t.number);
-  const lastCity = nights.length ? nights[0].city : '';
+  // sin noches registradas todavía, la última posición conocida cuenta — un truck CON
+  // ubicación jamás se queda tirado en (NO YARD)
+  const lastCity = nights.length ? nights[0].city : (t.parked_city || '');
   let target = lastCity ? mapCityToArea(lastCity, areas) : '';
   const isKnown = x => x && areas.some(a => areaMergeKey(a) === areaMergeKey(x));
   // ciudad que no es zona conocida → alinear a la zona de operación más cercana
   if (target && !isKnown(target)) {
-    const pt = nights.find(n => n.city === lastCity && n.lat != null);
+    const pt = nights.find(n => n.city === lastCity && n.lat != null)
+      || (!nights.length && t.last_lat != null ? { lat: t.last_lat, lon: t.last_lon } : null);
     const town = pt ? nearestTown(pt.lat, pt.lon) : '';
     const t2 = town ? mapCityToArea(town, areas) : '';
     if (isKnown(t2)) target = t2;
@@ -289,7 +319,7 @@ function placeTruck(org, t, areas, summary) {
         if (t.is_new) { sets.push('is_new = 0', 'suggested_division = NULL'); summary.autoConfirmedNew = (summary.autoConfirmedNew || 0) + 1; }
       }
     }
-  } else if (org.id === 'KT' && t.is_sub && !t.division && nights.length) {
+  } else if (org.id === 'KT' && t.is_sub && !t.division && (nights.length || t.parked_city)) {
     sets.push('division = ?'); vals.push('ICS'); summary.placedDivision = (summary.placedDivision || 0) + 1; // IC con GPS confirmado
   }
 
@@ -375,13 +405,27 @@ async function syncSamsara(cfg) {
         if (!row && res.icBare) row = discoverIC(org.id, res.icBare, g.city, g.lat, g.lon, summary);
         if (!row) continue;
         summary.gps++;
-        run(`UPDATE trucks SET parked_city = ?, parked_at = ? WHERE org_id = ? AND number = ?`,
-          g.city || '', g.time || '', org.id, row.number);
+        // reverse-geo sin ciudad (pura carretera) → pueblo de operación más cercano;
+        // y JAMÁS pisar una ubicación conocida con un blanco — se queda la última buena
+        const city = g.city || nearestTown(g.lat, g.lon) || '';
+        if (city) {
+          run(`UPDATE trucks SET parked_city = ?, parked_at = ? WHERE org_id = ? AND number = ?`,
+            city, g.time || '', org.id, row.number);
+        }
+        // movimiento REAL: rodando ahorita, o se desplazó >500 m desde la última lectura
+        const moved = (g.speed != null && g.speed >= 3) ||
+          (row.last_lat != null && g.lat != null && distKm(row.last_lat, row.last_lon, g.lat, g.lon) > 0.5);
+        if (g.lat != null) {
+          run(`UPDATE trucks SET last_lat = ?, last_lon = ?${moved ? ', last_moved_at = ?' : ''} WHERE org_id = ? AND number = ?`,
+            g.lat, g.lon, ...(moved ? [g.time || nowISO()] : []), org.id, row.number);
+        } else if (moved) {
+          run(`UPDATE trucks SET last_moved_at = ? WHERE org_id = ? AND number = ?`, g.time || nowISO(), org.id, row.number);
+        }
         // parked = sleep window and not rolling
-        if (isSleepWindow && (g.speed == null || g.speed < 3) && g.city) {
+        if (isSleepWindow && (g.speed == null || g.speed < 3) && city) {
           run(`INSERT INTO parking_log (org_id, number, date, city, lat, lon) VALUES (?,?,?,?,?,?)
                ON CONFLICT(org_id, number, date) DO UPDATE SET city = excluded.city, lat = excluded.lat, lon = excluded.lon`,
-            org.id, row.number, today, g.city, g.lat, g.lon);
+            org.id, row.number, today, city, g.lat, g.lon);
           summary.parkingLogged++;
         }
       }
@@ -417,12 +461,22 @@ async function locateTruck(cfg, orgRow, truck) {
   }
   if (!g) throw new Error('truck not found in Samsara');
   const city = g._city || cityFrom(g.reverseGeo && g.reverseGeo.formattedLocation) || nearestTown(g.latitude, g.longitude);
-  run(`UPDATE trucks SET parked_city = ?, parked_at = ?, updated_at = ? WHERE org_id = ? AND number = ?`,
-    city || '', g.time || nowISO(), nowISO(), truck.org_id, truck.number);
+  // ubicación conocida jamás se pisa con un blanco — se queda la última buena
+  if (city) {
+    run(`UPDATE trucks SET parked_city = ?, parked_at = ?, updated_at = ? WHERE org_id = ? AND number = ?`,
+      city, g.time || nowISO(), nowISO(), truck.org_id, truck.number);
+  }
+  const speed = g.speedMilesPerHour != null ? g.speedMilesPerHour : null;
+  // movimiento real: rodando ahorita, o se desplazó >500 m desde la última lectura
+  const movedNow = (speed != null && speed >= 3) ||
+    (truck.last_lat != null && g.latitude != null && distKm(truck.last_lat, truck.last_lon, g.latitude, g.longitude) > 0.5);
+  if (g.latitude != null) {
+    run(`UPDATE trucks SET last_lat = ?, last_lon = ?${movedNow ? ', last_moved_at = ?' : ''} WHERE org_id = ? AND number = ?`,
+      g.latitude, g.longitude, ...(movedNow ? [g.time || nowISO()] : []), truck.org_id, truck.number);
+  }
   // EL REFRESH ES LA VERDAD: si está estacionado (no rodando), esa es su ubicación de
   // hoy → se registra y el truck se va SOLO a su terminal/zona correspondiente.
-  const speed = g.speedMilesPerHour != null ? g.speedMilesPerHour : null;
-  let moved = null;
+  let moved = null, lastMoved = null;
   if (city && (speed == null || speed < 3)) {
     run(`INSERT INTO parking_log (org_id, number, date, city, lat, lon) VALUES (?,?,?,?,?,?)
          ON CONFLICT(org_id, number, date) DO UPDATE SET city = excluded.city, lat = excluded.lat, lon = excluded.lon`,
@@ -432,8 +486,19 @@ async function locateTruck(cfg, orgRow, truck) {
     if (after && (after.area !== truck.area || after.division !== truck.division)) {
       moved = { area: after.area, division: after.division };
     }
+    // parado + con id: buscar en la historia el último movimiento REAL (down exacto)
+    if (!movedNow && truck.samsara_id) {
+      try {
+        lastMoved = await lastMovementFromHistory(token, truck.samsara_id, 14);
+        if (lastMoved) {
+          run(`UPDATE trucks SET last_moved_at = ? WHERE org_id = ? AND number = ? AND (last_moved_at = '' OR last_moved_at IS NULL OR last_moved_at < ?)`,
+            lastMoved, truck.org_id, truck.number, lastMoved);
+        }
+      } catch (e) { /* best-effort: el locate no falla por la historia */ }
+    }
   }
-  return { city: city || '', time: g.time || null, speed, moved };
+  const finalRow = get('SELECT last_moved_at FROM trucks WHERE org_id = ? AND number = ?', truck.org_id, truck.number);
+  return { city: city || '', time: g.time || null, speed, moved, last_moved_at: (finalRow && finalRow.last_moved_at) || null };
 }
 
 module.exports = { syncSamsara, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };

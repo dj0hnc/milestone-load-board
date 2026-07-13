@@ -360,6 +360,9 @@ function matchSearch(t,q){
     .some(v=>(v||"").toLowerCase().includes(q));
 }
 function hasGPS(t){return !(t.org_id==="CACTUS"&&t.is_sub);} // subs de Cactus: sin Samsara
+// fecha M/D en hora de Texas para timestamps de Samsara (last_moved_at)
+function tsMdy(ts){try{return new Date(ts).toLocaleDateString("en-US",{month:"numeric",day:"numeric",timeZone:"America/Chicago"});}catch(e){return String(ts).slice(5,10);}}
+function lastMovedLbl(t){return t.last_moved_at?` · last moved ${tsMdy(t.last_moved_at)}`:"";}
 function parkHtml(t){
   if(!hasGPS(t))return `<div class="park mut">🅿 no Samsara</div>`;
   if(!t.parked_city)return `<div class="park mut">🅿 no GPS yet — tap ⟳</div>`;
@@ -380,6 +383,7 @@ async function locateNow(org,num){
       const t=truckOf(org,num);
       if(t){
         t.parked_city=j.truck.parked_city;t.parked_at=j.truck.parked_at;
+        if(j.last_moved_at)t.last_moved_at=j.last_moved_at;
         // el GPS manda: si el server lo movió de zona/terminal, el cuadrito se muda ya
         if(j.moved){
           t.area=j.truck.area;t.division=j.truck.division;t.suggested_area=j.truck.suggested_area||"";
@@ -504,8 +508,12 @@ function render(){
     (groups[g]=groups[g]||[]).push(t);
   }
   let html="";
-  for(const g of Object.keys(groups).sort()){
+  // orden dentro de la zona: primero los útiles, luego SIN DRIVER (consecutivos al
+  // final), y los DELEASED hasta abajo — que no estorben arriba. El grupo SUBS al final.
+  const rank=t=>t.status==="deleased"?3:(t.status==="no_driver"||!(t.driver||"").trim())?2:0;
+  for(const g of Object.keys(groups).sort((a,b)=>(a==="SUBS")-(b==="SUBS")||a.localeCompare(b))){
     const list=groups[g];
+    list.sort((x,y)=>rank(x)-rank(y)||String(dnum(x)).localeCompare(String(dnum(y)),undefined,{numeric:true}));
     const key=groupKey(g);
     const closed=collapsed.has(key);
     const asig=list.filter(t=>t.state==="a").length;
@@ -540,11 +548,12 @@ function chipHtml(t){
     ${parkHtml(t)}
     ${actHtml(t)}
     ${hasGPS(t)?`<button class="btn-loc" title="Refresh live GPS" onclick="event.stopPropagation();locateNow('${t.org_id}','${esc(t.number)}')">⟳</button>`:""}
-    ${t.state==="d"&&t.state_source==="carry"?`<span class="badge" style="background:var(--red-bg);color:var(--red);">⛔ DOWN since ${mdy(t.down_since)} — confirm driver</span>`:""}
+    ${t.state==="d"&&t.state_source==="carry"?`<span class="badge" style="background:var(--red-bg);color:var(--red);">⛔ DOWN since ${mdy(t.down_since)}${lastMovedLbl(t)} — confirm driver</span>`:""}
+    ${t.state==="d"&&t.state_source!=="carry"&&t.last_moved_at?`<span class="badge" style="background:var(--red-bg);color:var(--red);">⏱ last moved ${tsMdy(t.last_moved_at)}</span>`:""}
     ${rest?'<span class="badge status">OFF TODAY</span>':""}
     ${(()=>{const o=offOf(t);return o?`<span class="badge status" style="background:#fdeedd;color:#a8622f;">${OFF_LBL[o.reason]||o.reason} ${mdy(o.from_date)}–${mdy(o.to_date)}</span>`:"";})()}
     ${(()=>{const u=!offOf(t)&&upcomingOff(t);return u?`<span class="badge" style="background:#fdf3e3;border:1px solid #c98a2f;color:#8a5a10;" title="scheduled — goes off on ${u.from_date}">${OFF_EMOJI[u.reason]||"🗓"} ${esc(u.reason).toUpperCase()} STARTS ${mdy(u.from_date)}</span>`:"";})()}
-    ${off&&!offOf(t)?`<span class="badge status">${STATUS_LBL[t.status]||esc(t.status)}${t.return_date?" · "+esc(t.return_date):""}</span>`:""}
+    ${off&&!offOf(t)?`<span class="badge status">${STATUS_LBL[t.status]||esc(t.status)}${t.return_date?" · "+esc(t.return_date):""}${lastMovedLbl(t)}</span>`:""}
     ${drvChg?`<span class="badge drvchg" title="driver changed">driver changed: was ${esc(drvChg.prev||"?")}</span>`:""}
     ${flag?`<span class="badge flag" onclick="event.stopPropagation();openFlag('${t.org_id}','${esc(t.number)}')">⚑ ${esc(flag)}</span>`:""}
     ${t.suggested_area&&!board.historical?`<span class="badge" style="background:var(--blue-bg);color:var(--blue);cursor:pointer;" onclick="event.stopPropagation();openAreaSuggest('${t.org_id}','${esc(t.number)}')">📍 parks @ ${esc(t.suggested_area)}</span>`:""}

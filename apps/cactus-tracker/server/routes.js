@@ -90,9 +90,11 @@ function createRouter({ config, newmile, log }) {
     const divisions = virtual
       ? all(`SELECT d.* FROM divisions d JOIN orgs o ON o.id = d.org_id WHERE o.enabled = 1 ORDER BY o.sort, d.sort`)
       : all('SELECT * FROM divisions WHERE org_id = ? ORDER BY sort', orgId);
+    // SUBS = subhaulers de verdad (sin Samsara, viven de NewMile). Los CKJ ICs también
+    // llevan is_sub=1 pero NO son subs — tienen su propio tab CKJ ICS y sí traen GPS.
     const trucks = virtual
       ? all(`SELECT t.* FROM trucks t JOIN orgs o ON o.id = t.org_id
-             WHERE o.enabled = 1 AND t.archived = 0 ${orgId === 'SUBS' ? 'AND t.is_sub = 1' : ''}`)
+             WHERE o.enabled = 1 AND t.archived = 0 ${orgId === 'SUBS' ? "AND t.is_sub = 1 AND NOT (t.org_id = 'KT' AND t.number LIKE 'CKJ%')" : ''}`)
       : all('SELECT * FROM trucks WHERE org_id = ? AND archived = 0', orgId);
     const states = virtual
       ? all('SELECT * FROM dispatch_state WHERE date = ?', date)

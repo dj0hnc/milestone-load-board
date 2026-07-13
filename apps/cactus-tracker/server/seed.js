@@ -180,6 +180,11 @@ function main(force) {
   }
   // tras el merge, sugerencias que quedaron iguales al área ya no dicen nada
   run(`UPDATE trucks SET suggested_area = '' WHERE suggested_area != '' AND suggested_area = area`);
+  // Livingston: en NewMile llevan prefijo LT ("LT245") pero el roster los trae pelones —
+  // display = número completo como NewMile (la llave no cambia, marcas/historial quedan)
+  run(`UPDATE trucks SET display_number = 'LT' || number, updated_at = ?
+       WHERE org_id = 'CACTUS' AND is_sub = 1 AND display_number = number
+         AND number GLOB '[0-9]*' AND driver LIKE '%LIVINGSTON%'`, nowISO());
   // one-time: aplicar los tipos de trailer DE LAS LISTAS del despacho como base blindada
   // (trailer_override=1: el sync de NewMile ya no los pisa). Corre también en producción.
   if (!metaGet('mig_seed_trailers') && SEED_PATH) {

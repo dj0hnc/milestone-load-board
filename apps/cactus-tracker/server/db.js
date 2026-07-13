@@ -179,6 +179,10 @@ function migrate(d) {
   addCol(d, 'dispatch_state', 'marked_by', "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'trailer_override', 'INTEGER DEFAULT 0');
   addCol(d, 'trucks', 'display_number', "TEXT DEFAULT ''");
+  // movimiento real según Samsara: cuándo fue la ÚLTIMA vez que el truck se movió
+  addCol(d, 'trucks', 'last_moved_at', "TEXT DEFAULT ''");
+  addCol(d, 'trucks', 'last_lat', 'REAL');
+  addCol(d, 'trucks', 'last_lon', 'REAL');
 }
 
 function addCol(d, table, col, decl) {
