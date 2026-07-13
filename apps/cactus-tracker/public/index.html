@@ -512,6 +512,7 @@ function chipHtml(t){
     ${parkHtml(t)}
     ${actHtml(t)}
     ${hasGPS(t)?`<button class="btn-loc" title="Refresh live GPS" onclick="event.stopPropagation();locateNow('${t.org_id}','${esc(t.number)}')">⟳</button>`:""}
+    ${t.state==="d"&&t.state_source==="carry"?`<span class="badge" style="background:var(--red-bg);color:var(--red);">⛔ DOWN since ${mdy(t.down_since)} — confirm driver</span>`:""}
     ${rest?'<span class="badge status">OFF TODAY</span>':""}
     ${(()=>{const o=offOf(t);return o?`<span class="badge status" style="background:#fdeedd;color:#a8622f;">${OFF_LBL[o.reason]||o.reason} ${mdy(o.from_date)}–${mdy(o.to_date)}</span>`:"";})()}
     ${(()=>{const u=!offOf(t)&&upcomingOff(t);return u?`<span class="badge" style="background:#fdf3e3;border:1px solid #c98a2f;color:#8a5a10;" title="scheduled — goes off on ${u.from_date}">${OFF_EMOJI[u.reason]||"🗓"} ${esc(u.reason).toUpperCase()} STARTS ${mdy(u.from_date)}</span>`:"";})()}

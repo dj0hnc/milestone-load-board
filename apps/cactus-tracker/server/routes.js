@@ -98,6 +98,17 @@ function createRouter({ config, newmile, log }) {
       ? all('SELECT * FROM dispatch_state WHERE date = ?', date)
       : all('SELECT * FROM dispatch_state WHERE date = ? AND org_id = ?', date, orgId);
     const stMap = new Map(states.map(s => [s.org_id + '|' + s.number, s]));
+    // CARRY-OVER de DOWN: un truck marcado ✕ un día sigue down los días siguientes
+    // (hasta que alguien confirme con el chofer y lo toque — esa marca explícita corta
+    // el arrastre). Solo se hereda 'd'; asignaciones son por día.
+    const prevRows = virtual
+      ? all('SELECT org_id, number, state, date FROM dispatch_state WHERE date < ? ORDER BY date DESC', date)
+      : all('SELECT org_id, number, state, date FROM dispatch_state WHERE date < ? AND org_id = ? ORDER BY date DESC', date, orgId);
+    const carryMap = new Map(); // org|num -> {state, date} (la marca MÁS RECIENTE anterior)
+    for (const r of prevRows) {
+      const k = r.org_id + '|' + r.number;
+      if (!carryMap.has(k)) carryMap.set(k, r);
+    }
     // rangos programados de no-disponible (vacaciones/shop): vigentes o futuros vs la fecha vista
     const offs = virtual
       ? all('SELECT * FROM time_off WHERE to_date >= ?', date)
@@ -124,8 +135,9 @@ function createRouter({ config, newmile, log }) {
           area: snap.area || t.area, rip_rap: snap.rip_rap != null ? snap.rip_rap : t.rip_rap,
           from_snapshot: 1
         } : {}),
-        state: s ? s.state : 'p',
-        state_source: s ? s.source : null,
+        state: s ? s.state : ((carryMap.get(t.org_id + '|' + t.number) || {}).state === 'd' ? 'd' : 'p'),
+        state_source: s ? s.source : ((carryMap.get(t.org_id + '|' + t.number) || {}).state === 'd' ? 'carry' : null),
+        down_since: !s && (carryMap.get(t.org_id + '|' + t.number) || {}).state === 'd' ? carryMap.get(t.org_id + '|' + t.number).date : null,
         state_by: s ? s.marked_by : null,
         time_off: offMap.get(t.org_id + '|' + t.number) || [],
         days_since_last_load: t.last_load_date ? daysBetween(t.last_load_date, today) : null,
