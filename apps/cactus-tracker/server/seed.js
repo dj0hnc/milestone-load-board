@@ -149,6 +149,8 @@ function main(force) {
   // terminal virtual para los CKJ ICs (independent contractors, CKJ### en las cargas)
   run(`INSERT INTO divisions (org_id,id,label,samsara_tag_id,sort) VALUES ('KT','ICS','CKJ ICS',NULL,4) ON CONFLICT(org_id,id) DO NOTHING`);
   run(`UPDATE divisions SET label = 'CKJ ICS' WHERE org_id = 'KT' AND id = 'ICS' AND label != 'CKJ ICS'`);
+  // tag "IC NTX" de Samsara (verificado en vivo 7/14/26) → los ICs se sugieren solos a ICS
+  run(`UPDATE divisions SET samsara_tag_id = '3047080' WHERE org_id = 'KT' AND id = 'ICS' AND samsara_tag_id IS NULL`);
   // display_number para DBs anteriores a la columna
   run(`UPDATE trucks SET display_number = number WHERE display_number IS NULL OR display_number = ''`);
   // los ICs se muestran con número pelón (CKJ450 → "450")

@@ -370,7 +370,10 @@ async function syncSamsara(cfg) {
       const parsed = splitNameFlag(v.name || '');
       const flag = parsed.flag;
       const res = resolveSamsaraTruck(org.id, v.name || '');
-      const row = res.row;
+      let row = res.row;
+      // IC en la lista de vehículos pero sin señal de GPS todavía: se crea AQUÍ para
+      // que TODOS los ICs de Samsara existan en el board desde el primer sync
+      if (!row && res.icBare) row = discoverIC(org.id, res.icBare, '', null, null, summary);
       if (!row) continue;
       summary.matched++;
 
