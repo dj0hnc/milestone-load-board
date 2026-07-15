@@ -96,13 +96,15 @@ function matchLoadRow(r, orgs, subNames) {
       }
       return { orgId: bare.org_id, num: bare.number, autoCreate: false };
     }
-    // SUB EXTERNO (AMP6060, PDR1062, SL47…): SIN fleet en NewMile porque no es ni de
-    // Cactus ni de CKJ, pero corre en NUESTRAS órdenes → es de los que usamos. Se crea
-    // solo, directo al board: CACTUS NORTH, zona SUBS (al final), tag SUBHAULER.
-    // Con fleet ajeno (otra carrier) se queda como antes: match-only, nunca se crea.
-    if (!normNum(fleetName)) {
-      return { orgId: 'CACTUS', num: cand, autoCreate: true, sub: true, tags: 'SUBHAULER', division: 'NORTH', area: 'SUBS' };
-    }
+  }
+  // SUBHAULER EXTERNO: verificado en vivo contra NewMile (7/15/26) que estos NUNCA traen
+  // fleet vacío — cargan su PROPIA compañía ("AMP Transport LLC", "Salazar Logistics"…).
+  // Por eso la regla es: cualquier fleet que NO sea de casa (Cactus Express / CKJ
+  // Transport) ni un fleet de sub ya conocido = subhauler. Hay muchísimos, así que NO se
+  // crea de golpe: se marca CANDIDATO y syncActivity adopta por FRECUENCIA los que
+  // usamos seguido (a la zona SUBS de Cactus North). Los esporádicos se ignoran.
+  if (normNum(fleetName)) {
+    return { subCandidate: true, orgId: 'CACTUS', num: cand, sub: true, tags: 'SUBHAULER', fleet: String(fleetName).trim() };
   }
   return null;
 }
@@ -194,7 +196,7 @@ async function syncActivity(client) {
   const orgs = enabledOrgs();
   const cactus = orgs.find(o => o.id === 'CACTUS');
   const subNames = subFleetNames();
-  const summary = { tickets: rows.length, matched: 0, autoCovered: 0, createdNew: 0, unmatched: 0 };
+  const summary = { tickets: rows.length, matched: 0, autoCovered: 0, createdNew: 0, subsAdopted: 0, unmatched: 0 };
 
   // rebuild the window: aggregate loads per (org, number, date) with the LAST driver seen
   const agg = new Map(); // key org|num|date -> {loads, driver}
@@ -213,20 +215,38 @@ async function syncActivity(client) {
     agg.set(key, cur);
   }
 
+  // ADOPCIÓN DE SUBS POR FRECUENCIA: un subhauler externo (fleet ajeno, no en el roster)
+  // que corre en >= SUB_REGULAR_DAYS días distintos de la ventana = "de los que usamos
+  // siempre" → entra solo a Cactus North, zona SUBS (colapsable, al final). Los que solo
+  // aparecen un par de veces NO se agregan (no queremos poner a todos).
+  const SUB_REGULAR_DAYS = 3;
+  const candDays = new Map(); // num -> Set(iso)
+  for (const [key, v] of agg) {
+    if (!v.m.subCandidate) continue;
+    const iso = key.split('|')[2];
+    if (get('SELECT 1 AS x FROM trucks WHERE org_id = ? AND number = ?', v.m.orgId, v.m.num)) continue; // ya existe
+    (candDays.get(v.m.num) || candDays.set(v.m.num, new Set()).get(v.m.num)).add(iso);
+  }
+  const adopt = new Set([...candDays].filter(([, d]) => d.size >= SUB_REGULAR_DAYS).map(([n]) => n));
+
   for (const [key, v] of agg) {
     const [orgId, num, iso] = key.split('|');
     let row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, num);
     if (!row) {
-      if (!v.m.autoCreate) { summary.unmatched += v.loads; continue; }
+      const adoptThis = v.m.subCandidate && adopt.has(num);
+      if (!v.m.autoCreate && !adoptThis) { summary.unmatched += v.loads; continue; }
       // Ran a load but is not on my roster → ⚑ NUEVO immediately (never wait for 4:30 AM).
-      // Los subs externos traen su lugar (NORTH / zona SUBS) → entran directo al board.
+      // Un sub adoptado o uno con lugar propio entra directo al board (NORTH / zona SUBS).
       const sub = v.m.sub || (orgId === 'CACTUS' && /^(BT|BW|HS|AE)\d/i.test(num)) ? 1 : 0;
+      const division = adoptThis ? 'NORTH' : (v.m.division || null);
+      const area = adoptThis ? 'SUBS' : (v.m.area || '(SIN YARD)');
+      const placed = adoptThis || !!v.m.area; // ya colocado → no es ⚑ NUEVO
       run(`INSERT INTO trucks (org_id, number, display_number, division, area, driver, tags, is_sub, suggested_division, is_new, updated_at)
            VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-        orgId, num, v.m.display || num, v.m.division || null, v.m.area || '(SIN YARD)', v.driver || '',
-        v.m.tags || (sub ? 'SUBHAULER' : ''), sub, v.m.suggestedDivision || null, v.m.area ? 0 : 1, nowISO());
+        orgId, num, v.m.display || num, division, area, v.driver || '',
+        v.m.tags || (sub ? 'SUBHAULER' : ''), sub, v.m.suggestedDivision || null, placed ? 0 : 1, nowISO());
       row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, num);
-      summary.createdNew++;
+      if (adoptThis) summary.subsAdopted++; else summary.createdNew++;
     }
     run(`INSERT INTO activity_log (org_id, number, load_date, driver, loads) VALUES (?,?,?,?,?)
          ON CONFLICT(org_id, number, load_date) DO UPDATE SET loads = excluded.loads, driver = excluded.driver`,

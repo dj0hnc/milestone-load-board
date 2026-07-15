@@ -187,6 +187,16 @@ function main(force) {
   run(`UPDATE trucks SET display_number = 'LT' || number, updated_at = ?
        WHERE org_id = 'CACTUS' AND is_sub = 1 AND display_number = number
          AND number GLOB '[0-9]*' AND driver LIKE '%LIVINGSTON%'`, nowISO());
+  // SUBS DE CABECERA: subhaulers que usamos casi siempre y que NO tienen fleet en NewMile
+  // (no son ni de Cactus ni de CKJ). Se garantizan en el board (Cactus North, zona SUBS)
+  // aunque NewMile no haya corrido una carga suya todavía. El sync los enriquece (driver,
+  // último load) cuando aparezcan en las órdenes. Idempotente: no pisa ediciones mías.
+  const KNOWN_SUBS = ['AMP6060', 'SL47', 'PDR1062', 'JFT01'];
+  for (const num of KNOWN_SUBS) {
+    run(`INSERT INTO trucks (org_id, number, display_number, division, area, tags, is_sub, is_new, updated_at)
+         VALUES ('CACTUS', ?, ?, 'NORTH', 'SUBS', 'SUBHAULER', 1, 0, ?)
+         ON CONFLICT(org_id, number) DO NOTHING`, num, num, nowISO());
+  }
   // one-time: aplicar los tipos de trailer DE LAS LISTAS del despacho como base blindada
   // (trailer_override=1: el sync de NewMile ya no los pisa). Corre también en producción.
   if (!metaGet('mig_seed_trailers') && SEED_PATH) {
@@ -206,9 +216,11 @@ function main(force) {
       console.log(`seed: trailer types de la lista aplicados a ${n} trucks (blindados)`);
     } catch (e) { console.log('seed trailers migration falló: ' + e.message); }
   }
-  const existing = get('SELECT COUNT(*) AS c FROM trucks').c;
+  // ¿ya se cargó el roster? Se mide por trucks de FLOTA (is_sub = 0); así los subs de
+  // cabecera (KNOWN_SUBS, insertados arriba) no hacen creer que el roster ya está.
+  const existing = get('SELECT COUNT(*) AS c FROM trucks WHERE is_sub = 0').c;
   if (existing > 0) {
-    console.log(`seed: DB already has ${existing} trucks — skipping (use --force to reload)`);
+    console.log(`seed: DB already has ${existing} fleet trucks — skipping roster load (use --force to reload)`);
     return;
   }
   if (!SEED_PATH) { console.log('seed: no encontré roster_seed.json — arranco vacío (el sync de NewMile puebla el board)'); return; }
