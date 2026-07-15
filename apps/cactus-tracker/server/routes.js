@@ -465,7 +465,20 @@ function createRouter({ config, newmile, log }) {
 
   router.post('/api/newmile/disconnect', (req, res) => res.json(newmile ? newmile.disconnect() : { connected: false }));
 
-  router.get('/api/health', (req, res) => res.json({ ok: true, today: todayCT() }));
+  // Health + KEEPALIVE: un ping externo (GitHub Actions cada 15 min) despierta el host
+  // en Azure y, de paso, dispara el auto-sync en segundo plano (dedup de 20 min). Así el
+  // board se mantiene solo aunque NADIE lo tenga abierto — solo revisas qué queda libre.
+  router.get('/api/health', (req, res) => {
+    const syncing = maybeBackgroundSync();
+    res.json({
+      ok: true,
+      today: todayCT(),
+      syncing,
+      newmile_connected: newmile ? !!newmile.connected : false,
+      last_sync_activity: metaGet('last_sync_newmile_activity'),
+      last_sync_samsara: metaGet('last_sync_samsara')
+    });
+  });
 
   // ---------- static frontend ----------
   // el HTML nunca se cachea (cada deploy llega al instante al cel); los iconos sí

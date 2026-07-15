@@ -1,0 +1,51 @@
+# Keepalive del Cactus Tracker.
+#
+# En el plan F1 (gratis) de Azure la Web App se DUERME cuando nadie la abre, y dormida
+# el scheduler interno no corre (no sincroniza NewMile ni Samsara). Este workflow la pica
+# cada 15 min durante el horario de trabajo (CT) para mantenerla despierta; el endpoint
+# /api/health, además de responder, dispara el auto-sync en segundo plano (dedup 20 min).
+# Así el board se mantiene solo aunque nadie lo tenga abierto.
+#
+# Requisito: que la app YA esté desplegada. Si NO se llama cactus-tracker-mab, crea la
+# variable AZURE_WEBAPP_NAME (o PUBLIC_BASE con la URL completa) en Settings → Variables.
+name: Keepalive Cactus Tracker
+on:
+  schedule:
+    # GitHub cron es UTC. Verano CT = UTC-5: 09:00-23:59 UTC ≈ 4:00 AM-6:59 PM CT.
+    - cron: '*/15 9-23 * * 1-6'
+    # cubre la hora de las 7 PM CT (00:xx UTC del día siguiente), Lun-Sáb
+    - cron: '*/15 0 * * 2-6'
+  workflow_dispatch:
+
+# nunca dejamos dos corriendo encimadas
+concurrency:
+  group: keepalive-cactus
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health (wake + background sync)
+        run: |
+          BASE="${{ vars.PUBLIC_BASE }}"
+          if [ -z "$BASE" ]; then
+            APP="${{ vars.AZURE_WEBAPP_NAME }}"
+            [ -z "$APP" ] && APP="cactus-tracker-mab"
+            BASE="https://${APP}.azurewebsites.net"
+          fi
+          URL="${BASE%/}/cactus-tracker/api/health"
+          echo "pinging $URL"
+          # hasta 3 intentos (la app puede tardar en despertar del sleep); nunca fallamos
+          # la corrida (un keepalive rojo solo generaría correos de alerta inútiles).
+          for i in 1 2 3; do
+            code=$(curl -sS -m 90 -o /tmp/health.json -w '%{http_code}' "$URL" || echo 000)
+            echo "attempt $i → HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "response: $(cat /tmp/health.json)"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "keepalive no logró 200 (la app puede estar despertando); no se marca como error"
+          exit 0
