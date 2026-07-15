@@ -4,3 +4,6 @@ data/cactus.db
 data/cactus.db-*
 data/newmile-tokens.json
 data/config.json
+
+# local DB backups
+data/backups/
