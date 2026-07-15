@@ -239,22 +239,45 @@ const CACHE_KEY="cactus-tracker-cache-v1";
 const QUEUE_KEY="cactus-tracker-queue-v1";
 
 // ---------- data ----------
+let _fetchSeq=0;
 async function fetchBoard(){
+  const myseq=++_fetchSeq;
   const d=date?("&date="+date):"";
-  try{
-    const r=await fetch(`${API}/api/board?org=${ORG}${d}`);
-    if(r.status===401){location.href=API+"/login.html";return;}
-    if(!r.ok)throw new Error("HTTP "+r.status);
-    board=await r.json();
-    if(!date)date=board.date;
-    offline=false;
-    localStorage.setItem(CACHE_KEY+":"+ORG,JSON.stringify({at:Date.now(),board}));
-  }catch(e){
-    // Regla de oro: si la red falla, mostrar la última data buena CON timestamp, nunca inventar.
-    const c=localStorage.getItem(CACHE_KEY+":"+ORG);
-    if(c&&!board){const j=JSON.parse(c);board=j.board;if(!date)date=board.date;}
-    offline=true;
+  // FEEDBACK INMEDIATO al tocar un día: mueve el resaltado ya (aunque el server tarde) y
+  // marca "cargando" — así nunca se siente congelado mientras Azure despierta.
+  if(board){try{buildHeader();}catch(e){}}
+  const nt=$("netTxt"); if(nt)nt.textContent="⏳ Loading "+(date||"")+"…";
+  // Azure gratis DUERME la app: el primer fetch puede resetear o tardar. Timeout + 1
+  // reintento para que un arranque en frío no deje la pantalla pegada en lo viejo.
+  let done=false;
+  for(let attempt=0; attempt<2 && !done; attempt++){
+    try{
+      const ctrl=new AbortController();
+      const to=setTimeout(()=>ctrl.abort(),15000);
+      const r=await fetch(`${API}/api/board?org=${ORG}${d}`,{signal:ctrl.signal});
+      clearTimeout(to);
+      if(r.status===401){location.href=API+"/login.html";return;}
+      if(!r.ok)throw new Error("HTTP "+r.status);
+      const j=await r.json();
+      if(myseq!==_fetchSeq)return; // ya salió una navegación más nueva: descarta esta
+      board=j;
+      if(!date)date=board.date;
+      offline=false;
+      localStorage.setItem(CACHE_KEY+":"+ORG,JSON.stringify({at:Date.now(),board}));
+      done=true;
+    }catch(e){
+      if(attempt===0){ // cold start: espera un momento y reintenta antes de rendirse
+        if(nt)nt.textContent="⏳ Waking server…";
+        await new Promise(r=>setTimeout(r,2500));
+        continue;
+      }
+      // Regla de oro: si la red falla, mostrar la última data buena CON timestamp, nunca inventar.
+      const c=localStorage.getItem(CACHE_KEY+":"+ORG);
+      if(c&&!board){const j=JSON.parse(c);board=j.board;if(!date)date=board.date;}
+      offline=true;
+    }
   }
+  if(myseq!==_fetchSeq)return;
   render();
 }
 
