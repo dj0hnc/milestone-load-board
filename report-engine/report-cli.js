@@ -113,6 +113,7 @@ function centralDate(offsetDays) {
     if (!m.ok) process.exit(1);
     markSent(KIND, centralDate(0));   // lock so it won't re-send today
   } else {
-    console.log('(dry run — add --send to email)');
+    console.log('(dry run — no email sent)\n');
+    console.log('----- REPORT BEGIN -----\n' + rep.text + '\n----- REPORT END -----');
   }
 })().catch(e => { console.error('FAIL: ' + e.message); process.exit(1); });
