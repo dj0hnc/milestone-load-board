@@ -135,6 +135,10 @@ async function syncRoster(client) {
       const driver = (t.driver_name || t.driver || '').trim();
       const trailer = shortTrailer(t.truck_type || t.trailer_type || ''); // "Aluminum End Dump" → AL-ED
       const nmId = t.id != null ? t.id : (t.truck_id != null ? t.truck_id : null);
+      // DUEÑO: owner_id estable (join) + owner_name (display, sin el espacio final que
+      // traen algunas orgs). Es la organización que POSEE el truck, no el chofer.
+      const ownerId = t.owner_id != null ? t.owner_id : (t.owner && t.owner.id != null ? t.owner.id : null);
+      const ownerName = String(t.owner_name || (t.owner && t.owner.name) || '').trim();
 
       const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', org.id, number);
       if (!row) {
@@ -142,13 +146,15 @@ async function syncRoster(client) {
         // KT names carry the terminal letter ("KT-7040 P") → pre-fill the suggestion.
         const hint = org.id === 'KT' ? ktDivisionHint(rawName) : null;
         run(`INSERT INTO trucks (org_id, number, display_number, division, area, driver, trailer_type, detected_flag,
-               nm_truck_id, suggested_division, is_new, updated_at)
-             VALUES (?,?,?,NULL,'(SIN YARD)',?,?,?,?,?,1,?)`,
-          org.id, number, display, driver, trailer, flag, nmId, hint, nowISO());
+               nm_truck_id, owner_id, owner_name, suggested_division, is_new, updated_at)
+             VALUES (?,?,?,NULL,'(SIN YARD)',?,?,?,?,?,?,?,1,?)`,
+          org.id, number, display, driver, trailer, flag, nmId, ownerId, ownerName, hint, nowISO());
         summary.created++;
         continue;
       }
       const sets = [], vals = [];
+      if (ownerId != null && ownerId !== row.owner_id) { sets.push('owner_id = ?'); vals.push(ownerId); }
+      if (ownerName && ownerName !== row.owner_name) { sets.push('owner_name = ?'); vals.push(ownerName); }
       if (driver && driver !== row.driver) {
         sets.push('driver_prev = ?', 'driver = ?', 'driver_changed_at = ?');
         vals.push(row.driver || '', driver, nowISO());
@@ -209,9 +215,10 @@ async function syncActivity(client) {
     if (!m) { summary.unmatched++; continue; }
 
     const key = m.orgId + '|' + m.num + '|' + iso;
-    const cur = agg.get(key) || { loads: 0, driver: '', m };
+    const cur = agg.get(key) || { loads: 0, driver: '', owner: '', m };
     cur.loads++;
     if (r.driver_name) cur.driver = String(r.driver_name).trim();
+    if (r.truck_owner) cur.owner = String(r.truck_owner).trim(); // dueño (denormalizado en el ticket)
     agg.set(key, cur);
   }
 
@@ -241,12 +248,15 @@ async function syncActivity(client) {
       const division = adoptThis ? 'NORTH' : (v.m.division || null);
       const area = adoptThis ? 'SUBS' : (v.m.area || '(SIN YARD)');
       const placed = adoptThis || !!v.m.area; // ya colocado → no es ⚑ NUEVO
-      run(`INSERT INTO trucks (org_id, number, display_number, division, area, driver, tags, is_sub, suggested_division, is_new, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-        orgId, num, v.m.display || num, division, area, v.driver || '',
+      run(`INSERT INTO trucks (org_id, number, display_number, division, area, driver, owner_name, tags, is_sub, suggested_division, is_new, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        orgId, num, v.m.display || num, division, area, v.driver || '', v.owner || '',
         v.m.tags || (sub ? 'SUBHAULER' : ''), sub, v.m.suggestedDivision || null, placed ? 0 : 1, nowISO());
       row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, num);
       if (adoptThis) summary.subsAdopted++; else summary.createdNew++;
+    } else if (v.owner && v.owner !== row.owner_name) {
+      // dueño desde el ticket (para subs que el roster de flota no trae)
+      run(`UPDATE trucks SET owner_name = ? WHERE org_id = ? AND number = ?`, v.owner, orgId, num);
     }
     run(`INSERT INTO activity_log (org_id, number, load_date, driver, loads) VALUES (?,?,?,?,?)
          ON CONFLICT(org_id, number, load_date) DO UPDATE SET loads = excluded.loads, driver = excluded.driver`,

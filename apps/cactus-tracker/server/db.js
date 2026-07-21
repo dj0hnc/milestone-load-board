@@ -183,6 +183,10 @@ function migrate(d) {
   addCol(d, 'trucks', 'last_moved_at', "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'last_lat', 'REAL');
   addCol(d, 'trucks', 'last_lon', 'REAL');
+  // DUEÑO / organización del truck (NewMile: owner_id estable + owner_name). Para
+  // agrupar por dueño y despachar juntos todos los de Elaine Raper, Dustin Smith, etc.
+  addCol(d, 'trucks', 'owner_id', 'INTEGER');
+  addCol(d, 'trucks', 'owner_name', "TEXT DEFAULT ''");
 }
 
 function addCol(d, table, col, decl) {

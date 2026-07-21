@@ -47,6 +47,10 @@ h1 span{color:var(--gold);}
 .seg button.rip.on{background:var(--blue);}
 .seg button.off-seg.on{background:#c98a2f;}
 .searchrow select{border:1.5px solid #cdd3df;border-radius:10px;padding:0 8px;font-family:'Barlow Condensed';font-weight:700;font-size:15px;background:#fff;height:44px;}
+.grpseg{border:1.5px solid #cdd3df;border-radius:10px;overflow:hidden;}
+.grpseg button{flex:1;height:38px;border:none;background:#fff;color:#5a6275;cursor:pointer;font-family:'Barlow Condensed';font-weight:800;font-size:14px;letter-spacing:.4px;border-right:1px solid #e8ebf1;}
+.grpseg button:last-child{border-right:none;}
+.grpseg button.on{background:var(--navy);color:#fff;}
 .orgtag{font-size:9px;font-weight:800;letter-spacing:.5px;padding:2px 5px;border-radius:4px;background:var(--navy);color:#fff;vertical-align:middle;margin-left:6px;}
 .orgtag.kt{background:var(--blue);}
 .orgtag.ic{background:#7a2fa8;}
@@ -200,6 +204,10 @@ footer{text-align:center;color:var(--mut);font-size:12px;padding:18px;}
     </select>
     <select id="fArea" onchange="render()" style="flex:1;max-width:170px;"></select>
     <button class="btn-reset" id="btnReset">Reset day</button>
+    <div class="grpseg" style="flex:1 1 100%;display:flex;gap:0;margin-top:2px;">
+      <button id="grpZone" onclick="setGroupMode('zone')" title="Group by area/zone">📍 By zone</button>
+      <button id="grpOwner" onclick="setGroupMode('owner')" title="Group by truck owner / organization">🏢 By owner</button>
+    </div>
   </div>
   <div id="bulkBar" style="display:none;background:var(--blue-bg);border:1.5px solid var(--blue);border-radius:12px;padding:9px 12px;margin:-6px 0 12px;font-size:13.5px;color:var(--blue);align-items:center;gap:10px;flex-wrap:wrap;"></div>
 
@@ -224,6 +232,17 @@ let division="NORTH";
 let date=null;           // ISO date being viewed
 let typeFilter=""; let statusFilter=""; let showFaltan=false;
 let offline=false;
+// agrupar por ZONA (área/ciudad) o por DUEÑO (organización/truck owner). El dueño mantiene
+// juntos todos los trokes de Elaine Raper, Dustin Smith, etc. sin importar dónde duerman.
+let groupMode=localStorage.getItem("ct-groupmode")||"owner";
+function setGroupMode(m){groupMode=m;localStorage.setItem("ct-groupmode",m);render();}
+function groupOf(t){
+  // en modo DUEÑO, un truck sin owner todavía (NewMile no sincronizado) cae a su ZONA en
+  // vez de a un blob "(NO OWNER)": así nunca se ve roto, y se reagrupa solo cuando NewMile
+  // llene los dueños.
+  if(groupMode==="owner")return (t.owner_name&&t.owner_name.trim())||areaLbl(t.area||"(SIN YARD)");
+  return areaLbl(t.area||"(SIN YARD)");
+}
 
 // multi-usuario: cada quien pone su nombre una vez; viaja en cada cambio (auditoría)
 let WHO=localStorage.getItem("cactus-who")||"";
@@ -410,7 +429,7 @@ async function locateNow(org,num){
         // el GPS manda: si el server lo movió de zona/terminal, el cuadrito se muda ya
         if(j.moved){
           t.area=j.truck.area;t.division=j.truck.division;t.suggested_area=j.truck.suggested_area||"";
-          collapsed.delete(groupKey(areaLbl(t.area||"(SIN YARD)")));
+          collapsed.delete(groupKey(groupOf(t)));
           localStorage.setItem("ct-collapsed",JSON.stringify([...collapsed]));
         }
       }
@@ -431,7 +450,7 @@ function actHtml(t){
 function toggleFaltan(){showFaltan=!showFaltan;render();}
 // zonas colapsables: se guardan cerradas por tab, sobreviven recargas
 let collapsed=new Set(JSON.parse(localStorage.getItem("ct-collapsed")||"[]"));
-function groupKey(g){return ORG+"|"+(isVirtual()?"":(division||""))+"|"+g;}
+function groupKey(g){return ORG+"|"+(isVirtual()?"":(division||""))+"|"+groupMode+"|"+g;}
 function toggleGroup(k){
   collapsed.has(k)?collapsed.delete(k):collapsed.add(k);
   localStorage.setItem("ct-collapsed",JSON.stringify([...collapsed]));
@@ -441,8 +460,8 @@ function jumpTo(org,num){
   typeFilter="";$("fSearch").value="";showFaltan=false;
   const t=truckOf(org,num);
   if(t){
-    // mismo cálculo de grupo que render(): área pura pasada por areaLbl
-    collapsed.delete(groupKey(areaLbl(t.area||"(SIN YARD)")));
+    // mismo cálculo de grupo que render() (zona o dueño, según el modo)
+    collapsed.delete(groupKey(groupOf(t)));
     localStorage.setItem("ct-collapsed",JSON.stringify([...collapsed]));
   }
   render();
@@ -498,6 +517,8 @@ function render(){
   const curArea=areaSel.value;
   areaSel.innerHTML=`<option value="">Area: all</option>`+areas.map(a=>`<option value="${esc(a)}" ${a===curArea?"selected":""}>${esc(areaLbl(a))}</option>`).join("");
 
+  $("grpZone").classList.toggle("on",groupMode==="zone");
+  $("grpOwner").classList.toggle("on",groupMode==="owner");
   renderSeg(divTrucks);
   const q=$("fSearch").value.trim().toLowerCase();
   // MULTI-BÚSQUEDA: pegar una lista ("972 1 927 1 1083 1" o "629 633 1386…") encuentra
@@ -525,18 +546,21 @@ function render(){
     else if(!matchSearch(t,q))continue;
     const a=t.area||"(SIN YARD)";
     if(areaSel.value&&a!==areaSel.value)continue;
-    // vista por ZONA: en ALL/SUBS se agrupa por área pura — Cactus, KT e ICs de la
-    // misma zona quedan juntos (la compañía va en la etiquetita del chip)
-    const g=areaLbl(a);
+    // agrupa por DUEÑO (organización) o por ZONA según el toggle. En dueño, todos los
+    // trokes de un mismo owner quedan juntos aunque duerman en ciudades distintas.
+    const g=groupOf(t);
     (groups[g]=groups[g]||[]).push(t);
   }
   let html="";
-  // orden dentro de la zona: primero los útiles, luego SIN DRIVER (consecutivos al
-  // final), y los DELEASED hasta abajo — que no estorben arriba. El grupo SUBS al final.
+  // orden dentro del grupo: primero los útiles, luego SIN DRIVER (consecutivos al final),
+  // y los DELEASED hasta abajo. En modo DUEÑO, sub-orden por ÁREA (por organización Y por
+  // área). SUBS / (NO OWNER) siempre al final del board.
   const rank=t=>t.status==="deleased"?3:(t.status==="no_driver"||!(t.driver||"").trim())?2:0;
-  for(const g of Object.keys(groups).sort((a,b)=>(a==="SUBS")-(b==="SUBS")||a.localeCompare(b))){
+  const last=g=>g==="SUBS"||g==="(NO OWNER)"?1:0;
+  const areaCmp=(x,y)=>areaLbl(x.area||"(SIN YARD)").localeCompare(areaLbl(y.area||"(SIN YARD)"));
+  for(const g of Object.keys(groups).sort((a,b)=>last(a)-last(b)||a.localeCompare(b))){
     const list=groups[g];
-    list.sort((x,y)=>rank(x)-rank(y)||String(dnum(x)).localeCompare(String(dnum(y)),undefined,{numeric:true}));
+    list.sort((x,y)=>rank(x)-rank(y)||(groupMode==="owner"?areaCmp(x,y):0)||String(dnum(x)).localeCompare(String(dnum(y)),undefined,{numeric:true}));
     const key=groupKey(g);
     const closed=collapsed.has(key);
     const asig=list.filter(t=>t.state==="a").length;
@@ -568,6 +592,7 @@ function chipHtml(t){
     <button class="btn-down" onclick="tapDown(event,'${t.org_id}','${esc(t.number)}')" title="Mark down">✕</button>
     <div class="top"><span class="num">${esc(dnum(t))}${isVirtual()?`<span class="orgtag ${t.org_id==="KT"?(t.is_sub?"ic":"kt"):(t.is_sub?"sub":"")}">${t.org_id==="KT"?(t.is_sub?"IC":"KT"):(t.is_sub?"SUB":"CACTUS")}</span>`:""}</span>${t.trailer_type?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(t.trailer_type)}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}</div>
     <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ NO DRIVER"}</div>
+    ${groupMode==="owner"?`<div class="park mut" style="color:#7a2fa8;">📌 zone: ${esc(areaLbl(t.area||"(SIN YARD)"))}</div>`:""}
     ${parkHtml(t)}
     ${actHtml(t)}
     ${hasGPS(t)?`<button class="btn-loc" title="Refresh live GPS" onclick="event.stopPropagation();locateNow('${t.org_id}','${esc(t.number)}')">⟳</button>`:""}
