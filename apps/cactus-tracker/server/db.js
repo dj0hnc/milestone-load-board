@@ -187,6 +187,8 @@ function migrate(d) {
   // agrupar por dueño y despachar juntos todos los de Elaine Raper, Dustin Smith, etc.
   addCol(d, 'trucks', 'owner_id', 'INTEGER');
   addCol(d, 'trucks', 'owner_name', "TEXT DEFAULT ''");
+  // ⭐ STAR DRIVER: marca manual por truck para filtrar rápido a los mejores choferes
+  addCol(d, 'trucks', 'star', 'INTEGER DEFAULT 0');
 }
 
 function addCol(d, table, col, decl) {

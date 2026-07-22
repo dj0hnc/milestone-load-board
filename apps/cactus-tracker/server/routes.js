@@ -15,7 +15,7 @@ const { syncSamsara, backfillParking, locateTruck } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
 
 const VALID_STATUS = ['ok', 'shop', 'down', 'no_driver', 'vacation', 'deleased'];
-const EDITABLE = ['note', 'status', 'status_note', 'return_date', 'rest_days', 'area', 'division', 'rip_rap', 'phone', 'tags', 'driver', 'trailer_type'];
+const EDITABLE = ['note', 'status', 'status_note', 'return_date', 'rest_days', 'area', 'division', 'rip_rap', 'star', 'phone', 'tags', 'driver', 'trailer_type'];
 
 function createRouter({ config, newmile, log }) {
   const router = express.Router();
@@ -205,7 +205,7 @@ function createRouter({ config, newmile, log }) {
       if (!(f in (req.body || {}))) continue;
       let v = req.body[f];
       if (f === 'status' && !VALID_STATUS.includes(v)) return res.status(400).json({ error: 'invalid status' });
-      if (f === 'rip_rap') v = v ? 1 : 0;
+      if (f === 'rip_rap' || f === 'star') v = v ? 1 : 0;
       if (f === 'area' && v) v = canonArea(v); // zonas SIN estado: "PARIS, TX" → "PARIS"
       if (f === 'division' && v != null && v !== '') {
         const d = get('SELECT 1 AS x FROM divisions WHERE org_id = ? AND id = ?', orgId, normNum(v));

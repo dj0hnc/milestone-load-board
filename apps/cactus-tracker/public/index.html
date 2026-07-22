@@ -46,6 +46,10 @@ h1 span{color:var(--gold);}
 .seg button.on{background:var(--navy);color:#fff;}
 .seg button.rip.on{background:var(--blue);}
 .seg button.off-seg.on{background:#c98a2f;}
+.seg button.star-seg.on{background:var(--gold);color:var(--navy);}
+.btn-star{position:absolute;top:6px;right:66px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;font-size:14px;cursor:pointer;line-height:1;padding:0;opacity:.4;filter:grayscale(1);}
+.btn-star.on{opacity:1;filter:none;border-color:var(--gold);background:#fff8e6;}
+.chip.starred{border-color:var(--gold);box-shadow:0 0 0 1.5px var(--gold),0 1px 3px rgba(0,0,0,.07);}
 .searchrow select{border:1.5px solid #cdd3df;border-radius:10px;padding:0 8px;font-family:'Barlow Condensed';font-weight:700;font-size:15px;background:#fff;height:44px;}
 .grpseg{border:1.5px solid #cdd3df;border-radius:10px;overflow:hidden;}
 .grpseg button{flex:1;height:38px;border:none;background:#fff;color:#5a6275;cursor:pointer;font-family:'Barlow Condensed';font-weight:800;font-size:14px;letter-spacing:.4px;border-right:1px solid #e8ebf1;}
@@ -310,14 +314,19 @@ let flushing=false;
 async function flushQueue(){
   if(flushing)return; flushing=true;
   try{
-    let q=JSON.parse(localStorage.getItem(QUEUE_KEY)||"[]");
-    while(q.length){
+    // RE-LEER la cola de localStorage en CADA vuelta: si otro tap agrega algo mientras
+    // corre el fetch, no se pierde (antes se cacheaba y se sobrescribía → escrituras perdidas)
+    while(true){
+      let q=JSON.parse(localStorage.getItem(QUEUE_KEY)||"[]");
+      if(!q.length)break;
       const req=q[0];
       try{
         const r=await fetch(API+req.path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(req.body)});
         if(!r.ok && r.status>=500)throw new Error("server");
       }catch(e){break;} // network down: retry on next flush
-      q.shift(); localStorage.setItem(QUEUE_KEY,JSON.stringify(q));
+      // quita SOLO el primero de la cola ACTUAL (pudo crecer durante el fetch)
+      q=JSON.parse(localStorage.getItem(QUEUE_KEY)||"[]"); q.shift();
+      localStorage.setItem(QUEUE_KEY,JSON.stringify(q));
     }
     offline=JSON.parse(localStorage.getItem(QUEUE_KEY)||"[]").length>0&&offline;
   }finally{flushing=false;}
@@ -336,6 +345,14 @@ function setSt(t,s){
 }
 function tapChip(org,num){const t=truckOf(org,num);if(!t)return; setSt(t,t.state==="a"?"p":"a");}
 function tapDown(ev,org,num){ev.stopPropagation();const t=truckOf(org,num);if(!t)return; setSt(t,t.state==="d"?"p":"d");}
+// STAR DRIVER: marca por truck (no por día). Optimista + cola offline, como los demás edits.
+function toggleStar(ev,org,num){
+  ev.stopPropagation();
+  const t=truckOf(org,num);if(!t)return;
+  t.star=t.star?0:1;
+  queuePush({path:`/api/truck/${org}/${encodeURIComponent(num)}`,body:{star:t.star,by:WHO}});
+  render();
+}
 
 // ---------- helpers ----------
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
@@ -362,6 +379,7 @@ function matchStatus(t){
     case "cov": return t.state==="a";
     case "off": return isOffNow(t);
     case "rip": return !!t.rip_rap;
+    case "star": return !!t.star;
   }
   return true;
 }
@@ -382,7 +400,7 @@ function matchTypeSel(t){
   return true;
 }
 function renderSeg(list){
-  const c={all:0,open:0,cov:0,off:0,rip:0};
+  const c={all:0,open:0,cov:0,off:0,rip:0,star:0};
   for(const t of list){
     if(t.is_new)continue;
     c.all++;
@@ -390,8 +408,9 @@ function renderSeg(list){
     else if(isOffNow(t))c.off++;
     else c.open++;
     if(t.rip_rap)c.rip++;
+    if(t.star)c.star++;
   }
-  const segs=[["","ALL",c.all,""],["open","OPEN",c.open,""],["cov","COVERED",c.cov,""],["off","OFF",c.off,"off-seg"],["rip","RIP",c.rip,"rip"]];
+  const segs=[["","ALL",c.all,""],["open","OPEN",c.open,""],["cov","COVERED",c.cov,""],["off","OFF",c.off,"off-seg"],["rip","RIP",c.rip,"rip"],["star","⭐ STAR",c.star,"star-seg"]];
   $("segStatus").innerHTML=segs.map(s=>`<button class="${s[3]} ${statusFilter===s[0]?"on":""}" onclick="setStatus('${s[0]}')">${s[1]}<span>${s[2]}</span></button>`).join("");
 }
 function setStatus(v){statusFilter=v;render();}
@@ -584,10 +603,11 @@ function chipHtml(t){
   const offEmoji=offEntry?(OFF_EMOJI[offEntry.reason]||"⛔"):(off?(OFF_EMOJI[t.status]||"⛔"):"");
   const flag=t.samsara_flag||t.detected_flag;
   const drvChg=t.driver_changed_recent;
-  return `<div class="chip ${cls} ${rest?"rest":""}" id="chip-${cssId(t.org_id+"-"+t.number)}" onclick="tapChip('${t.org_id}','${esc(t.number)}')">
+  return `<div class="chip ${cls} ${rest?"rest":""} ${t.star?"starred":""}" id="chip-${cssId(t.org_id+"-"+t.number)}" onclick="tapChip('${t.org_id}','${esc(t.number)}')">
     ${t.rip_rap?'<div class="ripflag"></div>':""}
     ${t.state==="a"?`<div class="check ${t.state_source==="auto"?"auto":""}" title="${t.state_source==="auto"?"auto-covered: hauled or assigned today in NewMile":"assigned"}">${t.state_source==="auto"?"⚡":"✓"}</div>`:""}
     ${cls==="s-off"?`<div class="offmark" title="not available">${offEmoji}</div>`:""}
+    <button class="btn-star ${t.star?"on":""}" onclick="toggleStar(event,'${t.org_id}','${esc(t.number)}')" title="${t.star?"Star driver — tap to remove":"Mark as star driver"}">⭐</button>
     <button class="btn-edit" onclick="event.stopPropagation();openEdit('${t.org_id}','${esc(t.number)}')" title="Edit">✎</button>
     <button class="btn-down" onclick="tapDown(event,'${t.org_id}','${esc(t.number)}')" title="Mark down">✕</button>
     <div class="top"><span class="num">${esc(dnum(t))}${isVirtual()?`<span class="orgtag ${t.org_id==="KT"?(t.is_sub?"ic":"kt"):(t.is_sub?"sub":"")}">${t.org_id==="KT"?(t.is_sub?"IC":"KT"):(t.is_sub?"SUB":"CACTUS")}</span>`:""}</span>${t.trailer_type?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(t.trailer_type)}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}</div>
