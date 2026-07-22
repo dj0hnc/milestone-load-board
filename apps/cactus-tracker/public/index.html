@@ -7,20 +7,25 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-180.png">
-<meta name="theme-color" content="#1C2333">
+<meta name="theme-color" content="#31353A">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Milestone TX">
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{
-  --navy:#1C2333; --navy2:#252e42; --gold:#C8991F;
-  --bg:#f4f5f7; --card:#fff; --ink:#1C2333; --mut:#7a8194;
-  --green:#1e8a4c; --green-bg:#e6f5ec; --red:#b02a2a; --red-bg:#fbe9e9;
-  --blue:#2456a6; --blue-bg:#e7f0fc;
+  /* Milestone brand: Road / Sand / Stone / Dirt — earthy, grounded, elite.
+     Var names kept from the old theme so the whole app recolors at once. */
+  --navy:#31353A; --navy2:#3B4046; --gold:#B89A4E; --gold-d:#9C8140;
+  --bg:#F2F0EB; --card:#FFFFFF; --ink:#2B2D30; --mut:#8A8D92; --line:#E5E2DB;
+  --green:#4E8C63; --green-bg:#EAF2EC; --red:#B0442F; --red-bg:#F7EAE6;
+  --blue:#3F7080; --blue-bg:#E9F0F2;
+  --sand:#B89A4E; --stone:#7A7D80; --dirt:#8B7355;
+  --sh-card:0 1px 2px rgba(45,45,45,.04),0 3px 12px rgba(45,45,45,.06);
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-body{font-family:'Barlow',Arial,sans-serif;background:var(--bg);color:var(--ink);}
+body{font-family:'Poppins','Nunito Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;}
 header{background:var(--navy);color:#fff;padding:12px 16px 0;position:sticky;top:0;z-index:50;box-shadow:0 2px 10px rgba(0,0,0,.3);}
 .hrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
 h1{font-family:'Barlow Condensed';font-weight:800;font-size:26px;letter-spacing:1px;text-transform:uppercase;}
@@ -47,9 +52,7 @@ h1 span{color:var(--gold);}
 .seg button.rip.on{background:var(--blue);}
 .seg button.off-seg.on{background:#c98a2f;}
 .seg button.star-seg.on{background:var(--gold);color:var(--navy);}
-.btn-star{position:absolute;top:6px;right:66px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;font-size:14px;cursor:pointer;line-height:1;padding:0;opacity:.4;filter:grayscale(1);}
-.btn-star.on{opacity:1;filter:none;border-color:var(--gold);background:#fff8e6;}
-.chip.starred{border-color:var(--gold);box-shadow:0 0 0 1.5px var(--gold),0 1px 3px rgba(0,0,0,.07);}
+/* star vive inline junto al número (ver .chip .num .star-btn en el refresh elite) */
 .searchrow select{border:1.5px solid #cdd3df;border-radius:10px;padding:0 8px;font-family:'Barlow Condensed';font-weight:700;font-size:15px;background:#fff;height:44px;}
 .grpseg{border:1.5px solid #cdd3df;border-radius:10px;overflow:hidden;}
 .grpseg button{flex:1;height:38px;border:none;background:#fff;color:#5a6275;cursor:pointer;font-family:'Barlow Condensed';font-weight:800;font-size:14px;letter-spacing:.4px;border-right:1px solid #e8ebf1;}
@@ -156,6 +159,74 @@ footer{text-align:center;color:var(--mut);font-size:12px;padding:18px;}
   h1{font-size:20px;} .grid{grid-template-columns:repeat(auto-fill,minmax(165px,1fr));}
   .days{margin-left:0;}
 }
+
+/* ============================================================
+   ELITE REFRESH — Milestone brand (Poppins · Road/Sand/Stone/Dirt)
+   Poppins or similar. Layered on top; keeps all class names intact.
+   ============================================================ */
+/* Poppins everywhere; weight carries the hierarchy (no condensed face). Forzado en TODO
+   porque el tema viejo usaba 'Barlow Condensed' inline, que ya no cargamos. */
+body,body *{font-family:'Poppins','Nunito Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif !important;}
+h1,.faltan-pill,.fleet-tab,.day,.seg button,.grpseg button,.btn-sync,.btn-reset,.group h2,.banner b,.faltanBox b,.modal h3,.modal .actions button,.orgtag,.chip .num,.chip .trl{letter-spacing:.2px;}
+
+/* Header — matte charcoal with depth, Sand hairline */
+header{background:linear-gradient(180deg,#3A3F44 0%,var(--navy) 100%);padding:14px 18px 0;box-shadow:0 4px 20px rgba(30,32,35,.28);border-bottom:1px solid rgba(184,154,78,.35);}
+h1{font-weight:700;font-size:23px;letter-spacing:.4px;text-transform:none;}
+h1 span{color:var(--sand);}
+.faltan-pill{font-weight:700;font-size:15px;letter-spacing:.3px;padding:8px 18px;border-radius:999px;box-shadow:0 2px 8px rgba(184,154,78,.35);text-transform:uppercase;}
+.fleet-tab{font-weight:600;font-size:14px;letter-spacing:.6px;padding:9px 16px;border-bottom-width:3px;transition:color .15s;}
+.fleet-tab.on{border-bottom-color:var(--sand);}
+.day{border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#D9DCE0;font-weight:600;font-size:12px;transition:transform .05s,background .15s;}
+.day:active{transform:scale(.94);}
+.day small{font-weight:700;opacity:.8;}
+.day.on{background:var(--sand);border-color:var(--sand);color:#2B2D30;font-weight:700;}
+.day.today{border-color:var(--sand);}
+
+/* Cards — warm, soft, layered */
+.wrap{padding:16px 16px 80px;}
+.chip{border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh-card);padding:11px 13px;transition:transform .06s,box-shadow .15s;}
+.chip:hover{box-shadow:0 2px 4px rgba(45,45,45,.05),0 8px 22px rgba(45,45,45,.09);}
+.chip .top{padding-right:72px;flex-wrap:wrap;row-gap:5px;align-items:center;}
+.chip .num{display:inline-flex;align-items:center;gap:3px;font-weight:700;font-size:24px;letter-spacing:0;flex-shrink:0;}
+.chip .trl{border-radius:7px;font-weight:600;background:#F1EEE8;color:var(--stone);flex-shrink:0;}
+.grid{gap:12px;}
+
+/* Inline STAR toggle (next to the number) — no more corner overlap */
+.chip .num .star-btn{border:none;background:none;cursor:pointer;font-size:18px;line-height:1;padding:0 4px 0 0;color:#CFCabe;vertical-align:baseline;transition:transform .1s;}
+.chip .num .star-btn.on{color:var(--sand);text-shadow:0 1px 2px rgba(184,154,78,.4);}
+.chip .num .star-btn:active{transform:scale(1.25);}
+.chip.starred{border-color:var(--sand);box-shadow:0 0 0 1.5px var(--sand),var(--sh-card);}
+
+/* Corner buttons — ghost, refined, evenly pitched (only edit + down here now) */
+.btn-down,.btn-edit,.btn-loc{border:1px solid var(--line);background:#FAF9F6;color:#A6A29A;border-radius:9px;transition:all .12s;}
+.btn-down{top:8px;right:8px;}
+.btn-edit{top:8px;right:40px;}
+.btn-loc{bottom:8px;right:8px;}
+
+/* Segmented controls — pill, tactile */
+.seg,.grpseg{border-color:var(--line);border-radius:12px;box-shadow:var(--sh-card);}
+.seg button,.grpseg button{color:var(--stone);font-weight:600;border-right-color:var(--line);}
+.seg button span{font-weight:700;}
+.seg button.on{background:var(--navy);}
+.seg button.star-seg.on{background:var(--sand);color:#2B2D30;}
+.grpseg button.on{background:var(--navy);}
+.searchrow input,.searchrow select,.modal input[type=text],.modal select{border-color:var(--line);border-radius:11px;}
+.searchrow input:focus,.searchrow select:focus{outline:none;border-color:var(--sand);box-shadow:0 0 0 3px rgba(184,154,78,.16);}
+.btn-sync{background:var(--navy);border-radius:9px;font-weight:600;letter-spacing:.4px;}
+.btn-reset{border-radius:10px;font-weight:600;}
+
+/* Group headers — Sand rule, quiet counts */
+.group h2{font-weight:700;font-size:16px;letter-spacing:.4px;text-transform:uppercase;border-bottom:2px solid var(--sand);color:var(--ink);}
+.group h2 small{font-weight:600;}
+.group h2 .chev{color:var(--sand);}
+
+/* Banners / faltan — softer */
+.banner,.faltanBox{border-radius:13px;box-shadow:var(--sh-card);}
+.faltan-pill.ok{background:var(--green);}
+.progress{background:#E5E2DB;border-radius:999px;}
+.progress i{background:linear-gradient(90deg,var(--sand),var(--green));}
+.modal{border-radius:18px 18px 0 0;}
+.b-save{background:var(--green);}
 </style>
 </head>
 <body>
@@ -607,10 +678,9 @@ function chipHtml(t){
     ${t.rip_rap?'<div class="ripflag"></div>':""}
     ${t.state==="a"?`<div class="check ${t.state_source==="auto"?"auto":""}" title="${t.state_source==="auto"?"auto-covered: hauled or assigned today in NewMile":"assigned"}">${t.state_source==="auto"?"⚡":"✓"}</div>`:""}
     ${cls==="s-off"?`<div class="offmark" title="not available">${offEmoji}</div>`:""}
-    <button class="btn-star ${t.star?"on":""}" onclick="toggleStar(event,'${t.org_id}','${esc(t.number)}')" title="${t.star?"Star driver — tap to remove":"Mark as star driver"}">⭐</button>
     <button class="btn-edit" onclick="event.stopPropagation();openEdit('${t.org_id}','${esc(t.number)}')" title="Edit">✎</button>
     <button class="btn-down" onclick="tapDown(event,'${t.org_id}','${esc(t.number)}')" title="Mark down">✕</button>
-    <div class="top"><span class="num">${esc(dnum(t))}${isVirtual()?`<span class="orgtag ${t.org_id==="KT"?(t.is_sub?"ic":"kt"):(t.is_sub?"sub":"")}">${t.org_id==="KT"?(t.is_sub?"IC":"KT"):(t.is_sub?"SUB":"CACTUS")}</span>`:""}</span>${t.trailer_type?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(t.trailer_type)}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}</div>
+    <div class="top"><span class="num"><button class="star-btn ${t.star?"on":""}" onclick="toggleStar(event,'${t.org_id}','${esc(t.number)}')" title="${t.star?"Star driver — tap to remove":"Mark as star driver"}">${t.star?"★":"☆"}</button>${esc(dnum(t))}${isVirtual()?`<span class="orgtag ${t.org_id==="KT"?(t.is_sub?"ic":"kt"):(t.is_sub?"sub":"")}">${t.org_id==="KT"?(t.is_sub?"IC":"KT"):(t.is_sub?"SUB":"CACTUS")}</span>`:""}</span>${t.trailer_type?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(t.trailer_type)}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}</div>
     <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ NO DRIVER"}</div>
     ${groupMode==="owner"?`<div class="park mut" style="color:#7a2fa8;">📌 zone: ${esc(areaLbl(t.area||"(SIN YARD)"))}</div>`:""}
     ${parkHtml(t)}
