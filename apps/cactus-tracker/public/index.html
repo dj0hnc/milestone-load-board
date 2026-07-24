@@ -212,6 +212,11 @@ h1 span{color:var(--sand);}
 .grpseg button.on{background:var(--navy);}
 .searchrow input,.searchrow select,.modal input[type=text],.modal select{border-color:var(--line);border-radius:11px;}
 .searchrow input:focus,.searchrow select:focus{outline:none;border-color:var(--sand);box-shadow:0 0 0 3px rgba(184,154,78,.16);}
+/* BÚSQUEDA FIJA: pegada justo debajo del header (altura dinámica via --hh); siempre a la
+   mano sin scrollear. Fondo opaco para que los cuadritos pasen por debajo limpiamente. */
+.searchbar{position:sticky;top:var(--hh,116px);z-index:45;background:var(--bg);padding:10px 0 8px;margin:0 0 6px;}
+.searchbar input{width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:12px;font-size:16px;background:var(--card);box-shadow:var(--sh-card);}
+.searchbar input:focus{outline:none;border-color:var(--sand);box-shadow:0 0 0 3px rgba(184,154,78,.16);}
 .btn-sync{background:var(--navy);border-radius:9px;font-weight:600;letter-spacing:.4px;}
 .btn-reset{border-radius:10px;font-weight:600;}
 
@@ -242,6 +247,12 @@ h1 span{color:var(--sand);}
 </header>
 
 <div class="wrap">
+  <div class="searchbar" id="searchbar">
+    <div style="position:relative;">
+      <input id="fSearch" type="text" placeholder="🔍 Search # / driver / area / owner / note…" style="width:100%;padding-right:38px;">
+      <button id="fClear" onclick="clearSearch()" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);width:26px;height:26px;border-radius:50%;border:none;background:#cdd3df;color:#4a5164;font-size:14px;font-weight:700;cursor:pointer;line-height:1;">✕</button>
+    </div>
+  </div>
   <div class="statusbar">
     <span><span class="dot" id="nmDot"></span><span id="nmTxt">NewMile…</span></span>
     <span id="lastSync"></span>
@@ -261,10 +272,6 @@ h1 span{color:var(--sand);}
   <div class="seg" id="segStatus"></div>
 
   <div class="searchrow" style="flex-wrap:wrap;">
-    <div style="flex:1 1 100%;position:relative;">
-      <input id="fSearch" type="text" placeholder="Search # / driver / area / note / type…" style="width:100%;padding-right:38px;">
-      <button id="fClear" onclick="clearSearch()" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);width:26px;height:26px;border-radius:50%;border:none;background:#cdd3df;color:#4a5164;font-size:14px;font-weight:700;cursor:pointer;line-height:1;">✕</button>
-    </div>
     <select id="fType" onchange="typeFilter=this.value;render()" style="flex:1;">
       <option value="">Type: all</option>
       <option value="ALED">AL-ED (aluminum)</option>
@@ -815,7 +822,16 @@ function buildHeader(){
     `<button class="day" style="width:auto;padding:0 9px" onclick="openCal()" title="Jump to any date">📅</button>`+
     `<input type="date" id="calJump" style="position:absolute;width:1px;height:1px;opacity:0;" onchange="if(this.value)setDate(this.value)">`+
     (date!==board.today?`<button class="day" style="width:auto;padding:0 10px" onclick="setDate('${board.today}')" title="Back to today">TODAY</button>`:"");
+  syncStickyTop();
 }
+// altura real del header (varía si los tabs/días se envuelven) → la barra de búsqueda
+// se pega EXACTAMENTE debajo. Se recalcula tras render y en cada resize/rotación.
+function syncStickyTop(){
+  const h=document.querySelector("header");
+  if(h)document.documentElement.style.setProperty("--hh",h.offsetHeight+"px");
+}
+window.addEventListener("resize",syncStickyTop);
+window.addEventListener("orientationchange",()=>setTimeout(syncStickyTop,150));
 function openCal(){
   const c=$("calJump");c.value=date;
   if(c.showPicker)try{c.showPicker();return;}catch(e){}
