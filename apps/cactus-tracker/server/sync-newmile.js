@@ -122,6 +122,14 @@ async function syncRoster(client) {
       const fname = typeof t.fleet === 'string' ? t.fleet : (t.fleet && t.fleet.name);
       return fid === org.nm_fleet_id || org.fleetNames.some(n => normNum(n) === normNum(fname));
     });
+    // COMPLETITUD POR DUEÑO: incluye trokes SIN fleet cuyo DUEÑO ya está en nuestra flota.
+    // NewMile a veces deja un troke de un owner-operator sin fleet asignado (p.ej. Samantha
+    // Williams 1084) y se caería del roster; así todos los trokes de un dueño quedan juntos.
+    const fleetOwners = new Set(mine.map(t => t.owner_id).filter(x => x != null));
+    for (const t of nmTrucks) {
+      const fid = t.fleet_id != null ? t.fleet_id : (t.fleet && t.fleet.id);
+      if (!fid && t.owner_id != null && fleetOwners.has(t.owner_id) && !mine.includes(t)) mine.push(t);
+    }
     const seen = new Set();
 
     for (const t of mine) {

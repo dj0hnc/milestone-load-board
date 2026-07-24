@@ -197,6 +197,19 @@ function main(force) {
          VALUES ('CACTUS', ?, ?, 'NORTH', 'SUBS', 'SUBHAULER', 1, 0, ?)
          ON CONFLICT(org_id, number) DO NOTHING`, num, num, nowISO());
   }
+  // DUEÑOS VERIFICADOS EN NEWMILE (owner_id, no el chofer). Samantha Williams (owner 1481)
+  // tiene 4 trokes; el 1084 (Demo, Benjamin Reine) NO trae fleet en NewMile y se caía del
+  // roster. Corre DESPUÉS de cargar el roster (abajo) para no falsear el chequeo de DB vacía.
+  // Idempotente y no pisa un owner_name que el sync de NewMile ya haya puesto.
+  function applyKnownOwners() {
+    run(`INSERT INTO trucks (org_id, number, display_number, division, area, driver, trailer_type, owner_name, is_sub, is_new, updated_at)
+         VALUES ('CACTUS','1084','1084','NORTH','CAMPBELL','Benjamin Reine','Demo','Samantha Williams',0,0,?)
+         ON CONFLICT(org_id, number) DO NOTHING`, nowISO());
+    for (const num of ['1082', '1083', '1129', '1084']) {
+      run(`UPDATE trucks SET owner_name = 'Samantha Williams'
+           WHERE org_id = 'CACTUS' AND number = ? AND (owner_name IS NULL OR owner_name = '')`, num);
+    }
+  }
   // one-time: aplicar los tipos de trailer DE LAS LISTAS del despacho como base blindada
   // (trailer_override=1: el sync de NewMile ya no los pisa). Corre también en producción.
   if (!metaGet('mig_seed_trailers') && SEED_PATH) {
@@ -220,6 +233,7 @@ function main(force) {
   // cabecera (KNOWN_SUBS, insertados arriba) no hacen creer que el roster ya está.
   const existing = get('SELECT COUNT(*) AS c FROM trucks WHERE is_sub = 0').c;
   if (existing > 0) {
+    applyKnownOwners(); // DB de producción ya poblada: fija dueños + mete 1084 si falta
     console.log(`seed: DB already has ${existing} fleet trucks — skipping roster load (use --force to reload)`);
     return;
   }
@@ -228,6 +242,7 @@ function main(force) {
   const t = seedTrucks(seed);
   const a = seedActivity(seed);
   const f = seedSamsaraFlags(seed);
+  applyKnownOwners(); // tras cargar el roster: 1084 + dueños de Samantha (grupo completo)
   console.log(`seed: ${t} trucks, ${a} activity rows, ${f} samsara flags`);
 }
 
