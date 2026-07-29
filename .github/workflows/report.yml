@@ -72,7 +72,10 @@ jobs:
           MAB_NM_TOKEN: ${{ secrets.MAB_NM_TOKEN }}
           RESEND_KEY: ${{ secrets.RESEND_KEY }}
           REPORT_TO: ${{ secrets.REPORT_TO }}
-          MAB_OFFSUBS: ${{ github.event.inputs.offsubs || vars.MAB_OFFSUBS || '0' }}
+          # off-app precedence lives in report-cli resolveOffSubs(): manual input > office server > variable
+          MAB_OFFSUBS_INPUT: ${{ github.event.inputs.offsubs }}
+          MAB_OFFSUBS: ${{ vars.MAB_OFFSUBS || '0' }}
+          MAB_OFFICE_URL: https://bullion-magician-prancing.ngrok-free.dev
         run: |
           set -e
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
