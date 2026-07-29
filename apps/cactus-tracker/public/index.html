@@ -894,12 +894,18 @@ async function syncNow(){
     const j=await r.json().catch(()=>({}));
     if(r.status===401){if(confirm("NewMile is not connected. Open the sign-in?"))location.href=API+"/api/newmile/connect";}
     else if(!r.ok)alert("Sync failed: "+(j.error||r.status));
-    // Samsara GPS: refresca dónde está CADA truck y los re-acomoda por zona/terminal
+    // Samsara GPS: refresca dónde está CADA truck y los re-acomoda por zona/terminal.
+    // En Azure gratis a veces tarda y se corta (499/timeout) — eso NO es un error real:
+    // el scheduler y el keepalive completan el GPS solos. Por eso nunca alarmamos aquí;
+    // solo dejamos un aviso suave y seguimos.
     b.textContent="⟳ Syncing GPS…";
     try{
-      const r2=await fetch(API+"/api/sync/samsara",{method:"POST"});
-      if(!r2.ok){const j2=await r2.json().catch(()=>({}));alert("GPS sync failed: "+(j2.error||r2.status));}
-    }catch(e){}
+      const ctrl=new AbortController();
+      const to=setTimeout(()=>ctrl.abort(),60000);
+      const r2=await fetch(API+"/api/sync/samsara",{method:"POST",signal:ctrl.signal});
+      clearTimeout(to);
+      if(!r2.ok){const nt=$("netTxt");if(nt)nt.textContent="GPS still updating in the background…";}
+    }catch(e){const nt=$("netTxt");if(nt)nt.textContent="GPS still updating in the background…";}
     await fetchBoard();
   }finally{b.disabled=false;b.textContent="⟳ Sync now";}
 }

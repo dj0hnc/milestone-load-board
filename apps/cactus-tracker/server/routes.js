@@ -403,11 +403,11 @@ function createRouter({ config, newmile, log }) {
 
   router.post('/api/sync/samsara', async (req, res) => {
     try {
+      // syncSamsara ya jala la posición ACTUAL de cada troke y los re-acomoda por GPS
+      // (applyPlacements adentro). El backfill de 2 noches de historial es pesado y lo
+      // corre el scheduler/boot — meterlo aquí alargaba la petición y la cortaba (499).
       const s = await syncSamsara(config);
-      // Sync now también re-acomoda por GPS (noches recientes) — un solo botón lo hace todo
-      let placement = null;
-      try { placement = await backfillParking(config, 2); } catch (e) { placement = { error: String(e.message || e) }; }
-      res.json({ ok: true, ...s, placement });
+      res.json({ ok: true, ...s });
     } catch (e) {
       say('sync samsara error: ' + e.message);
       res.status(500).json({ error: String(e.message || e) });
