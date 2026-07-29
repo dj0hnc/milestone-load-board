@@ -30,20 +30,38 @@ function buildMorning(board, opts) {
   if (typeof opts === 'number') opts = { nowMs: opts };
   opts = opts || {};
   const now = opts.nowMs || Date.now();
+  const nowHr = parseInt(new Date(now).toLocaleString('en-US', { timeZone: 'America/Chicago', hour: '2-digit', hour12: false }), 10) || 0;
   const off = parseInt(opts.offSubs, 10) || 0;
   const day = (board && board.dayMap && board.dayMap[4]) || [];
   const trucks = (board && board.trucks) || [];
   const byNum = {}; trucks.forEach(t => { byNum[(t.num || '').trim().toUpperCase()] = t; });
   const assigned = {};
-  day.forEach(o => { if (o.completed) return; (o.assigns || []).forEach(a => { const n = (a.num || '').trim(); if (!n) return; const k = n.toUpperCase(); (assigned[k] = assigned[k] || { num: n, orders: [], done: 0 }); assigned[k].done += (typeof a.done === 'number' ? a.done : 0); const lbl = o.disp || ('#' + o.orderId); if (assigned[k].orders.indexOf(lbl) < 0) assigned[k].orders.push(lbl); }); });
+  day.forEach(o => {
+    if (o.completed) return;
+    // per-order NewMile assignment status, so we can tell "accepted the job" from a true no-show
+    const nmByNum = {};
+    (o.nmAssigns || []).forEach(r => { const kk = (r.num || '').trim().toUpperCase(); if (kk) nmByNum[kk] = r; });
+    (o.assigns || []).forEach(a => {
+      const n = (a.num || '').trim(); if (!n) return; const k = n.toUpperCase();
+      const rec = (assigned[k] = assigned[k] || { num: n, orders: [], done: 0, dueHr: null, accepted: false });
+      rec.done += (typeof a.done === 'number' ? a.done : 0);
+      const lbl = o.disp || ('#' + o.orderId); if (rec.orders.indexOf(lbl) < 0) rec.orders.push(lbl);
+      // earliest start hour across this truck's orders — a truck whose order starts later is NOT late
+      if (o.startHr != null) rec.dueHr = (rec.dueHr == null ? o.startHr : Math.min(rec.dueHr, o.startHr));
+      const nm = nmByNum[k];
+      if (nm && nm.offer === 'accepted') rec.accepted = true;   // driver accepted the offer in NewMile
+    });
+  });
   const totalAssigned = Object.keys(assigned).length;
   const rows = [];
+  const notDue = [];        // assigned but the order start time hasn't arrived yet → not late
+  const acceptedIdle = [];  // driver accepted the job in NewMile but no movement/loads yet
   const working = {};   // fleet label -> [{num, driver}] of trucks that ARE working
   const tallyWork = (t, num, ords) => { const f = fleetLabelFor(t, num); (working[f] = working[f] || []).push({ num: num, driver: (t && t.driver) || '', orders: ords || [] }); };
   Object.keys(assigned).forEach(k => {
     const a = assigned[k], t = byNum[k];
-    if (a.done > 0) { tallyWork(t, a.num, a.orders); return; }   // hauled something → working
-    if (t && t.rolling) { tallyWork(t, a.num, a.orders); return; } // actively rolling → working
+    if (a.done > 0) { tallyWork(t, a.num, a.orders); return; }   // hauled / worked hours today → working
+    if (t && t.rolling) { tallyWork(t, a.num, a.orders); return; } // live load today → working
     let state, fleet = fleetLabelFor(t, a.num);
     if (!t) { state = 'review'; }
     else {
@@ -53,6 +71,10 @@ function buildMorning(board, opts) {
       else if (t.mph != null && t.mph < 1) state = 'parked';
       else { tallyWork(t, a.num, a.orders); return; }             // has GPS and moving → working
     }
+    // accepted the job in NewMile → engaged, just hasn't rolled yet (not a no-show to chase)
+    if (a.accepted) { acceptedIdle.push({ num: a.num, driver: (t && t.driver) || '', orders: a.orders, fleet: fleet }); return; }
+    // order start time hasn't arrived yet → not late, don't alarm the dispatcher
+    if (a.dueHr != null && a.dueHr > nowHr) { notDue.push({ num: a.num, driver: (t && t.driver) || '', orders: a.orders, fleet: fleet, dueHr: a.dueHr }); return; }
     rows.push({ num: a.num, driver: (t && t.driver) || '', owner: (t && t.owner) || '', orders: a.orders, fleet: fleet, state: state });
   });
   const byFleet = {}; rows.forEach(r => { (byFleet[r.fleet] = byFleet[r.fleet] || []).push(r); });
@@ -64,13 +86,17 @@ function buildMorning(board, opts) {
   const dstr = ctStr(now);
 
   let text = 'MAB — MORNING NO-SHOW REPORT (' + dstr + ' CT)\n';
-  text += 'Assigned today: ' + totalAssigned + '  |  Not working: ' + rows.length + '  (' + parked + ' parked, ' + review + ' no GPS)\n\n';
+  text += 'Assigned today: ' + totalAssigned + '  |  Not working (call): ' + rows.length + '  (' + parked + ' parked, ' + review + ' no GPS)';
+  text += '  |  accepted, not moving yet: ' + acceptedIdle.length + '  |  not due yet: ' + notDue.length + '\n\n';
   fleets.forEach(f => { text += '== ' + f + ' — ' + byFleet[f].length + ' not working ==\n'; byFleet[f].forEach(r => { text += '  - ' + r.num + (r.driver ? ' (' + r.driver + ')' : '') + ' · ' + (r.state === 'parked' ? 'PARKED, 0 loads' : 'NO GPS — call') + ' -> ' + r.orders.join(', ') + '\n'; }); text += '\n'; });
-  if (!rows.length) text += 'Everyone assigned is rolling. ✅\n';
+  if (!rows.length) text += 'No confirmed no-shows to chase. ✅\n';
   text += '\n=== WORKING / ROLLING by fleet (' + totalWorking + ') ===\n';
   workFleets.forEach(f => { text += '  ' + f + ': ' + working[f].length + '\n'; });
   text += '  OFF-APP SUBS: ' + off + '\n';
-  text += '  GRAND TOTAL WORKING (in-app + off-app): ' + (totalWorking + off) + '\n\n';
+  text += '  GRAND TOTAL WORKING (in-app + off-app): ' + (totalWorking + off) + '\n';
+  if (acceptedIdle.length) { text += '\n--- Accepted in NewMile, not moving yet (' + acceptedIdle.length + ') ---\n'; acceptedIdle.forEach(r => { text += '  - ' + r.num + (r.driver ? ' (' + r.driver + ')' : '') + ' -> ' + (r.orders || []).join(', ') + '\n'; }); }
+  if (notDue.length) { text += '\n--- Not due yet, later start (' + notDue.length + ') ---\n'; notDue.forEach(r => { text += '  - ' + r.num + (r.driver ? ' (' + r.driver + ')' : '') + ' -> ' + (r.orders || []).join(', ') + '\n'; }); }
+  text += '\n';
   text += '--- Who is working (truck + driver + assignment) ---\n';
   workFleets.forEach(f => { text += '== ' + f + ' (' + working[f].length + ') ==\n'; working[f].forEach(w => { text += '  - ' + w.num + (w.driver ? ' (' + w.driver + ')' : '') + ' -> ' + (w.orders || []).join(', ') + '\n'; }); });
 
@@ -78,8 +104,8 @@ function buildMorning(board, opts) {
     + rs.map(r => '<tr><td style="padding:3px 9px;font-weight:700">' + esc(r.num) + '</td><td style="padding:3px 9px">' + esc(r.driver) + '</td><td style="padding:3px 9px;color:' + (r.state === 'parked' ? '#b4452e' : '#b8862b') + '">' + (r.state === 'parked' ? 'Parked · 0 loads' : 'No GPS — call') + '</td><td style="padding:3px 9px">' + esc(r.orders.join(', ')) + '</td></tr>').join('') + '</table>';
   let html = '<div style="font-family:Segoe UI,Arial,sans-serif;max-width:720px">'
     + '<h2 style="margin:0 0 2px">🚛 Morning No-Show Report</h2>'
-    + '<div style="color:#667;font-size:13px;margin-bottom:12px">' + esc(dstr) + ' CT &middot; assigned today: ' + totalAssigned + ' &middot; not working: <b>' + rows.length + '</b> (' + parked + ' parked, ' + review + ' no GPS)</div>';
-  if (!rows.length) html += '<div style="color:#3a9d6e;font-size:15px">Everyone assigned is rolling. 🎉</div>';
+    + '<div style="color:#667;font-size:13px;margin-bottom:12px">' + esc(dstr) + ' CT &middot; assigned today: ' + totalAssigned + ' &middot; not working (call): <b>' + rows.length + '</b> (' + parked + ' parked, ' + review + ' no GPS) &middot; accepted, not moving yet: ' + acceptedIdle.length + ' &middot; not due yet: ' + notDue.length + '</div>';
+  if (!rows.length) html += '<div style="color:#3a9d6e;font-size:15px">No confirmed no-shows to chase. 🎉</div>';
   fleets.forEach(f => { html += '<h3 style="margin:14px 0 2px">' + esc(f) + ' <span style="color:#99a;font-weight:400">— ' + byFleet[f].length + ' not working</span></h3>' + tbl(byFleet[f]); });
   // MIDDLE: combined totals by fleet (not working | working)
   const allF = orderFleets(Array.from(new Set([].concat(Object.keys(byFleet), Object.keys(working)))));
@@ -88,13 +114,19 @@ function buildMorning(board, opts) {
     + allF.map(f => '<tr><td style="padding:5px 12px;font-weight:700">' + esc(f) + '</td><td style="padding:5px 12px;text-align:right;font-weight:700;color:#b4452e">' + ((byFleet[f] || []).length) + '</td><td style="padding:5px 12px;text-align:right;font-weight:700;color:#3a9d6e">' + ((working[f] || []).length) + '</td></tr>').join('')
     + '<tr><td style="padding:5px 12px;font-weight:700">OFF-APP SUBS</td><td style="padding:5px 12px;text-align:right;color:#99a">—</td><td style="padding:5px 12px;text-align:right;font-weight:800;color:#b8862b">' + off + '</td></tr>'
     + '<tr style="border-top:2px solid #ddd"><td style="padding:5px 12px;font-weight:800">TOTAL</td><td style="padding:5px 12px;text-align:right;font-weight:800;color:#b4452e">' + rows.length + '</td><td style="padding:5px 12px;text-align:right;font-weight:800;color:#3a9d6e">' + (totalWorking + off) + '</td></tr></table>';
+  // INFO buckets: accepted-but-idle and not-due-yet (context, not no-shows)
+  const miniTbl = (title, color, arr) => arr.length ? ('<h3 style="margin:16px 0 4px;color:' + color + '">' + title + ' (' + arr.length + ')</h3>'
+    + '<table style="border-collapse:collapse;font-size:13px;width:100%;margin-bottom:6px"><tr style="background:#f3f4f6"><td style="padding:3px 9px">Truck</td><td style="padding:3px 9px">Driver</td><td style="padding:3px 9px">Assigned to</td></tr>'
+    + arr.slice().sort((a, b) => a.num.localeCompare(b.num, undefined, { numeric: true })).map(r => '<tr><td style="padding:3px 9px;font-weight:700">' + esc(r.num) + '</td><td style="padding:3px 9px">' + esc(r.driver) + '</td><td style="padding:3px 9px">' + esc((r.orders || []).join(', ')) + '</td></tr>').join('') + '</table>') : '';
+  html += miniTbl('🤝 Accepted in NewMile — not moving yet', '#2c74b4', acceptedIdle);
+  html += miniTbl('🕒 Not due yet — later start', '#7a6', notDue);
   // BOTTOM: who is working — truck + driver + where assigned (same shape as the no-show table)
   html += '<h3 style="margin:18px 0 4px;color:#3a9d6e">✅ Who is working — truck, driver &amp; assignment (' + totalWorking + ')</h3>';
   workFleets.forEach(f => { html += '<div style="font-weight:700;margin:10px 0 2px">' + esc(f) + ' <span style="color:#99a;font-weight:400">(' + working[f].length + ')</span></div>'
     + '<table style="border-collapse:collapse;font-size:13px;width:100%;margin-bottom:6px"><tr style="background:#f3f4f6"><td style="padding:3px 9px">Truck</td><td style="padding:3px 9px">Driver</td><td style="padding:3px 9px">Assigned to</td></tr>'
     + working[f].map(w => '<tr><td style="padding:3px 9px;font-weight:700">' + esc(w.num) + '</td><td style="padding:3px 9px">' + esc(w.driver) + '</td><td style="padding:3px 9px">' + esc((w.orders || []).join(', ')) + '</td></tr>').join('') + '</table>'; });
   html += '<div style="color:#99a;font-size:11px;margin-top:12px">Milestone OS &middot; Samsara movement + NewMile assignments. "Parked" = assigned, 0 loads, not moving. "No GPS" = subhauler/no device — call to confirm. "Working" = hauled a load, rolling, or moving.</div></div>';
-  return { kind: 'morning', count: rows.length, parked: parked, review: review, totalAssigned: totalAssigned, byFleet: byFleet, rows: rows, working: working, totalWorking: totalWorking, offSubs: off, grandTotalWorking: totalWorking + off, dateKey: opts.dateKey || '', text: text, html: html, dateStr: dstr };
+  return { kind: 'morning', count: rows.length, parked: parked, review: review, totalAssigned: totalAssigned, byFleet: byFleet, rows: rows, working: working, totalWorking: totalWorking, offSubs: off, grandTotalWorking: totalWorking + off, notDue: notDue, acceptedIdle: acceptedIdle, dateKey: opts.dateKey || '', text: text, html: html, dateStr: dstr };
 }
 
 // ---------- NIGHT: trucks assigned per fleet (default TOMORROW; opts.dayIdx/label for previews) ----------

@@ -74,13 +74,23 @@ function centralDate(offsetDays) {
   if (SEND && !FORCE && sentToday(KIND, centralDate(0))) { console.log('already sent ' + KIND + ' today (' + centralDate(0) + ') — skipping'); return; }
   const cfg = loadConfig();
   seedTokenIfNeeded();
-  const client = new NewMileClient({
+  const mkClient = () => new NewMileClient({
     config: cfg, tokenPath: TOKEN_FILE,        // mcp-client refreshes + PERSISTS rotations here
     authorize: () => { throw new Error('headless: token expired/revoked — re-run login-cli to re-seed'); },
     onStatus: () => {}, onLog: (l) => { if (/refresh|connect|error/i.test(l)) console.log('  ' + l); }
   });
-  const st = await client.resume();
-  if (!st || !st.connected) throw new Error('NewMile token did not connect');
+  let client = mkClient();
+  let st = await client.resume();
+  if ((!st || !st.connected) && process.env.MAB_NM_TOKEN) {
+    // SELF-HEAL: the rotating token cached in .state is dead (refresh 400). Overwrite it with the
+    // MAB_NM_TOKEN secret (a fresh login) and try once more — so recovery is just "update the
+    // secret", with no manual Actions-cache clearing required.
+    console.log('  cached NewMile token failed to connect — re-seeding from MAB_NM_TOKEN secret and retrying');
+    try { fs.writeFileSync(TOKEN_FILE, process.env.MAB_NM_TOKEN); } catch (e) {}
+    client = mkClient();
+    st = await client.resume();
+  }
+  if (!st || !st.connected) throw new Error('NewMile token did not connect — update the MAB_NM_TOKEN secret with a fresh NewMile login (the refresh token expired)');
 
   const today = centralDate(0);
   const raw = await client.refreshAll(today);
@@ -113,6 +123,7 @@ function centralDate(offsetDays) {
     if (!m.ok) process.exit(1);
     markSent(KIND, centralDate(0));   // lock so it won't re-send today
   } else {
-    console.log('(dry run — add --send to email)');
+    console.log('(dry run — no email sent)\n');
+    console.log('----- REPORT BEGIN -----\n' + rep.text + '\n----- REPORT END -----');
   }
 })().catch(e => { console.error('FAIL: ' + e.message); process.exit(1); });

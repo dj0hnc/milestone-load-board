@@ -1,6 +1,6 @@
 name: MAB Reports
 
-# Sends the morning (7am CT, catch-up until noon) no-show report and the night (8pm CT,
+# Sends the morning (7:30am CT, catch-up until noon) no-show report and the night (8pm CT,
 # catch-up until midnight) fleet-assignment report from GitHub's cloud — never depends on
 # any PC. Reuses the exact app logic (report-engine/).
 #
@@ -43,6 +43,9 @@ on:
       force:
         description: 'true = resend even if already sent today (manual tests). External pingers leave this blank so the once-per-day lock dedupes.'
         default: ''
+      preview:
+        description: 'true = DRY RUN: build the report and print the full list to the log, send NO email.'
+        default: ''
 
 concurrency:
   group: mab-reports
@@ -73,24 +76,30 @@ jobs:
         run: |
           set -e
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # PREVIEW = dry run: build + print the full report to the log, send NO email. No --send,
+            # so the once-per-day lock is never touched and no recipient/Resend key is needed.
+            if [ "${{ github.event.inputs.preview }}" = "true" ]; then
+              node report-engine/report-cli.js "${{ github.event.inputs.kind }}"
             # external pingers (cron-job.org at 7:00am/8:00pm CT) leave force blank → the once-per-day
             # lock still dedupes against the hourly GitHub-cron backup. Set force=true only for tests.
-            if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            elif [ "${{ github.event.inputs.force }}" = "true" ]; then
               node report-engine/report-cli.js "${{ github.event.inputs.kind }}" --send --force
             else
               node report-engine/report-cli.js "${{ github.event.inputs.kind }}" --send
             fi
           else
-            HOUR=$(TZ=America/Chicago date +%H)
-            HOUR=$((10#$HOUR))
+            HOUR=$(TZ=America/Chicago date +%H); HOUR=$((10#$HOUR))
+            MIN=$(TZ=America/Chicago date +%M); MIN=$((10#$MIN))
             # CATCH-UP windows: wide on purpose. The once-per-day lock means only the FIRST run
             # inside the window actually sends; the width only buys tolerance to cron delays.
-            if [ "$HOUR" -ge 7 ] && [ "$HOUR" -le 11 ]; then
+            # Morning goes out at/after 7:30am CT (gives drivers a little more time to start their
+            # first load so the no-show list reflects reality), catch-up until noon. Night 8pm-midnight.
+            if { [ "$HOUR" -eq 7 ] && [ "$MIN" -ge 30 ]; } || { [ "$HOUR" -ge 8 ] && [ "$HOUR" -le 11 ]; }; then
               KIND=morning
             elif [ "$HOUR" -ge 20 ] && [ "$HOUR" -le 23 ]; then
               KIND=night
             else
-              echo "Central hour $HOUR is outside the send windows (7-11am morning, 8-11pm night) — nothing to do"
+              echo "Central time $HOUR:$MIN is outside the send windows (7:30-11:59am morning, 8pm-11:59pm night) — nothing to do"
               exit 0
             fi
             # OFFICE PC IS THE PUNCTUAL PRIMARY (sends 7:00/20:00 CT on the minute). The cloud is the
