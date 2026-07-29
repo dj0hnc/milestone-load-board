@@ -27,8 +27,32 @@ const arg = (n, d) => { const m = process.argv.find(a => a.startsWith('--' + n +
 const KIND = (process.argv[2] || 'night').toLowerCase();
 const LOCAL = !!arg('local', false);
 const SEND = !!arg('send', false);
-const OFF = parseInt(arg('offsubs', process.env.MAB_OFFSUBS || '0'), 10) || 0;
 const GUARD = arg('guard', '');   // if set, only proceed when the current Central hour === guard
+
+// OFF-APP subs resolution, most-trusted first:
+//   1. explicit --offsubs= arg or MAB_OFFSUBS_INPUT (a human typed it on this run)
+//   2. the OFFICE server (where dispatch actually keys the number in): GET <MAB_OFFICE_URL>/offapp
+//   3. the MAB_OFFSUBS repo variable (static fallback)
+async function resolveOffSubs(dateStr) {
+  const typed = arg('offsubs', process.env.MAB_OFFSUBS_INPUT || '');
+  if (typed !== '' && typed != null && typed !== true) return { n: parseInt(typed, 10) || 0, src: 'input' };
+  const base = (process.env.MAB_OFFICE_URL || '').replace(/\/$/, '');
+  if (base) {
+    try {
+      const ac = new AbortController(); const tm = setTimeout(() => ac.abort(), 10000);
+      const r = await fetch(base + '/offapp?date=' + encodeURIComponent(dateStr), {
+        headers: { 'ngrok-skip-browser-warning': 'true', Accept: 'application/json' }, signal: ac.signal
+      });
+      clearTimeout(tm);
+      if (r.ok) {
+        const j = await r.json();
+        const n = parseInt(j.count != null ? j.count : j.offApp, 10);
+        if (!isNaN(n) && n >= 0) return { n: n, src: 'office' };
+      } else { console.log('  office /offapp HTTP ' + r.status + ' — falling back'); }
+    } catch (e) { console.log('  office /offapp unreachable (' + (e.message || e) + ') — falling back'); }
+  }
+  return { n: parseInt(process.env.MAB_OFFSUBS || '0', 10) || 0, src: 'variable' };
+}
 
 const STATE_DIR = path.join(__dirname, '.state');
 const TOKEN_FILE = path.join(STATE_DIR, 'nm-token.json');
@@ -99,6 +123,10 @@ function centralDate(offsetDays) {
     try { sam = await samsara.getSamsara('cloud-report', cfg, () => {}); } catch (e) { console.log('samsara skipped: ' + e.message); }
   }
   const board = buildBoard(raw, sam, cfg.groups || null);
+  // night plans TOMORROW's fleet, so its off-app count is tomorrow's too
+  const offR = await resolveOffSubs(KIND === 'morning' ? today : centralDate(1));
+  const OFF = offR.n;
+  console.log('  off-app subs: ' + OFF + ' (source: ' + offR.src + ')');
 
   let rep, subject;
   if (KIND === 'morning') {

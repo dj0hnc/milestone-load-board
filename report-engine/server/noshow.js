@@ -49,7 +49,8 @@ function buildMorning(board, opts) {
       // earliest start hour across this truck's orders — a truck whose order starts later is NOT late
       if (o.startHr != null) rec.dueHr = (rec.dueHr == null ? o.startHr : Math.min(rec.dueHr, o.startHr));
       const nm = nmByNum[k];
-      if (nm && nm.offer === 'accepted') rec.accepted = true;   // driver accepted the offer in NewMile
+      // NewMile offer_status is 'offer_accepted' (raw); tolerate both spellings
+      if (nm && /accepted/.test(String(nm.offer || ''))) rec.accepted = true;
     });
   });
   const totalAssigned = Object.keys(assigned).length;

@@ -1661,44 +1661,74 @@ ORDERS: ${orders.length} · Covered: ${covered} · Finalized: ${fin}`;
 }
 function copyReport(){const txt=_lastReportText||'';if(navigator.clipboard)navigator.clipboard.writeText(txt);toast(t('Report copied — paste & send to Tony','Reporte copiado — pega y manda a Tony'));}
 function pad(s,n){s=String(s);return s+' '.repeat(Math.max(0,n-s.length));}
+// AM CHECK — UNIFIED with the 7:30am email (report-engine/server/noshow.js buildMorning), so the
+// board and the emailed report always show the SAME numbers. A truck is WORKING when it hauled a
+// load today, has a live NewMile load, or is moving per Samsara; it lands on the CALL list only
+// when none of that is true AND it isn't excused (driver accepted the offer in NewMile, or its
+// order starts later). A manual AM-Check no-show mark still forces the call list.
+function amClassify(){
+  const nowHr=parseInt(new Date().toLocaleString('en-US',{timeZone:'America/Chicago',hour:'2-digit',hour12:false}),10)||0;
+  const now=Date.now();
+  const rec={};
+  orders.forEach(o=>{ if(o.completed)return; (o.assigns||[]).forEach(a=>{
+    if(!a.truck)return; const r=(rec[a.truck]=rec[a.truck]||{done:0,orders:[],dueHr:null,accepted:false});
+    r.done+=(typeof a.done==='number'?a.done:0);
+    if(o.disp&&r.orders.indexOf(o.disp)<0)r.orders.push(o.disp);
+    if(o.startHr!=null)r.dueHr=(r.dueHr==null?o.startHr:Math.min(r.dueHr,o.startHr));
+    if(/accepted/.test(String(a.offer||'')))r.accepted=true;   // same test as the email
+  });});
+  const out={workIds:new Set(),work:{},call:{},acc:[],notdue:[],tA:0};
+  Object.keys(rec).forEach(id=>{
+    const t=T(id); if(!t)return; out.tA++;
+    const r=rec[id], g=rptGroupOf(t);
+    out.work[g]=out.work[g]||0; out.call[g]=out.call[g]||[];
+    const row={id:id,num:t.num,driver:t.driver||'',orders:r.orders,g:g};
+    if(t.status==='noshow'){row.st='noshow';out.call[g].push(row);return;}          // dispatcher's word wins
+    if(r.done>0||t.status==='rolling'){out.work[g]++;out.workIds.add(id);return;}   // hauled / live load
+    const age=t.gpsTime?Math.round((now-new Date(t.gpsTime).getTime())/60000):null;
+    const hasGps=t.lat!=null&&age!=null&&age<180;
+    if(hasGps&&(t.mph||0)>=1){out.work[g]++;out.workIds.add(id);return;}            // moving per Samsara
+    if(r.accepted){out.acc.push(row);return;}                                       // accepted, not moving yet
+    if(r.dueHr!=null&&r.dueHr>nowHr){row.due=r.dueHr;out.notdue.push(row);return;}  // later start — not late
+    row.st=hasGps?'parked':'nogps';out.call[g].push(row);
+  });
+  return out;
+}
 function openAMReport(){
-  const used=[...assignedSet()];
-  const G=rptGroups();
-  const asg={},roll={},chk={},ns={};G.forEach(g=>{asg[g]=0;roll[g]=0;chk[g]=0;ns[g]=[];});
-  used.forEach(id=>{const t=T(id);if(!t)return;const g=rptGroupOf(t);if(asg[g]==null){asg[g]=0;roll[g]=0;chk[g]=0;ns[g]=[];G.push(g);}
-    asg[g]++;if(t.status==='rolling')roll[g]++;else if(t.status==='noshow')ns[g].push(t.num);else chk[g]++;});
-  const keys=G;
-  const tA=keys.reduce((n,k)=>n+asg[k],0), tR=keys.reduce((n,k)=>n+roll[k],0), tN=keys.reduce((n,k)=>n+ns[k].length,0), tC=keys.reduce((n,k)=>n+chk[k],0);
-  let rows=G.map(k=>`  ${pad(grpLabel(k),20)} ${pad(asg[k],9)} ${pad(roll[k],10)} ${pad(ns[k].length,8)} ${chk[k]}`).join('\n');
-  // per order: assigned vs rolling, list not-rolling
-  const obar=orders.filter(o=>o.assigns.length).map(o=>{
-    const ts=[...new Set(o.assigns.map(a=>a.truck))].map(id=>T(id)).filter(Boolean);
-    const r=ts.filter(t=>t.status==='rolling').length;
-    const miss=ts.filter(t=>t.status!=='rolling').map(t=>t.num+(t.status==='noshow'?'(NS)':''));
-    return `  ${o.disp}: ${ts.length} asg · ${r} rolling${miss.length?` · missing: ${miss.join(', ')}`:' · ✓ all'}`;
-  }).join('\n');
-  const allNS=keys.reduce((a,k)=>a.concat(ns[k]),[]);
-  const txt=`AM CHECK — ASSIGNED vs ROLLING — ${days[dIdx]}\n${G.map(grpLabel).join(' · ')}\n\n${pad('',22)}ASSIGN.  ROLLING    NO-SHOW  TO-CHECK\n${rows}\n  ${pad('TOTAL',20)} ${pad(tA,9)} ${pad(tR,10)} ${pad(tN,8)} ${tC}\n\nNO-SHOWS (${tN}): ${allNS.join(', ')||'none'}\nSTILL TO CHECK THIS MORNING: ${tC}\n\nBY ORDER (assigned → rolling):\n${obar||'  —'}\n\nNote: "Rolling" comes LIVE from NewMile (active load status / loads done today,\nset on every Refresh). You can still tap a truck in AM Check to adjust manually.\nPM = what was assigned (corporate report).`;
+  const c=amClassify();
+  const G=rptGroups().filter(g=>(c.work[g]||0)||((c.call[g]||[]).length));
+  Object.keys(c.work).forEach(g=>{if(G.indexOf(g)<0)G.push(g);});
+  const tW=Object.keys(c.work).reduce((n,g)=>n+c.work[g],0);
+  const callAll=Object.keys(c.call).reduce((a,g)=>a.concat(c.call[g]),[]);
+  const stLbl=s=>s==='noshow'?t('No-show (manual)','No-show (manual)'):s==='parked'?t('Parked · 0 loads','Parqueada · 0 cargas'):t('No GPS — call','Sin GPS — llamar');
+  const rows=G.map(g=>`  ${pad(grpLabel(g),20)} ${pad(c.work[g]||0,9)} ${(c.call[g]||[]).length}`).join('\n');
+  const lst=(arr,tag)=>arr.map(r=>`  - ${r.num}${r.driver?' ('+r.driver+')':''}${tag?' · '+tag(r):''} -> ${r.orders.join(', ')}`).join('\n');
+  const txt=`AM CHECK — ${days[dIdx]}  (same rules as the 7:30am email)\n\n${pad('',22)}WORKING  CALL LIST\n${rows}\n  ${pad('TOTAL',20)} ${pad(tW,9)} ${callAll.length}\n\nCALL LIST (${callAll.length}):\n${lst(callAll,r=>stLbl(r.st))||'  none 🎉'}\n\nACCEPTED IN NEWMILE — NOT MOVING YET (${c.acc.length}):\n${lst(c.acc)||'  —'}\n\nNOT DUE YET — LATER START (${c.notdue.length}):\n${lst(c.notdue,r=>String(r.due).padStart(2,'0')+':00')||'  —'}`;
   // interactive body
   let h=`<div class="rkpis">
-    <div class="rkpi"><b>${tA}</b><span>${t('Assigned','Asignadas')}</span></div>
-    <div class="rkpi ok"><b>${tR}</b><span>${t('Rolling','Rodando')}</span></div>
-    <div class="rkpi warn"><b>${tN}</b><span>${t('No-shows','No-shows')}</span></div>
-    <div class="rkpi"><b>${tC}</b><span>${t('To check','Por revisar')}</span></div></div>`;
-  if(tN) h+=`<div class="nsbar" onclick="repFilterNoShows()"><span class="nslbl">🚫 ${tN} ${t('no-show','no-show')}: ${_rEsc(allNS.join(', '))}</span><span class="rc">${t('tap → filter board','tap → filtra board')}</span></div>`;
-  h+=`<h4>${t('By fleet (assigned · rolling · no-show)','Por flota (asig · rodando · no-show)')}</h4>`;
-  h+=G.map(k=>`<div class="rgrp"><span class="gn">${_rEsc(grpLabel(k))}</span><span class="gv">${asg[k]||0} <small>${roll[k]||0} 🚚 · ${ns[k].length} ⚠</small></span></div>`).join('');
+    <div class="rkpi"><b>${c.tA}</b><span>${t('Assigned','Asignadas')}</span></div>
+    <div class="rkpi ok"><b>${tW}</b><span>${t('Working','Trabajando')}</span></div>
+    <div class="rkpi warn"><b>${callAll.length}</b><span>${t('Call list','Para llamar')}</span></div>
+    <div class="rkpi"><b>${c.acc.length}</b><span>${t('Accepted','Aceptaron')}</span></div>
+    <div class="rkpi"><b>${c.notdue.length}</b><span>${t('Not due yet','Aún no toca')}</span></div></div>`;
+  const manual=callAll.filter(r=>r.st==='noshow');
+  if(manual.length) h+=`<div class="nsbar" onclick="repFilterNoShows()"><span class="nslbl">🚫 ${manual.length} ${t('manual no-show(s)','no-show(s) manual')}: ${_rEsc(manual.map(r=>r.num).join(', '))}</span><span class="rc">${t('tap → filter board','tap → filtra board')}</span></div>`;
+  h+=`<h4>${t('By fleet (working · call list)','Por flota (trabajando · para llamar)')}</h4>`;
+  h+=G.map(g=>`<div class="rgrp"><span class="gn">${_rEsc(grpLabel(g))}</span><span class="gv">${c.work[g]||0} 🚚 <small>· ${(c.call[g]||[]).length} ⚠</small></span></div>`).join('');
+  const tbl=(title,arr,tag)=>arr.length?`<h4>${title} (${arr.length})</h4>`+arr.map(r=>`<div class="rord"><div style="flex:1;min-width:0"><span class="rd">${_rEsc(r.num)} <small style="color:var(--text-dim);font-weight:600">${_rEsc(r.driver)}</small>${tag?` <small style="color:var(--gold-soft)">${_rEsc(tag(r))}</small>`:''}</span><div style="margin-top:2px;font-size:11px;color:var(--muted)">${_rEsc(r.orders.join(', '))}</div></div></div>`).join(''):'';
+  h+=tbl('📞 '+t('Call list — confirm these','Para llamar — confirma estas'),callAll,r=>stLbl(r.st));
+  h+=tbl('🤝 '+t('Accepted in NewMile — not moving yet','Aceptaron en NewMile — aún sin moverse'),c.acc,null);
+  h+=tbl('🕒 '+t('Not due yet — later start','Aún no les toca — empiezan más tarde'),c.notdue,r=>String(r.due).padStart(2,'0')+':00');
   h+=`<h4>${t('By order — tap to open','Por orden — tap para abrir')}</h4>`;
   const liveOrders=orders.filter(o=>o.assigns.length);
   h+=(liveOrders.length?liveOrders.map(o=>{
-    const ts=[...new Set(o.assigns.map(a=>a.truck))].map(id=>T(id)).filter(Boolean);
-    const r=ts.filter(t=>t.status==='rolling').length;
+    const ids=[...new Set(o.assigns.map(a=>a.truck))];
+    const r=ids.filter(id=>c.workIds.has(id)).length;
     const chips=_repChips(o);
-    const allRoll=(r===ts.length);
-    return `<div class="rord" onclick="repJumpOrder('${o.id}')"><div style="flex:1;min-width:0"><span class="rd">${_rEsc(o.disp)} <small style="color:var(--text-dim);font-weight:600">${_rEsc(o.cust)}</small></span>${chips?`<div style="margin-top:3px">${chips}</div>`:''}</div><span class="rp" style="color:${allRoll?'var(--green)':'var(--gold-soft)'}">${r}/${ts.length}🚚</span></div>`;
+    return `<div class="rord" onclick="repJumpOrder('${o.id}')"><div style="flex:1;min-width:0"><span class="rd">${_rEsc(o.disp)} <small style="color:var(--text-dim);font-weight:600">${_rEsc(o.cust)}</small></span>${chips?`<div style="margin-top:3px">${chips}</div>`:''}</div><span class="rp" style="color:${r===ids.length?'var(--green)':'var(--gold-soft)'}">${r}/${ids.length}🚚</span></div>`;
   }).join(''):`<div style="color:var(--muted);font-size:12px">${t('No assigned orders yet.','Aún sin órdenes asignadas.')}</div>`);
-  h+=`<div class="sub" style="padding:8px 0 0;font-size:11px">${t('"Rolling" is LIVE from NewMile (load status / loads today). Tap a truck in AM Check to adjust manually.','"Rodando" es EN VIVO de NewMile (estado de carga / cargas hoy). Tap una troca para ajustar manual.')}</div>`;
-  repShow('AM — '+t('Assigned vs Rolling (morning)','Asignado vs Rodando (mañana)'), t('Tap a truck → its order · tap no-shows → filter the board.','Tap troca → su orden · tap no-shows → filtra el board.'), h, txt);
+  h+=`<div class="sub" style="padding:8px 0 0;font-size:11px">${t('Same rules as the 7:30am email: working = hauled / live load / moving (Samsara). Call list = none of that and not excused.','Mismas reglas que el email de 7:30am: trabajando = cargó / carga viva / moviéndose (Samsara). Para llamar = nada de eso y sin excusa.')}</div>`;
+  repShow('AM — '+t('Working vs Call list (matches the email)','Trabajando vs Para llamar (igual al email)'), t('Tap an order to open it · manual no-shows still filter the board.','Tap una orden para abrirla · los no-show manuales siguen filtrando el board.'), h, txt);
 }
 
 /* SETTINGS / TOPBAR */
