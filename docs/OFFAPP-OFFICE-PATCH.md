@@ -35,6 +35,22 @@ app.post('/offapp', express.json(), (req, res) => {
   fs.writeFileSync(OFFAPP_FILE, JSON.stringify(m, null, 1));
   res.json({ ok: true, date: date, count: count });
 });
+
+// phone-friendly setter: open in any browser, no app needed.
+//   /offapp/set?count=26              -> sets TOMORROW (the night plan; most common use)
+//   /offapp/set?count=26&date=today   -> sets today (feeds the 7:30am email)
+//   /offapp/set?count=26&date=2026-08-02
+app.get('/offapp/set', (req, res) => {
+  const ct = tz => new Date(Date.now() + (tz === 'tomorrow' ? 86400000 : 0))
+    .toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  const q = String(req.query.date || 'tomorrow');
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(q) ? q : ct(q === 'today' ? 'today' : 'tomorrow');
+  const count = parseInt(req.query.count, 10);
+  if (isNaN(count) || count < 0 || count > 500) return res.status(400).send('need ?count=0-500');
+  const m = offappLoad(); m[date] = count;
+  fs.writeFileSync(OFFAPP_FILE, JSON.stringify(m, null, 1));
+  res.send('<h1 style="font-family:sans-serif">&#9989; OFF-APP ' + count + ' guardado para ' + date + '</h1>');
+});
 ```
 
 (Si el archivo del servidor no tiene ya `const path = require('path')` / `const fs = require('fs')`,
