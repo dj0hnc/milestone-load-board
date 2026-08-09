@@ -317,11 +317,15 @@ async function syncActivity(client, days) {
         if (cactus && cactus.truck_prefix && n.startsWith(cactus.truck_prefix) && /\d/.test(n.slice(cactus.truck_prefix.length))) {
           candidates.push(n.slice(cactus.truck_prefix.length));
         }
+        // CKJ ICs: la asignación trae el número PELÓN ("211") pero el IC vive como CKJ211
+        if (/^\d{1,4}$/.test(n)) candidates.push('CKJ' + n);
         let hit = null;
         for (const c of [...new Set(candidates)]) {
           hit = get('SELECT org_id, number FROM trucks WHERE number = ? AND archived = 0', c);
           if (hit) break;
         }
+        // último recurso: display_number ("LT245" del sub 245, "211" del IC CKJ211)
+        if (!hit) hit = get('SELECT org_id, number FROM trucks WHERE display_number = ? AND archived = 0', n);
         if (!hit) continue;
         const st = get('SELECT * FROM dispatch_state WHERE date = ? AND org_id = ? AND number = ?', dateISO, hit.org_id, hit.number);
         if (!st) {

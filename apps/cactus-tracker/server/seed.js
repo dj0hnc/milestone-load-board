@@ -191,11 +191,19 @@ function main(force) {
   // (no son ni de Cactus ni de CKJ). Se garantizan en el board (Cactus North, zona SUBS)
   // aunque NewMile no haya corrido una carga suya todavía. El sync los enriquece (driver,
   // último load) cuando aparezcan en las órdenes. Idempotente: no pisa ediciones mías.
-  const KNOWN_SUBS = ['AMP6060', 'SL47', 'PDR1062', 'JFT01'];
-  for (const num of KNOWN_SUBS) {
+  // [llave, display como NewMile]. Verificados contra órdenes reales (8/10/26): DGO,
+  // GK (EYK), HLT, LL y Parrot corren seguido en nuestras órdenes sin estar en el roster.
+  const KNOWN_SUBS = [
+    ['AMP6060'], ['SL47'], ['PDR1062'], ['JFT01'],
+    ['DGO4468'], ['DGO4469'], ['DGO8063'],
+    ['GK1433'], ['GK2556'], ['GK8468'], ['GK8607'],
+    ['HLT3991'], ['LL24'], ['LL25'], ['LL26'],
+    ['PARROT-417', 'Parrot- 417'], ['PARROT-418', 'Parrot- 418'], ['PARROT-420', 'Parrot- 420']
+  ];
+  for (const [num, disp] of KNOWN_SUBS) {
     run(`INSERT INTO trucks (org_id, number, display_number, division, area, tags, is_sub, is_new, updated_at)
          VALUES ('CACTUS', ?, ?, 'NORTH', 'SUBS', 'SUBHAULER', 1, 0, ?)
-         ON CONFLICT(org_id, number) DO NOTHING`, num, num, nowISO());
+         ON CONFLICT(org_id, number) DO NOTHING`, num, disp || num, nowISO());
   }
   // DUEÑOS VERIFICADOS EN NEWMILE (owner_id, no el chofer). Samantha Williams (owner 1481)
   // tiene 4 trokes; el 1084 (Demo, Benjamin Reine) NO trae fleet en NewMile y se caía del
