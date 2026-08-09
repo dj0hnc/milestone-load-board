@@ -5,6 +5,6 @@ cd /d "%~dp0"
 :loop
 node proxy.js
 echo.
-echo [proxy] se detuvo, reiniciando en 3s...  (Ctrl+C para salir)
+echo [proxy] se detuvo, reiniciando en 3s... Ctrl+C para salir
 timeout /t 3 /nobreak >nul
 goto loop

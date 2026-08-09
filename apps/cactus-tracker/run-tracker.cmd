@@ -4,6 +4,6 @@ cd /d "%~dp0"
 :loop
 node server\index.js
 echo.
-echo [tracker] se detuvo, reiniciando en 3s...  (Ctrl+C para salir)
+echo [tracker] se detuvo, reiniciando en 3s... Ctrl+C para salir
 timeout /t 3 /nobreak >nul
 goto loop
