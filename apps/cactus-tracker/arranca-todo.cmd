@@ -7,13 +7,10 @@ REM ============================================================
 title Arranca-todo Milestone Tracker
 cd /d "%~dp0"
 
-echo Actualizando codigo (si hay internet)...
+echo Actualizando codigo si hay internet...
 git pull 2>nul
 
-if not exist node_modules (
-  echo Instalando dependencias (solo la primera vez)...
-  call npm install --no-audit --no-fund
-)
+if not exist node_modules call npm install --no-audit --no-fund
 
 echo Levantando servidor, repartidor y ngrok...
 start "Milestone Tracker 8791" /min cmd /k run-tracker.cmd
@@ -22,7 +19,7 @@ start "ngrok" /min cmd /k run-ngrok.cmd
 
 echo.
 echo  ============================================================
-echo   LISTO. Tres ventanas minimizadas trabajando (se reinician solas).
+echo   LISTO. Tres ventanas minimizadas trabajando. Se reinician solas.
 echo   Tracker:   https://bullion-magician-prancing.ngrok-free.dev/cactus-tracker/
 echo   Otro tool: https://bullion-magician-prancing.ngrok-free.dev/
 echo  ============================================================
