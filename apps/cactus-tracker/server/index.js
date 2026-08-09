@@ -95,8 +95,11 @@ function createTracker(opts) {
         if (newmile.connected || await newmile.resume()) {
           const rs = await syncRoster(newmile);
           log('roster sync → ' + JSON.stringify(rs));
+          // UNA vez al día: actividad con ventana COMPLETA (21 d) para recalcular "X días
+          // sin carga". El resto del día la actividad corre con ventana corta (barato).
+          try { log('activity full 21d → ' + JSON.stringify(await syncActivity(newmile, 21))); } catch (e) { log('activity full error: ' + e.message); }
           // trucks nuevos → acomodarlos por GPS de inmediato, no hasta mañana
-          if (rs.created > 0) { try { log('GPS placement (nuevos) → ' + JSON.stringify(await backfillParking(config, 2))); } catch (e) {} }
+          if (rs.created > 0) { try { log('GPS placement (nuevos) → ' + JSON.stringify(await backfillParking(config, 1))); } catch (e) {} }
           // rip-rap scan diario (ventana corta; el backfill largo se corre manual)
           try { log('riprap scan → ' + JSON.stringify(await scanRipRap(newmile, 14))); } catch (e) { log('riprap scan error: ' + e.message); }
         } else log('roster sync saltado: NewMile sin sesión');
@@ -107,7 +110,7 @@ function createTracker(opts) {
       if (afterOr(4, 10) && metaGet('job_samsara_day') !== dateISO) {
         metaSet('job_samsara_day', dateISO);
         log('samsara sync → ' + JSON.stringify(await syncSamsara(config)));
-        try { log('GPS placement → ' + JSON.stringify(await backfillParking(config, 2))); } catch (e) { log('GPS placement error: ' + (e.message || e)); }
+        try { log('GPS placement → ' + JSON.stringify(await backfillParking(config, 1))); } catch (e) { log('GPS placement error: ' + (e.message || e)); }
       }
       // Respaldo diario de la DB (20:00 o al primer despertar después): VACUUM INTO
       // un snapshot consistente en DATA_DIR/backups, conserva los últimos 14.
@@ -121,11 +124,14 @@ function createTracker(opts) {
           log('backup diario listo: cactus-' + dateISO + '.db');
         } catch (e) { log('backup falló: ' + (e.message || e)); }
       }
+      // Actividad periódica: CADA 2 HORAS (horas pares 4–18 CT) con ventana CORTA (3 días).
+      // Suficiente para auto-cover y para mover last_load; el recálculo completo lo hace el
+      // job diario de arriba. Menos pulls = el tier gratis aguanta.
       const hourKey = dateISO + ':' + hour;
-      if (hour >= 4 && hour <= 19 && lastActivityHourKey !== hourKey) {
+      if (hour >= 4 && hour <= 19 && hour % 2 === 0 && lastActivityHourKey !== hourKey) {
         lastActivityHourKey = hourKey;
         if (newmile.connected || await newmile.resume()) {
-          log('activity sync ' + hour + ':00 → ' + JSON.stringify(await syncActivity(newmile)));
+          log('activity sync ' + hour + ':00 (3d) → ' + JSON.stringify(await syncActivity(newmile, 3)));
         }
         snapshotAllToday(); // el estado del día queda guardado conforme avanza (historial)
       }
@@ -136,10 +142,10 @@ function createTracker(opts) {
 
   function startScheduler() {
     if (timer) return;
-    timer = setInterval(tick, 30000);
+    timer = setInterval(tick, 60000); // 60 s (antes 30 s): menos wakeups en el tier gratis
     timer.unref && timer.unref();
     tick(); // catch-up inmediato: si el host durmió a la hora del job, corre al despertar
-    log('scheduler activo (roster 4:30 · samsara 4:10 · actividad cada hora 4–19 CT, con catch-up)');
+    log('scheduler activo (roster+full 4:30 · samsara 4:10 · actividad cada 2 h 4–19 CT · tick 60 s, con catch-up)');
   }
   function stopScheduler() { if (timer) clearInterval(timer); timer = null; }
 

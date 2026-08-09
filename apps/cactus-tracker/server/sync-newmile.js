@@ -203,9 +203,13 @@ async function syncRoster(client) {
 }
 
 // ---------- activity ----------
-async function syncActivity(client) {
+// days: ventana de load_tickets a jalar. Los syncs FRECUENTES (cada rato / al abrir) pasan
+// una ventana corta (3 días) — barato, suficiente para auto-cover y para mover last_load
+// hacia adelante. El sync DIARIO pasa 21 días para recalcular "X días sin carga". Menos
+// CPU/red = el tier gratis de Azure aguanta sin deshabilitarse.
+async function syncActivity(client, days) {
   const today = todayCT();
-  const from = shiftISO(today, -ACTIVITY_WINDOW_DAYS);
+  const from = shiftISO(today, -(days || ACTIVITY_WINDOW_DAYS));
   const rows = await client.loadTicketsRangeAll(from, today);
   const orgs = enabledOrgs();
   const cactus = orgs.find(o => o.id === 'CACTUS');

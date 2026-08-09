@@ -57,12 +57,12 @@ function createRouter({ config, newmile, log }) {
     if (!newmile) return false;
     if (syncInflight) return true;
     const last = metaGet('last_sync_newmile_activity');
-    if (last && (Date.now() - Date.parse(last)) < 20 * 60 * 1000) return false;
+    if (last && (Date.now() - Date.parse(last)) < 30 * 60 * 1000) return false; // 30 min (antes 20)
     syncInflight = true;
     (async () => {
       try {
         if (newmile.connected || await newmile.resume()) {
-          await syncActivity(newmile);
+          await syncActivity(newmile, 3); // ventana corta: barato para el tier gratis
           say('auto-sync al abrir: actividad actualizada');
         }
       } catch (e) {
