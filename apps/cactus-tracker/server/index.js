@@ -63,10 +63,13 @@ function createTracker(opts) {
   });
   newmile.resume().then(st => log(st ? ('NewMile conectado: ' + (st.user || 'ok')) : 'NewMile sin sesión — conectar desde la UI')).catch(() => {});
 
-  // GPS placement en cada boot: reconstruye dónde durmió la flota las últimas noches
-  // y acomoda áreas/terminales solo (idempotente — corre también tras roster syncs y
-  // en el job nocturno, y a mano con POST /api/scan/parking)
+  // GPS placement al boot: reconstruye dónde durmió la flota. Es CPU-pesado (jala historial
+  // de Samsara), así que en el tier GRATIS de Azure NO lo corremos en cada reinicio — solo
+  // si no ha corrido en las últimas 6 h. Evita agotar la cuota de CPU de F1 con cada deploy.
   setTimeout(async () => {
+    const last = metaGet('last_gps_backfill');
+    const freshEnough = last && (Date.now() - Date.parse(last)) < 6 * 3600 * 1000;
+    if (freshEnough) { log('GPS placement al boot omitido (corrió hace < 6 h)'); return; }
     try {
       const s = await backfillParking(config, 2);
       log(s.orgs.length ? ('GPS placement → ' + JSON.stringify(s)) : 'GPS placement pospuesto: sin tokens de Samsara aún');
