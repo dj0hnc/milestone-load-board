@@ -9,6 +9,11 @@
 name: Recover Azure Tracker Data
 on:
   workflow_dispatch:
+  # workflow_dispatch solo funciona desde master; mientras vivimos en la rama de trabajo,
+  # tocar este archivo y pushearlo ES el gatillo.
+  push:
+    branches: [claude/planning-tool-strategy-k3pvy9]
+    paths: ['.github/workflows/recover-azure-data.yml']
 
 jobs:
   recover:
