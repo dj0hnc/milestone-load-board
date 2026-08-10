@@ -30,6 +30,12 @@ on:
     # 4-hour window. Fire every 15 min during the window hours (both DST offsets) to buy more
     # lottery tickets; out-of-window runs exit in seconds and the once-per-day lock dedupes.
     - cron: '*/15 1-6,12-17 * * *'
+  # PUSH PINGER: pushing these branches fires the send immediately — punctual and immune to
+  # GitHub's schedule starvation. A daily Claude Routine pushes them at ~7:35am / ~8:05pm CT
+  # (pure git, no API token needed). Early pings sleep until the window opens; the once-per-day
+  # lock still dedupes against the schedule.
+  push:
+    branches: ['ping/morning', 'ping/night']
   workflow_dispatch:
     inputs:
       kind:
@@ -93,11 +99,28 @@ jobs:
           else
             HOUR=$(TZ=America/Chicago date +%H); HOUR=$((10#$HOUR))
             MIN=$(TZ=America/Chicago date +%M); MIN=$((10#$MIN))
+            NOWM=$((HOUR*60+MIN))
+            if [ "${{ github.event_name }}" = "push" ]; then
+              # ping branch push: the branch name IS the report kind. If the ping lands a bit
+              # early (DST shifts the pinger's UTC schedule by an hour), sleep until the window
+              # opens so the send time stays exact; ignore pings far outside the window.
+              case "${{ github.ref }}" in
+                refs/heads/ping/morning) KIND=morning; START=$((7*60+30)); END=$((11*60+59));;
+                refs/heads/ping/night)   KIND=night;   START=$((20*60));   END=$((23*60+59));;
+                *) echo "not a ping branch"; exit 0;;
+              esac
+              if [ "$NOWM" -lt "$START" ] && [ $((START-NOWM)) -le 90 ]; then
+                echo "ping arrived early ($HOUR:$MIN CT) — sleeping $((START-NOWM)) min until the window opens"
+                sleep $(( (START-NOWM)*60 ))
+              elif [ "$NOWM" -lt "$START" ] || [ "$NOWM" -gt "$END" ]; then
+                echo "ping at $HOUR:$MIN CT is outside the $KIND window — ignoring"
+                exit 0
+              fi
             # CATCH-UP windows: wide on purpose. The once-per-day lock means only the FIRST run
             # inside the window actually sends; the width only buys tolerance to cron delays.
             # Morning goes out at/after 7:30am CT (gives drivers a little more time to start their
             # first load so the no-show list reflects reality), catch-up until noon. Night 8pm-midnight.
-            if { [ "$HOUR" -eq 7 ] && [ "$MIN" -ge 30 ]; } || { [ "$HOUR" -ge 8 ] && [ "$HOUR" -le 11 ]; }; then
+            elif { [ "$HOUR" -eq 7 ] && [ "$MIN" -ge 30 ]; } || { [ "$HOUR" -ge 8 ] && [ "$HOUR" -le 11 ]; }; then
               KIND=morning
             elif [ "$HOUR" -ge 20 ] && [ "$HOUR" -le 23 ]; then
               KIND=night
