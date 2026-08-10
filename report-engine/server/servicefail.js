@@ -275,4 +275,185 @@ function buildServiceFailures(raw, opts) {
   };
 }
 
-module.exports = { lastWeekRange, fetchWeek, buildServiceFailures };
+/*
+ * Print/PDF version — the SAME document layout the team has been hand-building in Design
+ * from the CSV export (dark Milestone header, executive summary cards, failures-by-day,
+ * why/party/customer bars, driver no-shows, full failure detail), with ONE addition:
+ * the GP DOLLARS OF LOST LOADS section and its executive-summary cards. Nothing removed.
+ * Returns a full standalone HTML document sized for US Letter; render with Chromium
+ * --print-to-pdf or Electron webContents.printToPDF.
+ */
+function shortCustomer(s) {
+  s = String(s || '').trim().replace(/\.+$/, '');
+  let m = s.match(/^Quikrete - (\w+) Texas Ready Mix District$/i);
+  if (m) return 'Quikrete ' + m[1] + ' TX';
+  if (/^Martin Marietta Southwest Division/i.test(s)) return 'Martin Marietta SW';
+  if (/^Longview Bridge and Road/i.test(s)) return 'Longview Bridge and Road, Ltd';
+  return s.length > 30 ? s.slice(0, 29) + '…' : s;
+}
+function mdLabel(iso) {  // 2026-08-03 -> "Aug 3"
+  const d = new Date(iso + 'T12:00:00Z');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+function buildPrintHtml(rep, failures) {
+  const GOLD = '#b8862b', DARK = '#191713', INKDIM = '#8a8579', LINE = '#e8e4dc', RED = '#b02a1e';
+  const rangeStr = mdLabel(rep.from) + ' → ' + mdLabel(rep.to);
+  const T = rep.totals;
+  const todayStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago' });
+
+  // ---- aggregates over the failure log ----
+  const cnt = (arr, key) => { const m = new Map(); arr.forEach(f => { const k = key(f); m.set(k, (m.get(k) || 0) + 1); }); return m; };
+  const byDay = Array.from(cnt(failures, f => dateKey(f.order_date).slice(0, 5)).entries()).sort();
+  const typeAll = cnt(failures, f => f.failure_type || '(none)');
+  const typeCrit = cnt(failures.filter(f => norm(f.severity) === 'critical'), f => f.failure_type || '(none)');
+  const byType = Array.from(typeAll.entries()).sort((a, b) => b[1] - a[1]);
+  const byParty = Array.from(cnt(failures, f => {
+    const p = String(f.responsible_party || '').trim(); return p && p.toLowerCase() !== 'none' ? p : 'None assigned';
+  }).entries()).sort((a, b) => b[1] - a[1]);
+  const byCust = Array.from(cnt(failures, f => shortCustomer(f.customer)).entries()).sort((a, b) => b[1] - a[1]);
+  const noShows = failures.filter(f => /no show/i.test(f.failure_type || ''));
+  const finImpact = failures.filter(f => norm(f.impact_type) === 'financial').length;
+  const worstDay = byDay.slice().sort((a, b) => b[1] - a[1])[0] || ['—', 0];
+  const topType = byType[0] || ['—', 0];
+  const custHardest = byCust[0] ? byCust[0][0] : '—';
+  const pct = n => Math.round(100 * n / Math.max(1, T.failures));
+
+  const css = '@page{size:letter;margin:0.55in 0.6in 0.85in 0.6in}'
+    + '*{box-sizing:border-box}body{margin:0;font-family:Segoe UI,Arial,Helvetica,sans-serif;color:' + DARK + ';font-size:12px}'
+    + '.sec{font-size:9px;letter-spacing:2px;color:' + GOLD + ';font-weight:700;margin:26px 0 2px}'
+    + 'h2{font-size:21px;letter-spacing:.5px;margin:0 0 3px;font-weight:800}'
+    + '.sub{color:' + INKDIM + ';font-size:11px;margin:0 0 12px}'
+    + 'table{border-collapse:collapse;width:100%;font-size:10.5px}'
+    + 'td,th{padding:6px 8px;text-align:left;vertical-align:top}'
+    + 'th{font-size:8.5px;letter-spacing:1.4px;color:' + INKDIM + ';text-transform:uppercase;font-weight:600;border-bottom:1px solid ' + LINE + '}'
+    + 'tbody tr{border-bottom:1px solid #f0ede7}'
+    + '.pill{display:inline-block;font-size:8px;font-weight:800;letter-spacing:.8px;padding:2px 9px;border-radius:9px;color:#fff}'
+    + '.p-critical{background:' + RED + '}.p-high{background:#c47b1e}.p-medium{background:' + GOLD + '}.p-low{background:#9b968a}'
+    + '.brk{page-break-before:always}.nobrk{page-break-inside:avoid}'
+    + '.cards{display:flex;gap:10px;margin:8px 0}.card{flex:1;border:1px solid ' + LINE + ';border-radius:7px;padding:10px 13px}'
+    + '.card .l{font-size:8px;letter-spacing:1.5px;color:' + INKDIM + ';text-transform:uppercase}'
+    + '.card .v{font-size:23px;font-weight:800;margin:1px 0}'
+    + '.card .s{font-size:9.5px;color:' + INKDIM + '}'
+    + '.bars td{padding:3.5px 8px 3.5px 0;font-size:10.5px}.bars .n{font-weight:700;white-space:nowrap}'
+    + '.track{background:#f0ede7;border-radius:3px;height:11px;width:100%}.fill{background:' + GOLD + ';border-radius:3px;height:11px}';
+
+  const bars = (pairs, noteFn) => '<table class="bars">' + pairs.map(p =>
+    '<tr><td style="width:150px;font-weight:600">' + esc(p[0]) + '</td>'
+    + '<td><div class="track"><div class="fill" style="width:' + Math.max(3, Math.round(100 * p[1] / pairs.reduce((m, x) => Math.max(m, x[1]), 1))) + '%"></div></div></td>'
+    + '<td class="n" style="width:110px">' + p[1] + (noteFn ? noteFn(p) : '') + '</td></tr>').join('') + '</table>';
+
+  const card = (l, v, s, color) => '<div class="card"><div class="l">' + esc(l) + '</div>'
+    + '<div class="v"' + (color ? ' style="color:' + color + '"' : '') + '>' + v + '</div><div class="s">' + esc(s) + '</div></div>';
+
+  const sevPill = s => { const k = norm(s); return '<span class="pill p-' + (['critical', 'high', 'medium', 'low'].includes(k) ? k : 'low') + '">' + esc(String(s || '').toUpperCase()) + '</span>'; };
+
+  let n = 0; const secNo = () => 'SECTION ' + String(++n).padStart(2, '0');
+
+  let h = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Service Failure Report ' + esc(rangeStr) + '</title><style>' + css + '</style></head><body>'
+
+    // ---- header (dark card) ----
+    + '<div style="background:' + DARK + ';color:#fff;border-radius:12px;padding:26px 30px;margin-bottom:6px">'
+    + '<div style="font-size:24px;font-weight:800;letter-spacing:3px;margin-bottom:14px"><span style="color:#fff">MILES</span><span style="color:' + GOLD + '">T</span><span style="color:#b9b3a6">ONE</span></div>'
+    + '<div style="font-size:9px;letter-spacing:2.5px;color:' + GOLD + ';font-weight:700">MILESTONE TX OPS · NEWMILE SERVICE FAILURES</div>'
+    + '<div style="font-size:31px;font-weight:800;letter-spacing:.5px;margin:4px 0 6px">SERVICE FAILURE REPORT</div>'
+    + '<div style="font-size:12px;color:#d9d4c9">Milestone Supply — Texas · ' + esc(rangeStr) + '</div>'
+    + '<div style="font-size:10px;color:#8f897c;margin-top:3px">' + T.failures + ' failures recorded · ' + byCust.length + ' customers · data as of ' + esc(todayStr) + ' · source: NewMile Service Failures + Orders + PO Margin</div>'
+    + '</div>'
+
+    // ---- 01 executive summary ----
+    + '<div class="sec">' + secNo() + '</div><h2>EXECUTIVE SUMMARY</h2>'
+    + '<div class="cards">'
+    + card('GP Dollars of Lost Loads', fmtMoneyK(T.lostGp), 'gross profit on undelivered quantity', RED)
+    + card('Lost Revenue', fmtMoneyK(T.lostRevenue), 'undelivered × customer rate')
+    + card('Est. Loads Lost', String(Math.round(T.loadsLost)), fmtQty(T.undeliveredTons) + ' tons undelivered')
+    + '</div><div class="cards">'
+    + card('Failures Recorded', String(T.failures), byDay.length + ' dispatch days · ' + rangeStr)
+    + card('Critical Severity', String(T.critical), pct(T.critical) + '% of all failures', RED)
+    + card('Top Failure Type', String(topType[1]), topType[0] + ' — largest driver of misses')
+    + '</div><div class="cards">'
+    + card('Driver No-Shows', String(noShows.length), 'trucks committed that never ran')
+    + card('Customers Affected', String(byCust.length), custHardest + ' hit hardest')
+    + card('Financial Impact', pct(finImpact) + '%', 'of failures logged as financial impact')
+    + '</div>'
+    + '<div style="background:#faf6ee;border:1px solid #efe7d6;border-radius:7px;padding:11px 15px;font-size:11.5px;margin:8px 0 0">'
+    + topType[1] + ' of ' + T.failures + ' failures were ' + esc(String(topType[0]).toLowerCase()) + 's. '
+    + esc(worstDay[0]) + ' alone logged ' + worstDay[1] + ' failures, the worst day of the week. '
+    + T.critical + ' failures (' + pct(T.critical) + '%) were critical, and ' + noShows.length + ' committed trucks never ran. '
+    + '<b>The week\'s failures cost an estimated ' + fmtMoney(T.lostGp) + ' in gross profit</b> on ' + fmtQty(T.undeliveredTons) + ' undelivered tons ('
+    + fmtMoney(T.lostRevenue) + ' revenue, ~' + Math.round(T.loadsLost) + ' loads).'
+    + '</div>'
+
+    // ---- 02 GP of lost loads (NEW — Tony's ask) ----
+    + '<div class="brk"></div><div class="sec">' + secNo() + '</div><h2>GP DOLLARS OF LOST LOADS</h2>'
+    + '<div class="sub">Per failed order: undelivered quantity × the same week\'s realized per-unit margin for that PO+material (NewMile Orders + PO Margin reports). Orders with a logged failure but no undelivered quantity show $0.0 — the failure did not cost tonnage.</div>'
+    + '<table><thead><tr><th>Date</th><th>Order</th><th>Customer</th><th style="text-align:right">Undelivered</th><th style="text-align:right">Loads Lost</th><th style="text-align:right">Lost Revenue</th><th style="text-align:right">Lost GP</th></tr></thead><tbody>'
+    + rep.rows.map(r => '<tr' + (r.lostGp > 0 ? '' : ' style="color:' + INKDIM + '"') + '>'
+      + '<td style="white-space:nowrap">' + esc(r.date.slice(0, 5)) + '</td>'
+      + '<td>' + esc(r.order) + '</td><td>' + esc(shortCustomer(r.customer)) + '</td>'
+      + '<td style="text-align:right;white-space:nowrap">' + fmtQty(r.undelivered) + ' ' + esc(r.uom) + '</td>'
+      + '<td style="text-align:right">' + Math.round(r.loadsLost) + '</td>'
+      + '<td style="text-align:right">' + fmtMoney(r.lostRevenue) + '</td>'
+      + '<td style="text-align:right;font-weight:800' + (r.lostGp > 0 ? ';color:' + RED : '') + '">' + fmtMoney(r.lostGp) + '</td></tr>').join('')
+    + '<tr style="border-top:2px solid ' + DARK + '"><td colspan="3" style="font-weight:800">TOTAL</td>'
+    + '<td style="text-align:right;font-weight:800;white-space:nowrap">' + fmtQty(T.undeliveredTons) + ' Ton</td>'
+    + '<td style="text-align:right;font-weight:800">' + Math.round(T.loadsLost) + '</td>'
+    + '<td style="text-align:right;font-weight:800">' + fmtMoney(T.lostRevenue) + '</td>'
+    + '<td style="text-align:right;font-weight:800;color:' + RED + '">' + fmtMoney(T.lostGp) + '</td></tr></tbody></table>'
+    + (rep.unmatched.length ? '<div style="color:' + RED + ';font-size:10.5px;margin-top:8px"><b>⚠ ' + rep.unmatched.length + ' failures did not match an order</b> (order name typo in NewMile — no GP computed): '
+      + rep.unmatched.map(f => esc(f.order_reference) + ' (' + esc(dateKey(f.order_date)) + ')').join('; ') + '</div>' : '')
+
+    // ---- 03 failures by day ----
+    + '<div class="brk"></div><div class="sec">' + secNo() + '</div><h2>FAILURES BY DAY</h2>'
+    + '<div class="sub">Recorded failures per dispatch day · all entity types</div>'
+    + bars(byDay, p => p[1] === worstDay[1] ? ' · peak' : '')
+
+    // ---- 04 why service failed ----
+    + '<div class="nobrk"><div class="sec">' + secNo() + '</div><h2>WHY SERVICE FAILED</h2>'
+    + '<div class="sub">Failure types by count · critical share noted per type</div>'
+    + bars(byType, p => (typeCrit.get(p[0]) ? ' · ' + typeCrit.get(p[0]) + ' critical' : '')) + '</div>'
+
+    // ---- 05 responsible party ----
+    + '<div class="nobrk"><div class="sec">' + secNo() + '</div><h2>RESPONSIBLE PARTY</h2>'
+    + '<div class="sub">Who owned each failure, as logged in NewMile</div>' + bars(byParty) + '</div>'
+
+    // ---- 06 customer impact ----
+    + '<div class="nobrk"><div class="sec">' + secNo() + '</div><h2>CUSTOMER IMPACT</h2>'
+    + '<div class="sub">Failures by customer · count of recorded events</div>' + bars(byCust) + '</div>'
+
+    // ---- 07 driver no-shows ----
+    + '<div class="brk"></div><div class="sec">' + secNo() + '</div><h2>DRIVER NO-SHOWS</h2>'
+    + '<div class="sub">Committed trucks and drivers that did not run</div>'
+    + '<table><thead><tr><th>Date</th><th>Truck</th><th>Driver</th><th>Fleet / Owner</th><th>Customer</th><th>Notes</th></tr></thead><tbody>'
+    + noShows.map(f => '<tr><td>' + esc(dateKey(f.order_date).slice(0, 5)) + '</td>'
+      + '<td>' + esc(f.truck_number || '—') + '</td><td>' + esc(f.driver_name || '—') + '</td>'
+      + '<td>' + esc(f.truck_owner || f.hauler || '—') + '</td><td>' + esc(shortCustomer(f.customer)) + '</td>'
+      + '<td style="color:' + INKDIM + '">' + esc(String(f.notes || '—').trim() || '—') + '</td></tr>').join('') + '</tbody></table>'
+
+    // ---- 08 failure detail ----
+    + '<div class="brk"></div><div class="sec">' + secNo() + '</div><h2>FAILURE DETAIL</h2>'
+    + '<div class="sub">All ' + T.failures + ' recorded failures, sorted by date · source: NewMile</div>'
+    + '<table><thead><tr><th>Date</th><th>Order</th><th>Type</th><th>Sev</th><th>Customer</th><th>Notes</th></tr></thead><tbody>'
+    + failures.slice().sort((a, b) => (dateKey(a.order_date) < dateKey(b.order_date) ? -1 : 1)).map(f =>
+      '<tr><td style="white-space:nowrap">' + esc(dateKey(f.order_date).slice(0, 5)) + '</td>'
+      + '<td style="min-width:105px">' + esc(f.order_reference) + '</td>'
+      + '<td>' + esc(f.failure_type || '') + '</td><td>' + sevPill(f.severity) + '</td>'
+      + '<td>' + esc(shortCustomer(f.customer)) + '</td>'
+      + '<td style="color:' + INKDIM + '">' + esc(String(f.notes || '—').trim() || '—') + '</td></tr>').join('')
+    + '</tbody></table>'
+    + '</body></html>';
+  return h;
+}
+
+// Native print footer (Chromium/Electron printToPDF footerTemplate) — every page carries the
+// same confidential strip the hand-built Design PDF had. Pass with displayHeaderFooter:true
+// and an empty headerTemplate.
+function printFooterTemplate(rep) {
+  const rangeStr = (mdLabel(rep.from) + ' → ' + mdLabel(rep.to)).toUpperCase();
+  return '<div style="width:100%;font-size:7px;font-family:Segoe UI,Arial,sans-serif;color:#8a8579;'
+    + 'letter-spacing:1.5px;display:flex;justify-content:space-between;padding:0 0.6in">'
+    + '<span>MILESTONE SUPPLY — TEXAS · SERVICE FAILURE REPORT</span>'
+    + '<span>' + esc(rangeStr) + ' · CONFIDENTIAL</span></div>';
+}
+
+module.exports = { lastWeekRange, fetchWeek, buildServiceFailures, buildPrintHtml, printFooterTemplate };

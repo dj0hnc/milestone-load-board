@@ -776,6 +776,117 @@ ipcMain.handle('nm:ocr', async (_e, { image }) => {
  * file (the one that has the requested day's tab). Returns {orders, pairs, file, tab} for matching.
  */
 ipcMain.handle('nm:scanPlan', async () => { try { return require('./planimport').scan('Lease Dispatch'); } catch (e) { return { error: e.message || String(e) }; } });
+
+/*
+ * 📉 SERVICE FAILURE REPORT (GP dollars of lost loads) — the same weekly report the cloud
+ * emails on Mondays (report-engine/server/servicefail.js), viewable and sendable ON DEMAND
+ * from the app for ANY Mon-Sat week. Email needs report.resendKey (newmile.config.json
+ * "report" block, or the SF window's settings); the recipient list is remembered per user.
+ */
+let sfWin = null, lastSf = null;
+function openSfWindow() {
+  if (sfWin && !sfWin.isDestroyed()) { sfWin.focus(); return; }
+  sfWin = new BrowserWindow({
+    width: 1000, height: 900, minWidth: 760, minHeight: 560,
+    backgroundColor: '#0e1422',
+    title: 'Service Failure Report — GP of Lost Loads',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true, nodeIntegration: false, sandbox: false
+    }
+  });
+  sfWin.removeMenu();
+  sfWin.loadFile(path.join(__dirname, 'renderer', 'sfreport.html'));
+  sfWin.on('closed', () => { sfWin = null; });
+}
+ipcMain.handle('nm:sfOpen', () => { openSfWindow(); return true; });
+ipcMain.handle('nm:sfBuild', async (_e, p) => {
+  try {
+    const st = client && client.status ? client.status() : null;
+    if (!st || !st.connected) return { error: 'Not connected to NewMile — connect in the main window first.' };
+    const servicefail = require('./report-engine/server/servicefail');
+    const range = (p && p.from && p.to) ? { from: p.from, to: p.to }
+      : servicefail.lastWeekRange(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }));
+    pushLog('SF report: pulling ' + range.from + ' -> ' + range.to);
+    const raw = await servicefail.fetchWeek(client, range.from, range.to);
+    const rep = servicefail.buildServiceFailures(raw, range);
+    rep._failures = raw.failures;              // kept for the print/PDF layout (failure detail pages)
+    lastSf = rep;
+    const s = loadSettings();
+    return {
+      from: rep.from, to: rep.to, totals: rep.totals, html: rep.html,
+      unmatched: rep.unmatched.map(f => ({ order: f.order_reference, date: f.order_date })),
+      emailTo: s.sfEmailTo || ((appCfg.report || {}).to || ''),
+      emailReady: !!((s.sfResendKey || (appCfg.report || {}).resendKey || '').trim())
+    };
+  } catch (e) { return { error: e.message || String(e) }; }
+});
+ipcMain.handle('nm:sfSend', async (_e, p) => {
+  try {
+    if (!lastSf) return { ok: false, error: 'Build the report first.' };
+    const s = loadSettings();
+    const key = ((p && p.resendKey) || s.sfResendKey || (appCfg.report || {}).resendKey || '').trim();
+    if (!key) return { ok: false, error: 'No Resend key configured — paste one in the SF window (⚙) or in newmile.config.json "report".' };
+    const to = String((p && p.to) || '').trim();
+    if (!to) return { ok: false, error: 'No recipient.' };
+    // remember recipient (+ key if typed here) without clobbering other per-user settings
+    try {
+      const merged = Object.assign({}, s, { sfEmailTo: to }, (p && p.resendKey) ? { sfResendKey: p.resendKey } : {});
+      fs.writeFileSync(settingsPath(), JSON.stringify(merged, null, 2));
+    } catch (e) {}
+    const mailer = require('./report-engine/server/mailer');
+    const t = lastSf.totals;
+    const gpK = '$' + (Math.abs(t.lostGp) >= 1000 ? (t.lostGp / 1000).toFixed(1) + 'K' : t.lostGp.toFixed(1));
+    const subject = '📉 Service Failures ' + lastSf.from + ' → ' + lastSf.to + ' — ' + gpK + ' GP lost · ' + t.failures + ' failures';
+    // attach the full Design-style PDF alongside the two CSVs (Tony reads the PDF)
+    let atts = lastSf.attachments;
+    try { atts = [{ filename: sfPdfName(), content: await sfMakePdf() }].concat(lastSf.attachments); }
+    catch (e) { pushLog('SF pdf attach failed (sending CSVs only): ' + (e.message || e)); }
+    const r = await mailer.sendEmail(
+      { to: to, from: (appCfg.report || {}).from || 'onboarding@resend.dev', resendKey: key },
+      { subject: subject, html: lastSf.html, text: lastSf.text, attachments: atts });
+    pushLog('SF report email: ' + JSON.stringify(r));
+    return r;
+  } catch (e) { return { ok: false, error: e.message || String(e) }; }
+});
+// Render the print layout (the Design-style document + the GP section) to a PDF buffer with a
+// hidden window — same doc whether saved to disk or attached to the email.
+async function sfMakePdf() {
+  const servicefail = require('./report-engine/server/servicefail');
+  const html = servicefail.buildPrintHtml(lastSf, lastSf._failures || []);
+  const w = new BrowserWindow({ show: false, webPreferences: { sandbox: false } });
+  try {
+    await w.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    return await w.webContents.printToPDF({
+      pageSize: 'Letter', printBackground: true,
+      displayHeaderFooter: true, headerTemplate: '<span></span>',
+      footerTemplate: servicefail.printFooterTemplate(lastSf),
+      margins: { top: 0.55, bottom: 0.85, left: 0.6, right: 0.6 }
+    });
+  } finally { try { w.destroy(); } catch (e) {} }
+}
+function sfPdfName() { return 'Milestone_Tx_SF_Report_' + lastSf.from + '_' + lastSf.to + '.pdf'; }
+ipcMain.handle('nm:sfPdf', async () => {
+  try {
+    if (!lastSf) return { error: 'Build the report first.' };
+    const { dialog } = require('electron');
+    const res = await dialog.showSaveDialog(sfWin || win, { title: 'Save Service Failure Report PDF', defaultPath: sfPdfName(), filters: [{ name: 'PDF', extensions: ['pdf'] }] });
+    if (res.canceled || !res.filePath) return { canceled: true };
+    fs.writeFileSync(res.filePath, await sfMakePdf());
+    return { ok: true, saved: res.filePath };
+  } catch (e) { return { error: e.message || String(e) }; }
+});
+ipcMain.handle('nm:sfSaveCsv', async () => {
+  try {
+    if (!lastSf) return { error: 'Build the report first.' };
+    const { dialog } = require('electron');
+    const res = await dialog.showOpenDialog(sfWin || win, { title: 'Save the two report CSVs to…', properties: ['openDirectory', 'createDirectory'] });
+    if (res.canceled || !res.filePaths.length) return { canceled: true };
+    const dir = res.filePaths[0], saved = [];
+    lastSf.attachments.forEach(a => { const fp = path.join(dir, a.filename); fs.writeFileSync(fp, a.content); saved.push(fp); });
+    return { ok: true, saved: saved };
+  } catch (e) { return { error: e.message || String(e) }; }
+});
 ipcMain.handle('nm:readPlan', async (_e, { dateISO } = {}) => {
   try {
     const s = loadSettings() || {};

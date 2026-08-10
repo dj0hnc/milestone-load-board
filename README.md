@@ -92,3 +92,10 @@ GitHub Actions sends the reports by itself — no PC needed (see `.github/workfl
   attaches two CSVs (per-order lost GP + the raw failure log). Rerun any week manually:
   Actions → MAB Reports → kind `sf` (uses last week), or locally
   `node report-engine/report-cli.js sf --local --from=2026-08-03 --to=2026-08-08`.
+
+The same report lives **inside the app**: the **📉 SF Report** button (top bar, enabled when
+connected) opens a viewer for ANY Mon-Sat week — build on demand, **✉ Send** (email with the
+full Design-style PDF + both CSVs attached; Resend key in the window's ⚙ or the config
+`report` block), **🖨 PDF** (the same document the team used to hand-build: executive summary,
+GP of lost loads, failures by day, why/party/customer, no-shows, full failure detail), and
+**💾 Save CSVs**.

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Service Failure Report — GP of Lost Loads</title>
+<style>
+  :root{--bg:#0e1422;--panel:#161e30;--line:#26304a;--ink:#e8ebf2;--dim:#8b93a7;--gold:#b8862b;--green:#2f9e6e;--red:#d4604a}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;height:100vh}
+  #bar{display:flex;gap:8px;align-items:center;padding:10px 12px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+  #bar b{letter-spacing:1px;font-size:13px;color:var(--gold)}
+  button{font-family:inherit;font-weight:700;font-size:13px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:6px 12px;cursor:pointer}
+  button:hover:not(:disabled){border-color:var(--gold)}
+  button.go{background:var(--green);border-color:var(--green);color:#06231a}
+  button.warn{background:var(--gold);border-color:var(--gold);color:#1a1205}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  input[type=text]{background:#0b101c;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:6px 10px;font-size:13px}
+  #week{min-width:170px;text-align:center;font-weight:700}
+  #to{flex:1;min-width:220px}
+  #stat{font-size:12px;color:var(--dim);padding:0 12px 8px;background:var(--panel)}
+  #stat.err{color:var(--red)} #stat.ok{color:var(--green)}
+  #view{flex:1;border:0;background:#fff;width:100%}
+  #empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:15px}
+  #keyrow{display:none;gap:8px;align-items:center;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+  #keyrow input{flex:1}
+</style>
+</head>
+<body>
+  <div id="bar">
+    <b>📉 SERVICE FAILURES · GP OF LOST LOADS</b>
+    <button id="prev" title="Previous week">◀</button>
+    <span id="week">—</span>
+    <button id="next" title="Next week">▶</button>
+    <button class="go" id="build">↻ Build report</button>
+    <span style="flex:1"></span>
+    <input type="text" id="to" placeholder="email to (comma-separated)">
+    <button class="warn" id="send" disabled>✉ Send</button>
+    <button id="pdf" disabled>🖨 PDF</button>
+    <button id="csv" disabled>💾 Save CSVs</button>
+    <button id="gear" title="Email settings (Resend key)">⚙</button>
+  </div>
+  <div id="keyrow">
+    <span style="font-size:12px;color:var(--dim)">Resend API key (stored on this PC, used to send the email):</span>
+    <input type="text" id="rkey" placeholder="re_...">
+  </div>
+  <div id="stat">Pick a week and hit Build. Default = last full Mon–Sat week (what the Monday email sends).</div>
+  <div id="empty">No report built yet.</div>
+  <iframe id="view" style="display:none" sandbox="allow-same-origin"></iframe>
+<script>
+  const $ = s => document.querySelector(s);
+  // Mon-Sat week math in Central time, mirroring servicefail.lastWeekRange
+  function centralToday(){ return new Date().toLocaleDateString('en-CA',{timeZone:'America/Chicago'}); }
+  function mondayOf(iso, weeksBack){
+    const d = new Date(iso+'T12:00:00Z'); const dow = d.getUTCDay();
+    d.setUTCDate(d.getUTCDate() - (dow===0?6:dow-1) - 7*weeksBack);
+    return d;
+  }
+  let weeksBack = 1;   // 1 = last week (the scheduled email's range)
+  function range(){
+    const m = mondayOf(centralToday(), weeksBack);
+    const from = m.toISOString().slice(0,10);
+    m.setUTCDate(m.getUTCDate()+5);
+    return { from, to: m.toISOString().slice(0,10) };
+  }
+  function paintWeek(){ const r = range(); $('#week').textContent = r.from + ' → ' + r.to; }
+  $('#prev').onclick = () => { weeksBack++; paintWeek(); };
+  $('#next').onclick = () => { if (weeksBack>0) weeksBack--; paintWeek(); };
+  paintWeek();
+
+  function stat(msg, cls){ const el=$('#stat'); el.textContent=msg; el.className=cls||''; }
+  let built = false;
+  $('#build').onclick = async () => {
+    const r = range();
+    stat('Pulling failures + orders + PO margins from NewMile for ' + r.from + ' → ' + r.to + ' …');
+    $('#build').disabled = true;
+    try {
+      const rep = await window.newmile.sfBuild(r);
+      if (rep.error) { stat(rep.error, 'err'); return; }
+      $('#empty').style.display='none';
+      const v=$('#view'); v.style.display='block'; v.srcdoc = '<body style="margin:14px">' + rep.html + '</body>';
+      if (rep.emailTo && !$('#to').value) $('#to').value = rep.emailTo;
+      built = true; $('#send').disabled = false; $('#csv').disabled = false; $('#pdf').disabled = false;
+      const t = rep.totals;
+      const gp = '$' + t.lostGp.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1});
+      stat('Built ' + rep.from + ' → ' + rep.to + ' · ' + t.failures + ' failures · ' + t.failedOrders + ' orders · GP lost ' + gp
+        + (rep.unmatched.length ? ' · ⚠ ' + rep.unmatched.length + ' failures did not match an order (fix names in NewMile)' : ''), 'ok');
+    } finally { $('#build').disabled = false; }
+  };
+  $('#gear').onclick = () => { const k=$('#keyrow'); k.style.display = k.style.display==='flex' ? 'none' : 'flex'; };
+  $('#send').onclick = async () => {
+    if (!built) return;
+    $('#send').disabled = true;
+    stat('Sending…');
+    const r = await window.newmile.sfSend({ to: $('#to').value, resendKey: $('#rkey').value.trim() || undefined });
+    $('#send').disabled = false;
+    if (r.ok) stat('Email sent ✓ (' + (r.to||[]).join(', ') + ') — with both CSVs attached', 'ok');
+    else stat('Send failed: ' + (r.error||'unknown'), 'err');
+  };
+  $('#pdf').onclick = async () => {
+    stat('Building PDF…');
+    const r = await window.newmile.sfPdf();
+    if (r.canceled) { stat('PDF canceled.'); return; }
+    if (r.ok) stat('PDF saved: ' + r.saved, 'ok'); else stat(r.error || 'pdf failed', 'err');
+  };
+  $('#csv').onclick = async () => {
+    const r = await window.newmile.sfSaveCsv();
+    if (r.canceled) return;
+    if (r.ok) stat('Saved: ' + r.saved.join('  ·  '), 'ok'); else stat(r.error||'save failed', 'err');
+  };
+</script>
+</body>
+</html>
