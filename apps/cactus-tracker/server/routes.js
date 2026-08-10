@@ -175,6 +175,7 @@ function createRouter({ config, newmile, log }) {
       week: weekDatesCT(date),
       trucks: outTrucks,
       meta: {
+        version: config.version || 'dev',
         last_sync_roster: metaGet('last_sync_newmile_roster'),
         last_sync_activity: metaGet('last_sync_newmile_activity'),
         last_sync_samsara: metaGet('last_sync_samsara'),
@@ -621,6 +622,7 @@ function createRouter({ config, newmile, log }) {
     const syncing = maybeBackgroundSync();
     res.json({
       ok: true,
+      version: config.version || 'dev',
       today: todayCT(),
       syncing,
       newmile_connected: newmile ? !!newmile.connected : false,

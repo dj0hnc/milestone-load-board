@@ -394,6 +394,14 @@ async function fetchBoard(){
       if(myseq!==_fetchSeq)return; // ya salió una navegación más nueva: descarta esta
       board=j;
       if(!date)date=board.date;
+      / AUTO-UPDATE: si el server ya trae versión nueva (auto-pull en el laptop),
+      // la página se recarga sola una vez — sin F5 manual, sin PowerShell.
+      const v=j.meta&&j.meta.version;
+      if(v){
+        const prev=sessionStorage.getItem("ct-ver");
+        if(prev&&prev!==v){sessionStorage.setItem("ct-ver",v);location.reload();return;}
+        sessionStorage.setItem("ct-ver",v);
+      }
       offline=false;
       localStorage.setItem(CACHE_KEY+":"+ORG,JSON.stringify({at:Date.now(),board}));
       done=true;
@@ -839,7 +847,7 @@ function renderStatusbar(){
   $("nmDot").className="dot"+(nm.connected?" on":"");
   $("nmTxt").innerHTML=nm.connected?("NewMile: "+esc(nm.user||"connected")):`NewMile disconnected — <a class="connect" href="${API}/api/newmile/connect">connect</a>`;
   const last=m.last_sync_activity||m.last_sync_roster;
-  $("lastSync").textContent=m.syncing?"⟳ updating…":"last sync: "+fmtTime(last);
+  $("lastSync").textContent=(m.syncing?"⟳ updating…":"last sync: "+fmtTime(last))+(m.version?" · v"+m.version:"");
   // el server disparó un sync en segundo plano al abrir → recargar en cuanto acabe
   if(m.syncing&&!window._syncPoll){window._syncPoll=setTimeout(()=>{window._syncPoll=null;fetchBoard();},12000);}
 }
