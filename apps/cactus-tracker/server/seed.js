@@ -182,6 +182,19 @@ function main(force) {
   }
   // tras el merge, sugerencias que quedaron iguales al área ya no dicen nada
   run(`UPDATE trucks SET suggested_area = '' WHERE suggested_area != '' AND suggested_area = area`);
+  // DEDUPE ICs de CKJ: el roster viejo creaba los ICs pelones ("314") como flota KT
+  // ⚑NUEVO, duplicando al IC real (CKJ314). Se funden: marcas/actividad se mueven al IC
+  // y el duplicado sin colocar se borra. Solo toca duplicados vírgenes (is_new=1).
+  for (const d of all(`SELECT t.number FROM trucks t WHERE t.org_id = 'KT' AND t.is_new = 1 AND t.is_sub = 0
+                        AND t.number GLOB '[0-9]*' AND length(t.number) <= 4
+                        AND EXISTS (SELECT 1 FROM trucks x WHERE x.org_id = 'KT' AND x.number = 'CKJ' || t.number)`)) {
+    const ic = 'CKJ' + d.number;
+    for (const tbl of ['dispatch_state', 'activity_log']) {
+      run(`UPDATE OR IGNORE ${tbl} SET number = ? WHERE org_id = 'KT' AND number = ?`, ic, d.number);
+      run(`DELETE FROM ${tbl} WHERE org_id = 'KT' AND number = ?`, d.number); // sobras por conflicto
+    }
+    run(`DELETE FROM trucks WHERE org_id = 'KT' AND number = ? AND is_new = 1`, d.number);
+  }
   // Livingston: en NewMile llevan prefijo LT ("LT245") pero el roster los trae pelones —
   // display = número completo como NewMile (la llave no cambia, marcas/historial quedan)
   run(`UPDATE trucks SET display_number = 'LT' || number, updated_at = ?

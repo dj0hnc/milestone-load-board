@@ -135,11 +135,10 @@ async function syncRoster(client) {
     for (const t of mine) {
       const rawName = t.truck_number || t.number || '';
       const parsed = splitNameFlag(rawName);
-      const number = canonicalTruckNumber(org.id, parsed.number); // "KT-7040 P" → 7040 (llave)
-      const display = displayTruckNumber(rawName);                // "KT-7040 P" (como NewMile)
+      let number = canonicalTruckNumber(org.id, parsed.number); // "KT-7040 P" → 7040 (llave)
+      let display = displayTruckNumber(rawName);                // "KT-7040 P" (como NewMile)
       const flag = parsed.flag;
       if (!number) continue;
-      seen.add(number);
       const driver = (t.driver_name || t.driver || '').trim();
       const trailer = shortTrailer(t.truck_type || t.trailer_type || ''); // "Aluminum End Dump" → AL-ED
       const nmId = t.id != null ? t.id : (t.truck_id != null ? t.truck_id : null);
@@ -148,8 +147,33 @@ async function syncRoster(client) {
       const ownerId = t.owner_id != null ? t.owner_id : (t.owner && t.owner.id != null ? t.owner.id : null);
       const ownerName = String(t.owner_name || (t.owner && t.owner.name) || '').trim();
 
+      // REGLA IC (verificada contra NewMile 8/9/26): en el fleet CKJ, un número PELÓN
+      // (sin "KT-") cuyo DUEÑO no es Kennemer = independent contractor. Vive como
+      // CKJ### (display pelón) bajo CKJ ICS — la misma llave que usa Samsara. Los
+      // pelones DE Kennemer (1720, 3541… legacy) siguen como flota, salvo que Samsara
+      // ya los haya clasificado como IC (respetamos su twin CKJ###).
+      let isIC = false;
+      if (org.id === 'KT' && /^\d{1,4}$/.test(number) && !/^KT/i.test(normNum(rawName))) {
+        const twin = get(`SELECT 1 AS x FROM trucks WHERE org_id = 'KT' AND number = ?`, 'CKJ' + number);
+        if (twin || !/kennemer/i.test(ownerName)) {
+          isIC = true;
+          display = number;          // se muestra pelón, como en NewMile/Samsara
+          number = 'CKJ' + number;   // llave sin chocar con la flota
+        }
+      }
+      seen.add(number);
+
       const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', org.id, number);
       if (!row) {
+        if (isIC) {
+          // IC: directo al board bajo CKJ ICS (no es ⚑ NUEVO de flota); el GPS lo acomoda
+          run(`INSERT INTO trucks (org_id, number, display_number, division, area, driver, trailer_type, detected_flag,
+                 nm_truck_id, owner_id, owner_name, tags, is_sub, is_new, updated_at)
+               VALUES (?,?,?,'ICS','(SIN YARD)',?,?,?,?,?,?,'CKJ IC',1,0,?)`,
+            org.id, number, display, driver, trailer, flag, nmId, ownerId, ownerName, nowISO());
+          summary.created++;
+          continue;
+        }
         // NEVER silently missing: create with ⚑ NUEVO, no division until I assign it.
         // KT names carry the terminal letter ("KT-7040 P") → pre-fill the suggestion.
         const hint = org.id === 'KT' ? ktDivisionHint(rawName) : null;
