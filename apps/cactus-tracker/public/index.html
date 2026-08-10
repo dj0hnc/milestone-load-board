@@ -1365,7 +1365,11 @@ function applyFlag(org,num,source,action){
 
 // ---------- boot ----------
 fetchBoard();
-setInterval(fetchBoard,5*60*1000); // refresh every 5 min while open
+setInterval(()=>{if(!document.hidden)fetchBoard();},60*1000); // refresh every min while visible
+// al abrir el cel / regresar a la pestaña: refresh inmediato (y si hay versión nueva, recarga sola)
+document.addEventListener("visibilitychange",()=>{
+  if(!document.hidden&&Date.now()-(window._visFetch||0)>8000){window._visFetch=Date.now();fetchBoard();}
+});
 </script>
 </body>
 </html>

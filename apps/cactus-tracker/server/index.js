@@ -17,7 +17,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, exec } = require('child_process');
 const { open, metaGet, metaSet, backupTo, DATA_DIR } = require('./db');
 const seed = require('./seed');
 const { createRouter } = require('./routes');
@@ -50,28 +50,41 @@ function loadConfig() {
 }
 
 // ---------- AUTO-UPDATE (self-hosted) ----------
-// El tracker se actualiza SOLO: cada 10 min revisa GitHub; si hay versión nueva hace
-// git pull y se reinicia (el loop de run-tracker.cmd lo reprende con el código nuevo).
-// Nadie vuelve a abrir PowerShell para actualizar. En Azure se salta (ahí despliega CI).
+// El tracker se actualiza SOLO: cada minuto revisa GitHub (asíncrono — no congela el
+// board mientras pregunta); si hay commits nuevos hace git pull y se reinicia (el loop
+// de run-tracker.cmd lo reprende con el código nuevo). En Azure se salta (ahí despliega CI).
 const REPO_ROOT = path.join(__dirname, '..', '..', '..');
 function gitQ(cmd) { return execSync(cmd, { cwd: REPO_ROOT, timeout: 90000, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); }
 function currentVersion() {
   try { return gitQ('git rev-parse --short HEAD'); } catch (e) { return 'dev'; }
 }
-function selfUpdate(log) {
-  if (process.env.WEBSITE_INSTANCE_ID || process.env.CACTUS_NO_SELF_UPDATE) return false;
+function gitA(cmd) {
+  return new Promise((resolve, reject) => {
+    exec(cmd, { cwd: REPO_ROOT, timeout: 90000 }, (err, stdout) => err ? reject(err) : resolve(String(stdout).trim()));
+  });
+}
+let updInFlight = false, updLastErrLog = 0;
+async function selfUpdate(log) {
+  if (process.env.WEBSITE_INSTANCE_ID || process.env.CACTUS_NO_SELF_UPDATE || updInFlight) return false;
+  updInFlight = true;
   try {
-    gitQ('git fetch --quiet origin');
-    const branch = gitQ('git rev-parse --abbrev-ref HEAD');
-    const local = gitQ('git rev-parse HEAD');
-    const remote = gitQ(`git rev-parse origin/${branch}`);
-    if (!remote || local === remote) return false;
-    gitQ('git pull --ff-only --quiet');
-    log(`AUTO-UPDATE: nueva versión ${remote.slice(0, 7)} instalada — reiniciando en 2 s…`);
+    await gitA('git fetch --quiet origin');
+    const branch = await gitA('git rev-parse --abbrev-ref HEAD');
+    // solo si el remoto va ADELANTE (commits que no tengo); un local adelantado no reinicia
+    const behind = await gitA(`git rev-list --count HEAD..origin/${branch}`);
+    if (!Number(behind)) { updInFlight = false; return false; }
+    await gitA('git pull --ff-only --quiet');
+    const now = await gitA('git rev-parse --short HEAD');
+    log(`AUTO-UPDATE: nueva versión ${now} instalada — reiniciando en 2 s…`);
     setTimeout(() => process.exit(0), 2000); // el loop lo levanta con lo nuevo
-    return true;
+    return true; // updInFlight se queda en true: ya nos vamos a reiniciar
   } catch (e) {
-    log('auto-update check falló: ' + String(e.message || e).split('\n')[0]);
+    // sin internet un rato = normal; avisar máx. 1 vez cada 10 min para no ensuciar el log
+    if (Date.now() - updLastErrLog > 10 * 60 * 1000) {
+      updLastErrLog = Date.now();
+      log('auto-update check falló: ' + String(e.message || e).split('\n')[0]);
+    }
+    updInFlight = false;
     return false;
   }
 }
@@ -115,10 +128,10 @@ function createTracker(opts) {
   let lastActivityHourKey = '', timer = null, lastUpdCheck = 0;
 
   async function tick() {
-    // auto-update cada 10 min (también domingos): si hay código nuevo, pull + restart
-    if (Date.now() - lastUpdCheck > 10 * 60 * 1000) {
+    // auto-update en cada tick = cada minuto (también domingos): código nuevo → pull + restart
+    if (Date.now() - lastUpdCheck > 55 * 1000) {
       lastUpdCheck = Date.now();
-      if (selfUpdate(log)) return; // se va a reiniciar: no arranques jobs a medias
+      if (await selfUpdate(log)) return; // se va a reiniciar: no arranques jobs a medias
     }
     const { dateISO, hour, minute, weekday } = ctParts();
     if (weekday === 'Sun') return; // no dispatch Sundays
