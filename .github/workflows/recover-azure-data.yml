@@ -1,0 +1,73 @@
+# Rescata la base de datos del tracker desde Azure (aunque el SITIO esté deshabilitado,
+# el SCM/Kudu sigue respondiendo). Corre a mano desde la pestaña Actions.
+#
+# Salidas:
+#  - En el LOG: solo datos NO sensibles — números de trucks con estrella, statuses y
+#    conteos (sin notas ni teléfonos).
+#  - Artifact "cactus-azure-db" (1 día): el cactus.db completo dentro de un zip CON
+#    CONTRASEÑA (el PIN del equipo) para restaurarlo en el servidor nuevo.
+name: Recover Azure Tracker Data
+on:
+  workflow_dispatch:
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download DB from Kudu
+        env:
+          PROFILE: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+        run: |
+          python3 - <<'EOF'
+          import os, re, base64, urllib.request
+          prof = os.environ['PROFILE']
+          host = re.search(r'publishUrl="([^"]*\.scm\.[^":]*)', prof).group(1)
+          user = re.search(r'userName="(\$[^"]+)"', prof).group(1)
+          pwd = re.search(r'userPWD="([^"]+)"', prof).group(1)
+          auth = base64.b64encode(f'{user}:{pwd}'.encode()).decode()
+          def get(path):
+              r = urllib.request.Request(f'https://{host}{path}')
+              r.add_header('Authorization', 'Basic ' + auth)
+              return urllib.request.urlopen(r, timeout=120).read()
+          data = get('/api/vfs/data/cactus.db')
+          open('cactus-azure.db', 'wb').write(data)
+          print('descargado:', len(data), 'bytes')
+          EOF
+
+      - name: Print stars + status summary (safe fields only)
+        run: |
+          node - <<'EOF'
+          const { DatabaseSync } = require('node:sqlite');
+          const db = new DatabaseSync('cactus-azure.db', { readOnly: true });
+          const all = (q, ...p) => db.prepare(q).all(...p);
+          console.log('=== STAR TRUCKS ===');
+          for (const r of all(`SELECT org_id, number, display_number FROM trucks WHERE star = 1 ORDER BY org_id, number`))
+            console.log(`STAR ${r.org_id} ${r.number} (display ${r.display_number})`);
+          console.log('=== STATUS != ok (sin notas) ===');
+          for (const r of all(`SELECT org_id, number, status, return_date FROM trucks WHERE status IS NOT NULL AND status != 'ok' AND archived = 0 ORDER BY status, number`))
+            console.log(`STATUS ${r.org_id} ${r.number} ${r.status} ${r.return_date || ''}`);
+          console.log('=== TIME OFF vigentes/futuros ===');
+          for (const r of all(`SELECT org_id, number, from_date, to_date, reason FROM time_off WHERE to_date >= date('now','-1 day') ORDER BY from_date`))
+            console.log(`OFF ${r.org_id} ${r.number} ${r.from_date}..${r.to_date} ${r.reason}`);
+          console.log('=== RIP RAP confirmados ===');
+          console.log(all(`SELECT COUNT(*) c FROM trucks WHERE rip_rap = 1`)[0].c, 'trucks rip_rap=1:',
+            all(`SELECT number FROM trucks WHERE rip_rap = 1 ORDER BY number`).map(r => r.number).join(', '));
+          console.log('=== conteos ===');
+          for (const t of ['trucks','dispatch_state','activity_log','truck_log','time_off','parking_log'])
+            console.log(t, all(`SELECT COUNT(*) c FROM ${t}`)[0].c);
+          EOF
+
+      - name: Zip with team PIN
+        env:
+          PIN: ${{ secrets.ACCESS_PIN }}
+        run: |
+          P="${PIN:-2585}"
+          7z a -p"$P" cactus-azure-db.7z cactus-azure.db >/dev/null
+          ls -la cactus-azure-db.7z
+
+      - name: Upload encrypted artifact (1 day)
+        uses: actions/upload-artifact@v4
+        with:
+          name: cactus-azure-db
+          path: cactus-azure-db.7z
+          retention-days: 1

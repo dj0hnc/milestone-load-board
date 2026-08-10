@@ -683,7 +683,7 @@ function chipHtml(t){
   const drvChg=t.driver_changed_recent;
   return `<div class="chip ${cls} ${rest?"rest":""} ${t.star?"starred":""}" id="chip-${cssId(t.org_id+"-"+t.number)}" onclick="tapChip('${t.org_id}','${esc(t.number)}')">
     ${t.rip_rap?'<div class="ripflag"></div>':""}
-    ${t.state==="a"?`<div class="check ${t.state_source==="auto"?"auto":""}" title="${t.state_source==="auto"?"auto-covered: hauled or assigned today in NewMile":"assigned"}">${t.state_source==="auto"?"⚡":"✓"}</div>`:""}
+    ${t.state==="a"?`<div class="check ${(t.state_source==="auto"||t.nm_confirmed)?"auto":""}" title="${t.state_source==="auto"?"auto-covered: hauled or assigned in NewMile":(t.nm_confirmed?"planned by you — CONFIRMED in NewMile":"assigned (not yet verified vs NewMile)")}">${(t.state_source==="auto"||t.nm_confirmed)?"⚡":"✓"}</div>`:""}
     ${cls==="s-off"?`<div class="offmark" title="not available">${offEmoji}</div>`:""}
     <button class="btn-edit" onclick="event.stopPropagation();openEdit('${t.org_id}','${esc(t.number)}')" title="Edit">✎</button>
     <button class="btn-down" onclick="tapDown(event,'${t.org_id}','${esc(t.number)}')" title="Mark down">✕</button>
@@ -693,6 +693,7 @@ function chipHtml(t){
     ${parkHtml(t)}
     ${actHtml(t)}
     ${hasGPS(t)?`<button class="btn-loc" title="Refresh live GPS" onclick="event.stopPropagation();locateNow('${t.org_id}','${esc(t.number)}')">⟳</button>`:""}
+    ${t.state==="a"&&t.state_source!=="auto"&&!t.nm_confirmed&&board.nm_checked&&!board.historical?`<span class="badge" style="background:#fdf3e3;color:#8a5a10;border:1px solid #c98a2f;">⚠ not in NewMile</span>`:""}
     ${t.state==="d"&&t.state_source==="carry"?`<span class="badge" style="background:var(--red-bg);color:var(--red);">⛔ DOWN since ${mdy(t.down_since)}${lastMovedLbl(t)} — confirm driver</span>`:""}
     ${t.state==="d"&&t.state_source!=="carry"&&t.last_moved_at?`<span class="badge" style="background:var(--red-bg);color:var(--red);">⏱ last moved ${tsMdy(t.last_moved_at)}</span>`:""}
     ${rest?'<span class="badge status">OFF TODAY</span>':""}
@@ -714,6 +715,15 @@ function renderBanners(){
   }
   if(board.historical){
     html+=`<div class="banner off"><b>📅 HISTORY VIEW — ${date}</b> — status and notes as they were that day. ✎ edits apply to the truck as of TODAY.</div>`;
+  }
+  // BLINDAJE: marcados a mano que NO aparecen asignados en NewMile (solo cuando este día
+  // ya se cotejó). Estos son los que se te pueden ir — a meterlos a NewMile o despintarlos.
+  if(nm.connected&&board.nm_checked&&!board.historical){
+    const ghost=(board.trucks||[]).filter(t=>!t.archived&&!t.is_new&&t.state==="a"&&t.state_source!=="auto"&&!t.nm_confirmed&&(isVirtual()||t.division===division));
+    if(ghost.length){
+      html+=`<div class="banner baja"><b>⚠ PLANNED HERE, NOT IN NEWMILE · ${ghost.length}</b> — you marked these but they are NOT assigned in NewMile for this day:<br>`+
+        ghost.map(t=>`<span class="chip-mini" onclick="jumpTo('${t.org_id}','${esc(t.number)}')">${esc(dnum(t))}</span>`).join("")+`</div>`;
+    }
   }
   if(offline){
     const c=localStorage.getItem(CACHE_KEY+":"+ORG);

@@ -139,6 +139,7 @@ function createRouter({ config, newmile, log }) {
         } : {}),
         state: s ? s.state : ((carryMap.get(t.org_id + '|' + t.number) || {}).state === 'd' ? 'd' : 'p'),
         state_source: s ? s.source : ((carryMap.get(t.org_id + '|' + t.number) || {}).state === 'd' ? 'carry' : null),
+        nm_confirmed: s ? (s.nm_confirmed || 0) : 0,
         down_since: !s && (carryMap.get(t.org_id + '|' + t.number) || {}).state === 'd' ? carryMap.get(t.org_id + '|' + t.number).date : null,
         state_by: s ? s.marked_by : null,
         time_off: offMap.get(t.org_id + '|' + t.number) || [],
@@ -157,6 +158,9 @@ function createRouter({ config, newmile, log }) {
                      WHERE o.enabled = 1 ORDER BY o.sort, d.sort`))
         .concat([{ org_id: 'SUBS', id: 'SUBS', label: 'SUBS' }]),
       date, today, historical,
+      // ¿este día ya se cotejó contra las asignaciones de NewMile? (para avisar "planeado
+      // aquí pero NO está en NewMile" solo cuando hay datos reales que comparar)
+      nm_checked: !!metaGet('nm_assign_checked_' + date),
       week: weekDatesCT(date),
       trucks: outTrucks,
       meta: {
@@ -176,8 +180,9 @@ function createRouter({ config, newmile, log }) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !org || !number || !['p', 'a', 'd'].includes(state)) {
       return res.status(400).json({ error: 'body: {date ISO, org, number, state p|a|d}' });
     }
-    run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_by, marked_at) VALUES (?,?,?,?,'manual',?,?)
-         ON CONFLICT(date, org_id, number) DO UPDATE SET state = excluded.state, source = 'manual', marked_by = excluded.marked_by, marked_at = excluded.marked_at`,
+    // nm_confirmed vuelve a 0: la confirmación vs NewMile se re-verifica en el próximo sync
+    run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_by, marked_at, nm_confirmed) VALUES (?,?,?,?,'manual',?,?,0)
+         ON CONFLICT(date, org_id, number) DO UPDATE SET state = excluded.state, source = 'manual', marked_by = excluded.marked_by, marked_at = excluded.marked_at, nm_confirmed = 0`,
       date, normNum(org), normNum(number), state, String(by || '').slice(0, 40), nowISO());
     res.json({ ok: true });
   });

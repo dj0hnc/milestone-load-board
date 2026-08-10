@@ -305,6 +305,7 @@ async function syncActivity(client, days) {
     try {
       const assigns = await client.assignmentsToday(dateISO);
       const nums = new Set();
+      const matched = new Set(); // org|num de los que SÍ están en NewMile ese día
       for (const a of assigns) {
         const raw = a.truck_number || (a.truck && (a.truck.truck_number || a.truck.number)) || '';
         if (raw) nums.add(normNum(raw).replace(/\s+/g, ''));
@@ -327,17 +328,37 @@ async function syncActivity(client, days) {
         // último recurso: display_number ("LT245" del sub 245, "211" del IC CKJ211)
         if (!hit) hit = get('SELECT org_id, number FROM trucks WHERE display_number = ? AND archived = 0', n);
         if (!hit) continue;
+        matched.add(hit.org_id + '|' + hit.number);
+        // asignado en NewMile = claramente ACTIVO → fuera de "¿de baja?" (falsa alarma
+        // del cotejo de roster; el dispatcher no debe revisar trucks que están rodando)
+        run(`UPDATE trucks SET maybe_removed = 0 WHERE org_id = ? AND number = ? AND maybe_removed = 1`, hit.org_id, hit.number);
         const st = get('SELECT * FROM dispatch_state WHERE date = ? AND org_id = ? AND number = ?', dateISO, hit.org_id, hit.number);
         if (!st) {
-          run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_at) VALUES (?,?,?,'a','auto',?)`,
+          run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_at, nm_confirmed) VALUES (?,?,?,'a','auto',?,1)`,
             dateISO, hit.org_id, hit.number, nowISO());
           summary[label + 'Covered'] = (summary[label + 'Covered'] || 0) + 1;
+        } else {
+          // el truck YA estaba marcado (a mano o auto) → queda CONFIRMADO contra NewMile:
+          // el ✓ del dispatcher se vuelve ⚡. La marca manual nunca se pisa, solo se verifica.
+          run(`UPDATE dispatch_state SET nm_confirmed = 1 WHERE date = ? AND org_id = ? AND number = ?`,
+            dateISO, hit.org_id, hit.number);
         }
       }
+      // los que estaban confirmados pero YA NO aparecen en NewMile pierden el ⚡ (p. ej.
+      // borraron la asignación) — vuelven a ✓ "planeado aquí, no está en NewMile"
+      for (const r of all('SELECT org_id, number FROM dispatch_state WHERE date = ? AND nm_confirmed = 1', dateISO)) {
+        if (!matched.has(r.org_id + '|' + r.number)) {
+          run('UPDATE dispatch_state SET nm_confirmed = 0 WHERE date = ? AND org_id = ? AND number = ?', dateISO, r.org_id, r.number);
+        }
+      }
+      metaSet('nm_assign_checked_' + dateISO, nowISO()); // este día SÍ se cotejó contra NewMile
     } catch (e) {
       summary[label + 'AssignmentsError'] = String(e.message || e); // best-effort
     }
   }
+  // corrió carga esta semana = ACTIVO → limpiar "¿de baja?" (falsas alarmas del roster)
+  run(`UPDATE trucks SET maybe_removed = 0 WHERE maybe_removed = 1 AND last_load_date >= ?`, shiftISO(today, -7));
+
   if (autoOn) {
     await coverFromAssignments(today, 'today');
     const wd = new Date(today + 'T12:00:00Z').getUTCDay();

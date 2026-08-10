@@ -189,6 +189,9 @@ function migrate(d) {
   addCol(d, 'trucks', 'owner_name', "TEXT DEFAULT ''");
   // ⭐ STAR DRIVER: marca manual por truck para filtrar rápido a los mejores choferes
   addCol(d, 'trucks', 'star', 'INTEGER DEFAULT 0');
+  // CONFIRMACIÓN NEWMILE: 1 = la asignación de ese día está VERIFICADA contra NewMile.
+  // Un ✓ manual se vuelve ⚡ al confirmarse; si no confirma, es plan que NO llegó a NewMile.
+  addCol(d, 'dispatch_state', 'nm_confirmed', 'INTEGER DEFAULT 0');
 }
 
 function addCol(d, table, col, decl) {
