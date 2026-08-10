@@ -29,6 +29,11 @@
  * load count; fallback tonsPerLoad). GP = quantity × the PO+material's per-unit realized
  * margin from the same week's po_margin (fallbacks: PO margin %, then week margin %,
  * applied to lost revenue = quantity × customer rate).
+ *
+ * Every GP figure is reported as a RANGE: "GP Lost — Direct" (the floor above) and
+ * "GP At Risk" (ceiling: every logged failure counts at least 1 load unless its note gave
+ * the count — a failure's truck was planned somewhere, so even a covered failure displaces
+ * capacity from another order that logs no failure).
  */
 
 function num(v) { if (v == null || v === '') return 0; const n = parseFloat(String(v).replace(/[$,%\s]/g, '').replace(/,/g, '')); return isNaN(n) ? 0 : n; }
@@ -65,13 +70,19 @@ function parseLoadsFromNote(note, committedQty, avgLoad) {
   if (/last\s+loads?\b/.test(t)) return 1;                            // "didn't finish last load", "dropping last load"
   return null;
 }
-// Loads lost for one failure row: the note's count when it names one; otherwise 1 for
-// Financial-impact failures and for No Shows (a committed truck that never ran is at least
-// one lost load whatever impact type dispatch tagged), 0 for informational failures.
+// Loads lost for one failure row, two readings:
+//   direct — the note's count when it names one; otherwise 1 for Financial-impact failures
+//            and No Shows (a committed truck that never ran), 0 for informational rows.
+//            This is the auditable FLOOR: loads documentedly lost.
+//   risk   — same, but every logged failure counts at least 1 load unless the note itself
+//            gave the count. A failure's truck was planned somewhere; even a "covered"
+//            failure displaces capacity from another order (which logs no failure). CEILING.
 function failureLoads(f, committedQty, avgLoad) {
   const parsed = parseLoadsFromNote(f.notes, committedQty, avgLoad);
-  if (parsed != null) return parsed;
-  return (norm(f.impact_type) === 'financial' || /no show/i.test(f.failure_type || '')) ? 1 : 0;
+  const direct = parsed != null ? parsed
+    : ((norm(f.impact_type) === 'financial' || /no show/i.test(f.failure_type || '')) ? 1 : 0);
+  const risk = parsed != null ? parsed : Math.max(1, direct);
+  return { direct: direct, risk: risk };
 }
 
 // Last full Mon-Sat week strictly before todayISO (the report runs Mondays for the prior week).
@@ -171,26 +182,33 @@ function buildServiceFailures(raw, opts) {
       : (/load/i.test(uom) ? 1 : (/hour/i.test(uom) ? 0 : tonsPerLoad));
     // loads lost comes from the FAILURE ROWS ONLY. Order-level and assignment-level failures
     // usually describe the same loads, so take the max of the two totals, not the sum.
-    let orderLoads = 0, assignLoads = 0;
+    let orderLoads = 0, assignLoads = 0, orderRisk = 0, assignRisk = 0;
     frows.forEach(f => {
       const n = failureLoads(f, committed, avgLoad);
-      f._loadsLost = n;                                    // per-failure count, surfaced in the failure-log CSV
-      if (/assignment/i.test(f.entity_type || '')) assignLoads += n; else orderLoads += n;
+      f._loadsLost = n.direct;                             // per-failure counts, surfaced in the failure-log CSV
+      f._loadsAtRisk = n.risk;
+      if (/assignment/i.test(f.entity_type || '')) { assignLoads += n.direct; assignRisk += n.risk; }
+      else { orderLoads += n.direct; orderRisk += n.risk; }
     });
     const loadsLost = Math.max(orderLoads, assignLoads);
+    const loadsAtRisk = Math.max(orderRisk, assignRisk);
     const qtyLost = loadsLost * avgLoad;                   // 0 for hourly orders (no load size to price)
+    const qtyAtRisk = loadsAtRisk * avgLoad;
     const rate = num(o.freight_rate) + num(o.material_rate);
     const lostRev = qtyLost * rate;
     const pm = pmProj.get(norm(o.project) + '|' + norm(o.material)) ||
                pmPo.get(norm(o.po_reference_number) + '|' + norm(o.material)) || null;
-    let lostGp, method;
+    let gpOf, method;
     if (pm && num(pm.delivered_quantity) > 0 && num(pm.margin_amount) !== 0) {
-      lostGp = qtyLost * (num(pm.margin_amount) / num(pm.delivered_quantity)); method = 'PO per-unit margin';
+      const perUnit = num(pm.margin_amount) / num(pm.delivered_quantity);
+      gpOf = q => q * perUnit; method = 'PO per-unit margin';
     } else if (pm) {
-      lostGp = lostRev * (num(pm.margin_percentage) / 100); method = 'PO margin %';
+      const pct = num(pm.margin_percentage) / 100;
+      gpOf = q => q * rate * pct; method = 'PO margin %';
     } else {
-      lostGp = lostRev * orgPct; method = 'org avg %';
+      gpOf = q => q * rate * orgPct; method = 'org avg %';
     }
+    const lostGp = gpOf(qtyLost), gpAtRisk = gpOf(qtyAtRisk);
     const sev = frows.reduce((m, f) => Math.max(m, { low: 1, medium: 2, high: 3, critical: 4 }[norm(f.severity)] || 0), 0);
     rows.push({
       date: dateKey(o.order_start_date), order: o.reference_number, orderNumber: o.order_number,
@@ -200,17 +218,21 @@ function buildServiceFailures(raw, opts) {
       undeliveredRef: Math.max(0, num(o.undelivered_quantity)),   // reference only — NOT used in GP
       avgLoad: avgLoad, uom: uom,
       loadsLost: loadsLost, qtyLost: qtyLost,
+      loadsAtRisk: loadsAtRisk, qtyAtRisk: qtyAtRisk, gpAtRisk: gpAtRisk,
       lostRevenue: lostRev, lostGp: lostGp, gpMethod: method
     });
   });
-  rows.sort((a, b) => b.lostGp - a.lostGp);
+  rows.sort((a, b) => (b.lostGp - a.lostGp) || (b.gpAtRisk - a.gpAtRisk));
 
   const T = {
     failures: failures.length,
     failedOrders: failed.size,
     critical: failures.filter(f => norm(f.severity) === 'critical').length,
+    taggedFinancial: failures.filter(f => norm(f.impact_type) === 'financial').length,
     lostTons: rows.filter(r => /ton/i.test(r.uom)).reduce((s, r) => s + r.qtyLost, 0),
     loadsLost: rows.reduce((s, r) => s + r.loadsLost, 0),
+    loadsAtRisk: rows.reduce((s, r) => s + r.loadsAtRisk, 0),
+    gpAtRisk: rows.reduce((s, r) => s + r.gpAtRisk, 0),
     lostRevenue: rows.reduce((s, r) => s + r.lostRevenue, 0),
     lostGp: rows.reduce((s, r) => s + r.lostGp, 0),
     orgPct: orgPct
@@ -227,19 +249,19 @@ function buildServiceFailures(raw, opts) {
   // ---- CSV attachments ----
   const gpHead = ['Order Date', 'Order', 'Order #', 'Customer', 'Project', 'Material', 'Failures Logged',
     'Worst Severity', 'Loads Lost (from failures)', 'Avg Load Size', 'Qty Lost', 'UOM',
-    'Lost Revenue $', 'Lost GP $', 'GP Method', 'Order Undelivered Qty (ref only)'];
+    'Lost Revenue $', 'Lost GP $', 'Loads At Risk', 'GP At Risk $', 'GP Method', 'Order Undelivered Qty (ref only)'];
   const gpCsv = [gpHead.join(',')].concat(rows.map(r => [
     r.date, r.order, r.orderNumber, r.customer, r.project, r.material, r.failures, r.worstSeverity,
     r.loadsLost, r.avgLoad.toFixed(2), r.qtyLost.toFixed(2), r.uom,
-    r.lostRevenue.toFixed(2), r.lostGp.toFixed(2), r.gpMethod, r.undeliveredRef.toFixed(2)
+    r.lostRevenue.toFixed(2), r.lostGp.toFixed(2), r.loadsAtRisk, r.gpAtRisk.toFixed(2), r.gpMethod, r.undeliveredRef.toFixed(2)
   ].map(csvCell).join(','))).join('\r\n');
 
   const sfHead = ['Entity Type', 'Order', 'Failure Type', 'Responsible Party', 'Severity', 'Impact Type',
     'Project', 'Customer', 'Hauler', 'Order Date', 'Truck', 'Driver', 'Truck Owner', 'Notes', 'Recorded By', 'Recorded At',
-    'Loads Lost (parsed)'];
+    'Loads Lost (parsed)', 'Loads At Risk (min 1)'];
   const sfKeys = ['entity_type', 'order_reference', 'failure_type', 'responsible_party', 'severity', 'impact_type',
     'project', 'customer', 'hauler', 'order_date', 'truck_number', 'driver_name', 'truck_owner', 'notes', 'recorded_by', 'recorded_at',
-    '_loadsLost'];
+    '_loadsLost', '_loadsAtRisk'];
   const sfCsv = [sfHead.join(',')].concat(failures.map(f => sfKeys.map(k => csvCell(f[k])).join(','))).join('\r\n');
 
   // ---- HTML (Milestone: dark header, gold accent) ----
@@ -262,19 +284,19 @@ function buildServiceFailures(raw, opts) {
     + '<div style="font-size:26px;font-weight:800;margin:2px 0">SERVICE FAILURE REPORT</div>'
     + '<div style="font-size:13px;color:#cfc9bf">Milestone Supply — Texas · ' + esc(rangeStr) + ' · ' + T.failures + ' failures · ' + T.failedOrders + ' orders hit</div></div>'
     + '<table style="border-collapse:separate;border-spacing:6px;width:100%"><tr>'
-    + kpi('GP Dollars of Lost Loads', fmtMoneyK(T.lostGp), 'gross profit on failure-logged lost loads', RED)
+    + kpi('GP Lost — Direct', fmtMoneyK(T.lostGp), 'loads documentedly lost (floor)', RED)
+    + kpi('GP At Risk — All Failures', fmtMoneyK(T.gpAtRisk), 'every failure ≥1 load (ceiling)', GOLD)
     + kpi('Lost Revenue', fmtMoneyK(T.lostRevenue), 'lost qty × customer rate')
-    + kpi('Est. Loads Lost', String(Math.round(T.loadsLost)), fmtQty(T.lostTons) + ' tons, per the logged failures')
     + '</tr><tr>'
-    + kpi('Failures Recorded', String(T.failures), T.failedOrders + ' distinct orders')
+    + kpi('Est. Loads Lost', Math.round(T.loadsLost) + ' / ' + Math.round(T.loadsAtRisk), fmtQty(T.lostTons) + ' tons direct · at-risk count second')
+    + kpi('Failures Recorded', String(T.failures), T.failedOrders + ' distinct orders · ' + T.taggedFinancial + ' tagged Financial by dispatch')
     + kpi('Critical Severity', String(T.critical), Math.round(100 * T.critical / Math.max(1, T.failures)) + '% of all failures', RED)
-    + kpi('Week Margin', (100 * T.orgPct).toFixed(1) + '%', 'realized, all POs this week')
     + '</tr></table>';
 
   html += '<h3 style="margin:18px 0 4px;color:' + DARK + '">GP dollars of lost loads — by order</h3>'
-    + '<div style="color:' + GRAY + ';font-size:12px;margin-bottom:6px">Loads lost per the LOGGED FAILURES (count in the failure note; Financial-impact failures with no count = 1; informational = 0) × the order\'s actual avg load size × the PO+material\'s realized per-unit margin this week. Failures that cost no loads show $0.0.</div>'
+    + '<div style="color:' + GRAY + ';font-size:12px;margin-bottom:6px">Two readings, both priced at the order\'s actual avg load size × the PO+material\'s realized per-unit margin this week. LOST (floor): loads the failure notes document as lost (no count in the note = 1 if Financial impact or No Show, else 0). AT RISK (ceiling): every logged failure counts at least 1 load — even a covered failure displaces planned capacity from another order.</div>'
     + '<table style="border-collapse:collapse;font-size:12px;width:100%"><tr style="background:#f3f1ec">'
-    + ['Date', 'Order', 'Customer', 'Loads Lost', 'Qty Lost', 'Lost Revenue', 'Lost GP'].map(h => '<td style="padding:4px 8px;font-weight:700">' + h + '</td>').join('') + '</tr>'
+    + ['Date', 'Order', 'Customer', 'Loads Lost', 'Qty Lost', 'Lost Revenue', 'Lost GP', 'GP at Risk'].map(h => '<td style="padding:4px 8px;font-weight:700">' + h + '</td>').join('') + '</tr>'
     + rows.map(r => '<tr style="border-bottom:1px solid #eee">'
       + '<td style="padding:3px 8px;white-space:nowrap">' + esc(r.date) + '</td>'
       + '<td style="padding:3px 8px">' + esc(r.order) + (r.worstSeverity === 'Critical' ? ' <span style="color:' + RED + ';font-weight:700">●</span>' : '') + '</td>'
@@ -282,12 +304,14 @@ function buildServiceFailures(raw, opts) {
       + '<td style="padding:3px 8px;text-align:right">' + Math.round(r.loadsLost) + '</td>'
       + '<td style="padding:3px 8px;text-align:right;white-space:nowrap">' + fmtQty(r.qtyLost) + ' ' + esc(r.uom) + '</td>'
       + '<td style="padding:3px 8px;text-align:right">' + fmtMoney(r.lostRevenue) + '</td>'
-      + '<td style="padding:3px 8px;text-align:right;font-weight:800;color:' + (r.lostGp > 0 ? RED : GRAY) + '">' + fmtMoney(r.lostGp) + '</td></tr>').join('')
+      + '<td style="padding:3px 8px;text-align:right;font-weight:800;color:' + (r.lostGp > 0 ? RED : GRAY) + '">' + fmtMoney(r.lostGp) + '</td>'
+      + '<td style="padding:3px 8px;text-align:right;color:' + (r.gpAtRisk > r.lostGp ? GOLD : GRAY) + '">' + fmtMoney(r.gpAtRisk) + '</td></tr>').join('')
     + '<tr style="border-top:2px solid ' + DARK + '"><td colspan="3" style="padding:5px 8px;font-weight:800">TOTAL</td>'
     + '<td style="padding:5px 8px;text-align:right;font-weight:800">' + Math.round(T.loadsLost) + '</td>'
     + '<td style="padding:5px 8px;text-align:right;font-weight:800">' + fmtQty(T.lostTons) + ' Ton</td>'
     + '<td style="padding:5px 8px;text-align:right;font-weight:800">' + fmtMoney(T.lostRevenue) + '</td>'
-    + '<td style="padding:5px 8px;text-align:right;font-weight:800;color:' + RED + '">' + fmtMoney(T.lostGp) + '</td></tr></table>';
+    + '<td style="padding:5px 8px;text-align:right;font-weight:800;color:' + RED + '">' + fmtMoney(T.lostGp) + '</td>'
+    + '<td style="padding:5px 8px;text-align:right;font-weight:800;color:' + GOLD + '">' + fmtMoney(T.gpAtRisk) + '</td></tr></table>';
 
   if (unmatched.length) {
     html += '<h3 style="margin:16px 0 4px;color:' + RED + '">⚠ Failures that did not match an order (' + unmatched.length + ')</h3>'
@@ -310,7 +334,7 @@ function buildServiceFailures(raw, opts) {
   const text = [
     'SERVICE FAILURE REPORT — Milestone Supply Texas — ' + rangeStr,
     '',
-    'GP DOLLARS OF LOST LOADS: ' + fmtMoney(T.lostGp),
+    'GP DOLLARS OF LOST LOADS: ' + fmtMoney(T.lostGp) + ' direct (floor) · ' + fmtMoney(T.gpAtRisk) + ' at risk counting every failure (ceiling)',
     'Lost revenue: ' + fmtMoney(T.lostRevenue) + ' · Lost: ' + fmtQty(T.lostTons) + ' tons · Loads lost (per failures): ' + Math.round(T.loadsLost),
     'Failures recorded: ' + T.failures + ' (' + T.critical + ' critical) across ' + T.failedOrders + ' orders',
     '',
@@ -418,42 +442,46 @@ function buildPrintHtml(rep, failures) {
     // ---- 01 executive summary ----
     + '<div class="sec">' + secNo() + '</div><h2>EXECUTIVE SUMMARY</h2>'
     + '<div class="cards">'
-    + card('GP Dollars of Lost Loads', fmtMoneyK(T.lostGp), 'gross profit on failure-logged lost loads', RED)
+    + card('GP Lost — Direct', fmtMoneyK(T.lostGp), 'loads documentedly lost (floor)', RED)
+    + card('GP At Risk — All Failures', fmtMoneyK(T.gpAtRisk), 'every failure ≥1 load (ceiling)', GOLD)
     + card('Lost Revenue', fmtMoneyK(T.lostRevenue), 'lost qty × customer rate')
-    + card('Est. Loads Lost', String(Math.round(T.loadsLost)), fmtQty(T.lostTons) + ' tons, per the logged failures')
     + '</div><div class="cards">'
+    + card('Est. Loads Lost', Math.round(T.loadsLost) + ' / ' + Math.round(T.loadsAtRisk), fmtQty(T.lostTons) + ' tons direct · at-risk count second')
     + card('Failures Recorded', String(T.failures), byDay.length + ' dispatch days · ' + rangeStr)
     + card('Critical Severity', String(T.critical), pct(T.critical) + '% of all failures', RED)
-    + card('Top Failure Type', String(topType[1]), topType[0] + ' — largest driver of misses')
     + '</div><div class="cards">'
+    + card('Top Failure Type', String(topType[1]), topType[0] + ' — largest driver of misses')
     + card('Driver No-Shows', String(noShows.length), 'trucks committed that never ran')
     + card('Customers Affected', String(byCust.length), custHardest + ' hit hardest')
-    + card('Financial Impact', pct(finImpact) + '%', 'of failures logged as financial impact')
     + '</div>'
     + '<div style="background:#faf6ee;border:1px solid #efe7d6;border-radius:7px;padding:11px 15px;font-size:11.5px;margin:8px 0 0">'
     + topType[1] + ' of ' + T.failures + ' failures were ' + esc(String(topType[0]).toLowerCase()) + 's. '
     + esc(worstDay[0]) + ' alone logged ' + worstDay[1] + ' failures, the worst day of the week. '
     + T.critical + ' failures (' + pct(T.critical) + '%) were critical, and ' + noShows.length + ' committed trucks never ran. '
     + '<b>The week\'s failures cost an estimated ' + fmtMoney(T.lostGp) + ' in gross profit</b> on ' + fmtQty(T.lostTons) + ' lost tons ('
-    + fmtMoney(T.lostRevenue) + ' revenue, ~' + Math.round(T.loadsLost) + ' loads).'
+    + fmtMoney(T.lostRevenue) + ' revenue, ~' + Math.round(T.loadsLost) + ' loads) — <b>up to ' + fmtMoney(T.gpAtRisk)
+    + ' at risk</b> counting at least one displaced load for every logged failure. '
+    + T.taggedFinancial + ' of ' + T.failures + ' failures (' + pct(T.taggedFinancial) + '%) were tagged Financial impact by dispatch; the GP range above prices every failure\'s loads, tagged or not.'
     + '</div>'
 
     // ---- 02 GP of lost loads (NEW — Tony's ask) ----
     + '<div class="brk"></div><div class="sec">' + secNo() + '</div><h2>GP DOLLARS OF LOST LOADS</h2>'
-    + '<div class="sub">Per failed order: loads lost per the LOGGED FAILURES (count written in the failure note; Financial-impact failures with no count = 1; informational = 0; order-level vs truck-level counts deduped) × the order\'s actual avg load size × the PO+material\'s realized per-unit margin this week (NewMile PO Margin). Failures that cost no loads show $0.0.</div>'
-    + '<table><thead><tr><th>Date</th><th>Order</th><th>Customer</th><th style="text-align:right">Loads Lost</th><th style="text-align:right">Qty Lost</th><th style="text-align:right">Lost Revenue</th><th style="text-align:right">Lost GP</th></tr></thead><tbody>'
+    + '<div class="sub">Per failed order, two readings priced at the order\'s actual avg load size × the PO+material\'s realized per-unit margin this week (NewMile PO Margin). LOST GP (floor): loads the failure notes document as lost — count written in the note; no count = 1 if Financial impact or No Show, 0 if informational; order-level vs truck-level counts deduped. GP AT RISK (ceiling): every logged failure counts at least 1 load — a failure\'s truck was planned somewhere, and even a covered failure displaces capacity from another order that logs no failure.</div>'
+    + '<table><thead><tr><th>Date</th><th>Order</th><th>Customer</th><th style="text-align:right">Loads Lost</th><th style="text-align:right">Qty Lost</th><th style="text-align:right">Lost Revenue</th><th style="text-align:right">Lost GP</th><th style="text-align:right">GP at Risk</th></tr></thead><tbody>'
     + rep.rows.map(r => '<tr' + (r.lostGp > 0 ? '' : ' style="color:' + INKDIM + '"') + '>'
       + '<td style="white-space:nowrap">' + esc(r.date.slice(0, 5)) + '</td>'
       + '<td>' + esc(r.order) + '</td><td>' + esc(shortCustomer(r.customer)) + '</td>'
       + '<td style="text-align:right">' + Math.round(r.loadsLost) + '</td>'
       + '<td style="text-align:right;white-space:nowrap">' + fmtQty(r.qtyLost) + ' ' + esc(r.uom) + '</td>'
       + '<td style="text-align:right">' + fmtMoney(r.lostRevenue) + '</td>'
-      + '<td style="text-align:right;font-weight:800' + (r.lostGp > 0 ? ';color:' + RED : '') + '">' + fmtMoney(r.lostGp) + '</td></tr>').join('')
+      + '<td style="text-align:right;font-weight:800' + (r.lostGp > 0 ? ';color:' + RED : '') + '">' + fmtMoney(r.lostGp) + '</td>'
+      + '<td style="text-align:right' + (r.gpAtRisk > r.lostGp ? ';color:' + GOLD + ';font-weight:700' : '') + '">' + fmtMoney(r.gpAtRisk) + '</td></tr>').join('')
     + '<tr style="border-top:2px solid ' + DARK + '"><td colspan="3" style="font-weight:800">TOTAL</td>'
     + '<td style="text-align:right;font-weight:800">' + Math.round(T.loadsLost) + '</td>'
     + '<td style="text-align:right;font-weight:800;white-space:nowrap">' + fmtQty(T.lostTons) + ' Ton</td>'
     + '<td style="text-align:right;font-weight:800">' + fmtMoney(T.lostRevenue) + '</td>'
-    + '<td style="text-align:right;font-weight:800;color:' + RED + '">' + fmtMoney(T.lostGp) + '</td></tr></tbody></table>'
+    + '<td style="text-align:right;font-weight:800;color:' + RED + '">' + fmtMoney(T.lostGp) + '</td>'
+    + '<td style="text-align:right;font-weight:800;color:' + GOLD + '">' + fmtMoney(T.gpAtRisk) + '</td></tr></tbody></table>'
     + (rep.unmatched.length ? '<div style="color:' + RED + ';font-size:10.5px;margin-top:8px"><b>⚠ ' + rep.unmatched.length + ' failures did not match an order</b> (order name typo in NewMile — no GP computed): '
       + rep.unmatched.map(f => esc(f.order_reference) + ' (' + esc(dateKey(f.order_date)) + ')').join('; ') + '</div>' : '')
 
