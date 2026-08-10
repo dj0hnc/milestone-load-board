@@ -9,7 +9,7 @@
 const express = require('express');
 const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
-const { todayCT, weekDatesCT, daysBetween, normNum, canonArea } = require('./util');
+const { todayCT, weekDatesCT, daysBetween, normNum, canonArea, canonicalTruckNumber } = require('./util');
 const { syncRoster, syncActivity, scanRipRap } = require('./sync-newmile');
 const { syncSamsara, backfillParking, locateTruck } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
@@ -125,6 +125,16 @@ function createRouter({ config, newmile, log }) {
     const historical = date < today;
     const snaps = historical ? daySnapshots(virtual ? null : orgId, date) : null;
 
+    // EQUIDAD: cargas de los últimos 7 días por truck (para repartir parejo y ver quién
+    // anda bajo). El front suma por dueño en el encabezado del grupo.
+    const wk = weekDatesCT(date);
+    const wkFrom = wk.Mon, wkTo = wk.Sat;
+    const wkMap = new Map();
+    for (const r of all(`SELECT org_id, number, SUM(loads) AS n FROM activity_log
+                         WHERE load_date >= ? AND load_date <= ? GROUP BY org_id, number`, wkFrom, wkTo)) {
+      wkMap.set(r.org_id + '|' + r.number, r.n);
+    }
+
     const outTrucks = trucks.map(t => {
       const s = stMap.get(t.org_id + '|' + t.number);
       const driverChangedRecent = t.driver_changed_at && (Date.now() - Date.parse(t.driver_changed_at)) < 48 * 3600 * 1000;
@@ -140,6 +150,7 @@ function createRouter({ config, newmile, log }) {
         state: s ? s.state : ((carryMap.get(t.org_id + '|' + t.number) || {}).state === 'd' ? 'd' : 'p'),
         state_source: s ? s.source : ((carryMap.get(t.org_id + '|' + t.number) || {}).state === 'd' ? 'carry' : null),
         nm_confirmed: s ? (s.nm_confirmed || 0) : 0,
+        loads_week: wkMap.get(t.org_id + '|' + t.number) || 0,
         down_since: !s && (carryMap.get(t.org_id + '|' + t.number) || {}).state === 'd' ? carryMap.get(t.org_id + '|' + t.number).date : null,
         state_by: s ? s.marked_by : null,
         time_off: offMap.get(t.org_id + '|' + t.number) || [],
@@ -388,6 +399,139 @@ function createRouter({ config, newmile, log }) {
   router.post('/api/settings', (req, res) => {
     if ('auto_mark' in (req.body || {})) metaSet('auto_mark', req.body.auto_mark ? '1' : '0');
     res.json({ ok: true, auto_mark: metaGet('auto_mark', '1') !== '0' });
+  });
+
+  // ---------- ÓRDENES: planear y DESPACHAR desde el tracker ----------
+  // GET /api/orders?date=  → órdenes de NewMile del día con sus asignaciones y huecos.
+  // POST /api/orders/assign {order_id, date, trucks:[{org,number}], load_limit?, by}
+  //   → bulk_create_assignments (nacen draft) + confirm_assignments (visibles al driver)
+  //   → marca los trucks asignados ⚡ aquí mismo. Planear = despachar, un solo paso.
+  // POST /api/orders/unassign {assignment_id, date} → borra la asignación (solo sin loads).
+  const ordersCache = {}; // dateISO -> {at, data} (TTL corto: el panel se siente vivo)
+  function truckForAssignment(rawNumber) {
+    const n = normNum(rawNumber || '').replace(/\s+/g, '');
+    const cands = [n, canonicalTruckNumber('KT', n)];
+    if (/^\d{1,4}$/.test(n)) cands.push('CKJ' + n);
+    if (n.startsWith('C') && /^\d+$/.test(n.slice(1))) cands.push(n.slice(1));
+    for (const c of [...new Set(cands)]) {
+      const hit = get('SELECT org_id, number, display_number FROM trucks WHERE number = ?', c);
+      if (hit) return hit;
+    }
+    return get('SELECT org_id, number, display_number FROM trucks WHERE display_number = ?', n) || null;
+  }
+  router.get('/api/orders', async (req, res) => {
+    if (!newmile) return res.status(503).json({ error: 'NewMile not configured' });
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : todayCT();
+    const c = ordersCache[date];
+    if (c && (Date.now() - c.at) < 180000 && !req.query.fresh) return res.json(c.data);
+    try {
+      if (!newmile.connected && !(await newmile.resume())) {
+        return res.status(401).json({ error: 'NOT_CONNECTED', hint: 'open /api/newmile/connect' });
+      }
+      const rows = await newmile.ordersForDate(date);
+      const orders = rows.map(({ order: o, assignments }) => ({
+        id: o.id,
+        name: o.reference || o.project_name || o.customer_name || ('Order ' + o.id),
+        customer: o.customer_name || '',
+        material: o.material_name || o.material || '',
+        pickup: o.pickup_location_name || o.pickup_org_location_name || o.pickup_site_name || '',
+        dropoff: o.dropoff_location_name || o.dropoff_org_location_name || o.dropoff_site_name || '',
+        qty: o.quantity_requested != null ? o.quantity_requested : null,
+        unit: o.quantity_measurement_unit || '',
+        planned: o.planned_truck_count != null ? o.planned_truck_count : null,
+        status: o.status || '',
+        earliest: o.earliest_load_time || o.start_date || null,
+        assigned: (assignments || []).map(a => {
+          const local = truckForAssignment(a.truck_number || (a.truck && a.truck.truck_number) || '');
+          return {
+            id: a.id, truck_number: a.truck_number || '', driver: a.driver_name || '',
+            status: a.assignment_status || '', loads: a.load_count || 0, load_limit: a.load_limit != null ? a.load_limit : null,
+            org: local ? local.org_id : null, number: local ? local.number : null
+          };
+        })
+      }));
+      const data = { date, orders, fetched_at: nowISO() };
+      ordersCache[date] = { at: Date.now(), data };
+      res.json(data);
+    } catch (e) {
+      res.status(500).json({ error: String(e.message || e) });
+    }
+  });
+
+  // saca los IDs de asignaciones creadas de la respuesta del utility (shape defensivo)
+  function extractAssignments(resp) {
+    const found = [];
+    const walk = (x) => {
+      if (Array.isArray(x)) return x.forEach(walk);
+      if (x && typeof x === 'object') {
+        if (x.id != null && (x.truck_id != null || x.order_id != null) && !x.resource_type) found.push(x);
+        for (const v of Object.values(x)) walk(v);
+      }
+    };
+    walk(resp);
+    return found;
+  }
+  router.post('/api/orders/assign', async (req, res) => {
+    if (!newmile) return res.status(503).json({ error: 'NewMile not configured' });
+    const { order_id, date, trucks, load_limit, by } = req.body || {};
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date : todayCT();
+    if (!order_id || !Array.isArray(trucks) || !trucks.length) {
+      return res.status(400).json({ error: 'body: {order_id, trucks:[{org,number}], date?, load_limit?, by?}' });
+    }
+    try {
+      if (!newmile.connected && !(await newmile.resume())) {
+        return res.status(401).json({ error: 'NOT_CONNECTED' });
+      }
+      const failed = [], entries = [];
+      for (const tr of trucks) {
+        const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', normNum(tr.org), normNum(tr.number));
+        if (!row) { failed.push({ ...tr, reason: 'not on the board' }); continue; }
+        if (row.nm_truck_id == null) { failed.push({ ...tr, reason: 'no NewMile id yet — run Sync now first' }); continue; }
+        entries.push({ order_id: Number(order_id), truck_id: row.nm_truck_id, _row: row });
+      }
+      let created = [], warnings = null, confirmed = false;
+      if (entries.length) {
+        const resp = await newmile.bulkCreateAssignments(
+          entries.map(e => ({ order_id: e.order_id, truck_id: e.truck_id })),
+          load_limit ? { default_load_limit: Number(load_limit) } : {});
+        if (resp && resp.warnings) warnings = resp.warnings;
+        created = extractAssignments(resp);
+        const ids = created.map(a => a.id);
+        if (ids.length) {
+          try { await newmile.confirmAssignments(ids); confirmed = true; }
+          catch (e) { warnings = (warnings || []).concat(['confirm failed (left as draft): ' + (e.message || e)]); }
+        }
+        // marca local: asignado ⚡ (verificado — lo acabamos de meter a NewMile)
+        const who = String(by || '').slice(0, 40);
+        const byTruckId = new Map(created.map(a => [a.truck_id, a]));
+        for (const e of entries) {
+          if (ids.length && !byTruckId.has(e.truck_id)) continue; // no regresó creado
+          run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_by, marked_at, nm_confirmed)
+               VALUES (?,?,?,?,'manual',?,?,1)
+               ON CONFLICT(date, org_id, number) DO UPDATE SET state='a', source='manual', marked_by=excluded.marked_by, marked_at=excluded.marked_at, nm_confirmed=1`,
+            day, e._row.org_id, e._row.number, 'a', who, nowISO());
+          logChange(e._row.org_id, e._row.number, 'nm_assign', '', 'order ' + order_id + (load_limit ? ' x' + load_limit : ''), who);
+        }
+      }
+      delete ordersCache[day];
+      res.json({ ok: true, pushed: created.length || entries.length, confirmed, warnings, failed });
+    } catch (e) {
+      res.status(500).json({ error: String(e.message || e) });
+    }
+  });
+
+  router.post('/api/orders/unassign', async (req, res) => {
+    if (!newmile) return res.status(503).json({ error: 'NewMile not configured' });
+    const { assignment_id, date } = req.body || {};
+    if (!assignment_id) return res.status(400).json({ error: 'body: {assignment_id, date?}' });
+    try {
+      if (!newmile.connected && !(await newmile.resume())) return res.status(401).json({ error: 'NOT_CONNECTED' });
+      await newmile.deleteAssignment(Number(assignment_id));
+      if (date) delete ordersCache[date];
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: String(e.message || e) });
+    }
   });
 
   // ---------- syncs (manual "Sync ahora" + used by the scheduler) ----------

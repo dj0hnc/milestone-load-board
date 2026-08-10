@@ -352,6 +352,30 @@ class NewMileClient {
     return (r && (r.order_assignments || r.assignments || r.results || r.rows)) || [];
   }
 
+  // Órdenes del día CON sus asignaciones (para el panel de despacho).
+  async ordersForDate(dateISO) {
+    const orders = await this.listOrdersAllPages(dateISO);
+    const assigns = await this._pool(orders, 6, (o) => this.orderAssignments(o.id));
+    return orders.map((o, i) => ({ order: o, assignments: assigns[i] || [] }));
+  }
+
+  async callUtility(name, args) {
+    return this.callTool('call_utility', { utility_name: name, args: args || {} });
+  }
+
+  // Crea asignaciones en lote (nacen en DRAFT) y las confirma (draft → pending, visibles
+  // para los drivers). entries: [{order_id, truck_id, load_limit?}]. Shapes verificados
+  // contra list_utilities en vivo (8/10/26).
+  async bulkCreateAssignments(entries, defaults) {
+    return this.callUtility('bulk_create_assignments', Object.assign({ assignments: entries }, defaults || {}));
+  }
+  async confirmAssignments(ids) {
+    return this.callUtility('confirm_assignments', { order_assignment_ids: ids });
+  }
+  async deleteAssignment(id) {
+    return this.callTool('delete_resource', { resource_type: 'order_assignment', id });
+  }
+
   async _pool(items, limit, fn) {
     const out = new Array(items.length); let i = 0;
     const workers = Array.from({ length: Math.min(limit, items.length) || 1 }, async () => {

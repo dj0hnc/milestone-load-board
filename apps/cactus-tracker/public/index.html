@@ -319,6 +319,7 @@ h1 span{color:var(--sand);}
     <div class="grpseg" style="flex:1 1 100%;display:flex;gap:0;margin-top:2px;">
       <button id="grpZone" onclick="setGroupMode('zone')" title="Group by area/zone">📍 By zone</button>
       <button id="grpOwner" onclick="setGroupMode('owner')" title="Group by truck owner / organization">🏢 By owner</button>
+      <button onclick="openOrders()" title="NewMile orders for this day — assign and PUSH" style="color:var(--gold-d);font-weight:800;">📋 Orders</button>
     </div>
   </div>
   <div id="bulkBar" style="display:none;background:var(--blue-bg);border:1.5px solid var(--blue);border-radius:12px;padding:9px 12px;margin:-6px 0 12px;font-size:13.5px;color:var(--blue);align-items:center;gap:10px;flex-wrap:wrap;"></div>
@@ -566,13 +567,15 @@ async function locateNow(org,num){
   render();
 }
 function actHtml(t){
-  if(t.loads_today>0)return `<div class="act">🟢 today: ${t.loads_today} load${t.loads_today>1?"s":""}${t.last_load_driver?" · "+esc(t.last_load_driver):""}</div>`;
+  // equidad: cargas de ESTA semana en cada cuadrito (wk N) — para repartir parejo
+  const wk=t.loads_week?` · <b>wk ${t.loads_week}</b>`:"";
+  if(t.loads_today>0)return `<div class="act">🟢 today: ${t.loads_today} load${t.loads_today>1?"s":""}${t.last_load_driver?" · "+esc(t.last_load_driver):""}${wk}</div>`;
   if(t.days_since_last_load==null)return `<div class="act bad">⚠ no load on record</div>`;
   const d=t.days_since_last_load;
   const md=t.last_load_date?t.last_load_date.slice(5).replace("-","/").replace(/^0/,""):"";
-  if(d>=14)return `<div class="act bad">⛔ ${d} days without a load</div>`;
-  if(d>=5)return `<div class="act warn">⚠ ${d} days without a load</div>`;
-  return `<div class="act">🟢 last: ${md}${t.last_load_driver?" · "+esc(t.last_load_driver):""}</div>`;
+  if(d>=14)return `<div class="act bad">⛔ ${d} days without a load${wk}</div>`;
+  if(d>=5)return `<div class="act warn">⚠ ${d} days without a load${wk}</div>`;
+  return `<div class="act">🟢 last: ${md}${t.last_load_driver?" · "+esc(t.last_load_driver):""}${wk}</div>`;
 }
 function toggleFaltan(){showFaltan=!showFaltan;render();}
 // zonas colapsables: se guardan cerradas por tab, sobreviven recargas
@@ -953,6 +956,97 @@ async function syncNow(){
 // ---------- modals ----------
 function closeModal(){$("modalBg").classList.remove("show");}
 function openModal(html){$("modalBody").innerHTML=html;$("modalBg").classList.add("show");}
+
+// ---------- ÓRDENES: planear y DESPACHAR a NewMile en un paso ----------
+let _orders=null,_pickOrder=null,_picked=new Set();
+async function openOrders(){
+  openModal(`<h3>📋 Orders — ${mdy(date)}</h3><p style="color:var(--mut);font-size:14px;">Loading NewMile orders…</p>`);
+  try{
+    const r=await fetch(`${API}/api/orders?date=${date}`);
+    if(r.status===401){openModal(`<h3>📋 Orders</h3><p style="font-size:14px;">NewMile is not connected. <a class="connect" href="${API}/api/newmile/connect">Tap here to sign in</a> and try again.</p><div class="actions"><button class="b-cancel" onclick="closeModal()">Close</button></div>`);return;}
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    _orders=await r.json();
+    renderOrders();
+  }catch(e){openModal(`<h3>📋 Orders</h3><p style="font-size:14px;color:var(--red);">Could not load orders: ${esc(e.message)}</p><div class="actions"><button class="b-cancel" onclick="closeModal()">Close</button></div>`);}
+}
+function renderOrders(){
+  const os=(_orders&&_orders.orders)||[];
+  const done=o=>o.planned!=null&&o.assigned.length>=o.planned;
+  os.sort((a,b)=>(done(a)-done(b))||(b.assigned.length-a.assigned.length));
+  openModal(`<h3>📋 Orders — ${mdy(_orders.date)} <small style="font-weight:600;color:var(--mut);">(${os.length})</small></h3>
+    ${os.length?"":`<p style="color:var(--mut);font-size:14px;">No NewMile orders for this day yet.</p>`}
+    ${os.map(o=>{
+      const gap=o.planned!=null?Math.max(0,o.planned-o.assigned.length):null;
+      return `<div style="border:1.5px solid ${gap?"#c98a2f":"var(--line)"};border-radius:13px;padding:11px 13px;margin-bottom:10px;background:${gap?"#FDF8EC":"#fff"};">
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+        <b style="font-size:15px;">${esc(o.name)}</b>
+        <span style="font-size:12px;color:var(--mut);">#${o.id}${o.status?" · "+esc(o.status):""}</span>
+        <span style="margin-left:auto;font-weight:800;font-size:14px;color:${gap?"#8a5a10":"var(--green)"};">${o.assigned.length}${o.planned!=null?"/"+o.planned:""} trucks${gap?` · NEEDS ${gap}`:""}</span>
+      </div>
+      <div style="font-size:12.5px;color:var(--stone);margin:2px 0 6px;">${esc(o.material)}${o.qty!=null?` · ${o.qty} ${esc(o.unit)}`:""}${o.pickup?` · ${esc(o.pickup)} → ${esc(o.dropoff)}`:""}</div>
+      <div>${o.assigned.map(a=>`<span class="chip-mini" style="border:1.5px solid ${a.status==="draft"?"#c98a2f":"var(--green)"};color:${a.status==="draft"?"#8a5a10":"var(--green)"};">${esc(a.truck_number)}${a.load_limit?` x${a.load_limit}`:""}${a.loads?` · ${a.loads} ld`:""}${!a.loads?` <b style="cursor:pointer;color:var(--red);" onclick="unassignNM(${a.id},'${esc(o.name)}')">✕</b>`:""}</span>`).join(" ")||`<span style="font-size:12px;color:var(--mut);">no trucks yet</span>`}</div>
+      <button onclick="openAddTrucks(${o.id})" style="margin-top:8px;border:none;background:var(--navy);color:#fff;border-radius:9px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer;">+ ADD TRUCKS</button>
+    </div>`;}).join("")}
+    <div class="actions"><button class="b-cancel" onclick="openOrders()">⟳ Refresh</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
+}
+function openAddTrucks(orderId){
+  _pickOrder=(_orders.orders||[]).find(o=>o.id===orderId);_picked=new Set();
+  renderPick("");
+}
+function renderPick(q){
+  const already=new Set((_pickOrder.assigned||[]).map(a=>(a.org||"")+"|"+(a.number||"")));
+  // libres HOY en la fecha vista: sin marcar, sin down, sin off — ordenados por EQUIDAD
+  // (menos cargas esta semana primero) para repartir parejo
+  let avail=(board.trucks||[]).filter(t=>!t.archived&&!t.is_new&&t.state==="p"&&!isOffNow(t)&&!already.has(t.org_id+"|"+t.number));
+  const qq=(q||"").trim().toLowerCase();
+  if(qq)avail=avail.filter(t=>String(dnum(t)).toLowerCase().includes(qq)||(t.driver||"").toLowerCase().includes(qq)||(t.area||"").toLowerCase().includes(qq)||(t.owner_name||"").toLowerCase().includes(qq));
+  avail.sort((x,y)=>(x.loads_week||0)-(y.loads_week||0)||String(dnum(x)).localeCompare(String(dnum(y)),undefined,{numeric:true}));
+  openModal(`<h3>+ Trucks → ${esc(_pickOrder.name)}</h3>
+    <input type="text" id="pkQ" placeholder="🔍 filter # / driver / zone / owner…" value="${esc(q||"")}" oninput="renderPickKeep(this)" style="width:100%;margin-bottom:8px;">
+    <div style="font-size:11.5px;color:var(--mut);margin-bottom:6px;">sorted by fairness — fewest loads this week first · tap to select</div>
+    <div style="max-height:46vh;overflow:auto;">
+    ${avail.slice(0,120).map(t=>{const k=t.org_id+"|"+t.number;const on=_picked.has(k);
+      return `<div onclick="togglePick('${t.org_id}','${esc(t.number)}','${esc(q||"")}')" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border:1.5px solid ${on?"var(--green)":"var(--line)"};background:${on?"var(--green-bg)":"#fff"};border-radius:11px;margin-bottom:6px;cursor:pointer;">
+        <b style="font-size:17px;min-width:64px;">${on?"✓ ":""}${esc(dnum(t))}</b>
+        <span style="flex:1;font-size:12.5px;color:var(--stone);">${esc(t.driver)||"⚠ no driver"}${t.owner_name?" · "+esc(t.owner_name):""}<br>${esc(areaLbl(t.area||"(SIN YARD)"))}${t.trailer_type?" · "+esc(t.trailer_type):""}</span>
+        <span style="font-size:12px;font-weight:800;color:${(t.loads_week||0)===0?"#8a5a10":"var(--mut)"};">wk ${t.loads_week||0}</span>
+      </div>`;}).join("")||`<p style="color:var(--mut);font-size:13px;">no open trucks match</p>`}
+    </div>
+    <div class="row2" style="margin-top:8px;"><div><label>Loads each (optional)</label><input type="number" id="pkLds" placeholder="x3" min="1" style="width:100%;"></div><div></div></div>
+    <div class="actions">
+      <button class="b-cancel" onclick="renderOrders()">← Back</button>
+      <button class="b-save" onclick="pushAssign()" ${_picked.size?"":"disabled"} style="${_picked.size?"":"opacity:.5;"}">🚀 PUSH ${_picked.size} TO NEWMILE</button>
+    </div>`);
+}
+function renderPickKeep(inp){const v=inp.value;const pos=inp.selectionStart;renderPick(v);const n=$("pkQ");n.focus();n.setSelectionRange(pos,pos);}
+function togglePick(org,num,q){const k=org+"|"+num;_picked.has(k)?_picked.delete(k):_picked.add(k);renderPick(q);}
+async function pushAssign(){
+  ensureWho();
+  const trucks=[..._picked].map(k=>{const[org,number]=k.split("|");return{org,number};});
+  const lds=$("pkLds")?$("pkLds").value:"";
+  openModal(`<h3>🚀 Pushing ${trucks.length} to NewMile…</h3><p style="color:var(--mut);font-size:14px;">creating + confirming assignments…</p>`);
+  try{
+    const r=await fetch(`${API}/api/orders/assign`,{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({order_id:_pickOrder.id,date,trucks,load_limit:lds||undefined,by:WHO})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(j.error||("HTTP "+r.status));
+    await fetchBoard();
+    const msg=[`✅ ${j.pushed} pushed${j.confirmed?" and CONFIRMED (drivers can see them)":" — left as DRAFT, confirm in NewMile"}`];
+    if(j.failed&&j.failed.length)msg.push(`⚠ skipped: ${j.failed.map(f=>f.number+" ("+f.reason+")").join(", ")}`);
+    if(j.warnings&&j.warnings.length)msg.push(`⚠ ${j.warnings.length} warning(s) from NewMile`);
+    openModal(`<h3>🚀 Done</h3>${msg.map(m=>`<p style="font-size:14px;">${esc(m)}</p>`).join("")}<div class="actions"><button class="b-save" onclick="openOrders()">← Orders</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
+  }catch(e){
+    openModal(`<h3>🚀 Push failed</h3><p style="font-size:14px;color:var(--red);">${esc(e.message)}</p><p style="font-size:13px;color:var(--mut);">Nothing was marked locally. Try again or assign in NewMile.</p><div class="actions"><button class="b-cancel" onclick="renderOrders()">← Orders</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
+  }
+}
+async function unassignNM(id,orderName){
+  if(!confirm(`Remove this truck from "${orderName}" in NewMile?`))return;
+  try{
+    const r=await fetch(`${API}/api/orders/unassign`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({assignment_id:id,date})});
+    if(!r.ok){const j=await r.json().catch(()=>({}));alert("Could not remove: "+(j.error||r.status));return;}
+    openOrders();
+  }catch(e){alert("Could not remove: no connection");}
+}
 
 function openEdit(org,num){
   const t=truckOf(org,num);if(!t)return;
