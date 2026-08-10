@@ -35,13 +35,13 @@ on:
   # (pure git, no API token needed). Early pings sleep until the window opens; the once-per-day
   # lock still dedupes against the schedule.
   push:
-    branches: ['ping/morning', 'ping/night']
+    branches: ['ping/morning', 'ping/night', 'ping/sf']
   workflow_dispatch:
     inputs:
       kind:
-        description: 'Report to run'
+        description: 'Report to run (sf = weekly service failures + GP of lost loads, last Mon-Sat)'
         type: choice
-        options: [morning, night]
+        options: [morning, night, sf]
         default: night
       offsubs:
         description: 'OFF-APP subs count (blank = use the MAB_OFFSUBS variable)'
@@ -100,6 +100,14 @@ jobs:
             HOUR=$(TZ=America/Chicago date +%H); HOUR=$((10#$HOUR))
             MIN=$(TZ=America/Chicago date +%M); MIN=$((10#$MIN))
             NOWM=$((HOUR*60+MIN))
+            # WEEKLY SERVICE FAILURES + GP OF LOST LOADS: Mondays, catch-up 7am-6:59pm CT, covering
+            # last week Mon-Sat. Piggybacks on the existing hourly schedule; the once-per-day lock
+            # (kind 'sf') means only the first successful run each Monday sends. A failure here must
+            # not kill the morning report on the same run, hence the || true.
+            DOW=$(TZ=America/Chicago date +%u)
+            if [ "${{ github.event_name }}" = "schedule" ] && [ "$DOW" = "1" ] && [ "$HOUR" -ge 7 ] && [ "$HOUR" -le 18 ]; then
+              node report-engine/report-cli.js sf --send || echo "sf report failed — next scheduled run retries (lock only set on success)"
+            fi
             if [ "${{ github.event_name }}" = "push" ]; then
               # ping branch push: the branch name IS the report kind. If the ping lands a bit
               # early (DST shifts the pinger's UTC schedule by an hour), sleep until the window
@@ -107,6 +115,7 @@ jobs:
               case "${{ github.ref }}" in
                 refs/heads/ping/morning) KIND=morning; START=$((7*60+30)); END=$((11*60+59));;
                 refs/heads/ping/night)   KIND=night;   START=$((20*60));   END=$((23*60+59));;
+                refs/heads/ping/sf)      KIND=sf;      START=$((7*60));    END=$((23*60+59));;
                 *) echo "not a ping branch"; exit 0;;
               esac
               if [ "$NOWM" -lt "$START" ] && [ $((START-NOWM)) -le 90 ]; then
@@ -126,6 +135,11 @@ jobs:
               KIND=night
             else
               echo "Central time $HOUR:$MIN is outside the send windows (7:30-11:59am morning, 8pm-11:59pm night) — nothing to do"
+              exit 0
+            fi
+            # sf is cloud-only (the office PC doesn't know it) — send and stop before the office gate.
+            if [ "$KIND" = "sf" ]; then
+              node report-engine/report-cli.js sf --send
               exit 0
             fi
             # OFFICE PC IS THE PUNCTUAL PRIMARY (sends 7:00/20:00 CT on the minute). The cloud is the

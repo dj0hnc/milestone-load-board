@@ -78,3 +78,17 @@ newmile.config.json  connection + OAuth (endpoints verified, discovery on)
 ```
 
 See **BUILD.md** to rebuild the .exe from source.
+
+## Cloud reports (report-engine/)
+
+GitHub Actions sends the reports by itself — no PC needed (see `.github/workflows/report.yml`):
+
+- **morning** (7:30am CT) — no-show report.
+- **night** (8pm CT) — fleet assignment for tomorrow.
+- **sf** (Mondays) — **Service Failures + GP dollars of lost loads** for last week Mon-Sat.
+  Joins NewMile's `service_failures`, `orders` (Undelivered Qty / Est. Loads Lost / rates) and
+  `po_margin` (realized margin per PO) reports: lost GP per failed order = undelivered qty ×
+  that PO+material's per-unit realized margin for the same week. Emails a branded summary and
+  attaches two CSVs (per-order lost GP + the raw failure log). Rerun any week manually:
+  Actions → MAB Reports → kind `sf` (uses last week), or locally
+  `node report-engine/report-cli.js sf --local --from=2026-08-03 --to=2026-08-08`.

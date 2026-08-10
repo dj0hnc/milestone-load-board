@@ -13,13 +13,16 @@
  * Usage in CI:
  *   node report-engine/report-cli.js morning --send --guard=7
  *   node report-engine/report-cli.js night   --send --guard=20
+ *   node report-engine/report-cli.js sf --send            (Mondays: last week's Mon-Sat service failures + GP of lost loads)
  * Local test:
  *   node report-engine/report-cli.js night --local --day=tomorrow --offsubs=11
+ *   node report-engine/report-cli.js sf --local --from=2026-08-03 --to=2026-08-08
  */
 const fs = require('fs'), path = require('path');
 const { NewMileClient } = require(path.join(__dirname, '..', 'mcp-client.js'));
 const { buildBoard } = require('./server/mapping');
 const { buildMorning, buildNight } = require('./server/noshow');
+const servicefail = require('./server/servicefail');
 let samsara = null; try { samsara = require('./server/samsara'); } catch (e) {}
 let mailer = null; try { mailer = require('./server/mailer'); } catch (e) {}
 
@@ -115,6 +118,38 @@ function centralDate(offsetDays) {
     st = await client.resume();
   }
   if (!st || !st.connected) throw new Error('NewMile token did not connect — update the MAB_NM_TOKEN secret with a fresh NewMile login (the refresh token expired)');
+
+  // WEEKLY SERVICE FAILURES + GP OF LOST LOADS — pure report-API pull, needs no board/Samsara/off-app.
+  // Runs Mondays over the prior Mon-Sat; --from/--to override for reruns of any week.
+  if (KIND === 'sf') {
+    const range = (arg('from', '') && arg('to', ''))
+      ? { from: String(arg('from')), to: String(arg('to')) }
+      : servicefail.lastWeekRange(centralDate(0));
+    console.log('SF week: ' + range.from + ' -> ' + range.to);
+    const raw = await servicefail.fetchWeek(client, range.from, range.to);
+    console.log('  pulled: ' + raw.failures.length + ' failures · ' + raw.orders.length + ' orders · ' + raw.poMargin.length + ' PO margin rows');
+    const rep = servicefail.buildServiceFailures(raw, range);
+    const t = rep.totals;
+    const gpK = '$' + (Math.abs(t.lostGp) >= 1000 ? (t.lostGp / 1000).toFixed(1) + 'K' : t.lostGp.toFixed(1));
+    const subject = '📉 Service Failures ' + range.from + ' → ' + range.to + ' — ' + gpK + ' GP lost · ' + t.failures + ' failures';
+    console.log('SF: failures ' + t.failures + ' (' + t.critical + ' critical) · orders hit ' + t.failedOrders +
+      ' · loads lost ' + Math.round(t.loadsLost) + ' · lost revenue $' + t.lostRevenue.toFixed(2) + ' · LOST GP $' + t.lostGp.toFixed(2));
+    if (rep.unmatched.length) console.log('  UNMATCHED failures (order name typo in NewMile?): ' + rep.unmatched.map(f => f.order_reference).join('; '));
+    if (SEND) {
+      if (!mailer) throw new Error('mailer module missing');
+      const reportCfg = { to: process.env.REPORT_TO || arg('to', '').toString(), from: process.env.REPORT_FROM || 'onboarding@resend.dev', resendKey: process.env.RESEND_KEY || arg('resend', '').toString() };
+      if (!reportCfg.to) throw new Error('no recipient (REPORT_TO)');
+      const m = await mailer.sendEmail(reportCfg, { subject: subject, html: rep.html, text: rep.text, attachments: rep.attachments });
+      console.log('email: ' + JSON.stringify(m));
+      if (!m.ok) process.exit(1);
+      markSent(KIND, centralDate(0));
+    } else {
+      console.log('(dry run — no email sent)\n');
+      console.log('----- REPORT BEGIN -----\n' + rep.text + '\n----- REPORT END -----');
+      try { fs.writeFileSync(path.join(STATE_DIR, 'sf-preview.html'), rep.html); console.log('html preview: report-engine/.state/sf-preview.html'); } catch (e) {}
+    }
+    return;
+  }
 
   const today = centralDate(0);
   const raw = await client.refreshAll(today);
