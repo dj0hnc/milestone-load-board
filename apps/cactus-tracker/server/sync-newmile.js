@@ -63,7 +63,7 @@ function matchLoadRow(r, orgs, subNames) {
           return { orgId: 'KT', num: cand, autoCreate: true, sub: true, tags: 'CKJ IC', suggestedDivision: 'ICS', display: cand.slice(3) };
         }
         // otros números ajenos rodando bajo el fleet CKJ (Arango…): solo si ya existen
-        const hit = get('SELECT org_id, number FROM trucks WHERE number IN (?, ?) AND archived = 0', cand, digits);
+        const hit = get('SELECT org_id, number FROM trucks WHERE number IN (?, ?)', cand, digits);
         return hit ? { orgId: hit.org_id, num: hit.number, autoCreate: false } : null;
       }
       // CKJ#### de 4 dígitos: normalmente flota KT, pero si NO hay truck de flota con
@@ -80,16 +80,16 @@ function matchLoadRow(r, orgs, subNames) {
     return { orgId: 'CACTUS', num: normNum(r.truck_number), autoCreate: true, sub: true, tags: 'SUBHAULER' };
   }
   const cand = normNum(r.truck_number).replace(/\s+/g, '');
-  const hit = get('SELECT org_id, number FROM trucks WHERE number = ? AND archived = 0', cand);
+  const hit = get('SELECT org_id, number FROM trucks WHERE number = ?', cand);
   if (hit) return { orgId: hit.org_id, num: hit.number, autoCreate: false };
   // el display también cuenta ("LT245" guardado como display del sub "245")
-  const hd = get('SELECT org_id, number FROM trucks WHERE display_number = ? AND archived = 0', cand);
+  const hd = get('SELECT org_id, number FROM trucks WHERE display_number = ?', cand);
   if (hd) return { orgId: hd.org_id, num: hd.number, autoCreate: false };
   const pm = /^([A-Z]{1,4})-?(\d{1,4})$/.exec(cand);
   if (pm) {
     // sub ya en el roster con el número INCOMPLETO (Livingston "245" vs NewMile "LT245"):
     // se matchea por los dígitos y de paso se le pone el número completo de NewMile
-    const bare = get(`SELECT org_id, number, display_number FROM trucks WHERE number = ? AND is_sub = 1 AND archived = 0`, pm[2]);
+    const bare = get(`SELECT org_id, number, display_number FROM trucks WHERE number = ? AND is_sub = 1`, pm[2]);
     if (bare) {
       if (bare.display_number === bare.number) {
         run(`UPDATE trucks SET display_number = ?, updated_at = ? WHERE org_id = ? AND number = ?`, cand, nowISO(), bare.org_id, bare.number);
@@ -290,9 +290,17 @@ async function syncActivity(client, days) {
         v.m.tags || (sub ? 'SUBHAULER' : ''), sub, v.m.suggestedDivision || null, placed ? 0 : 1, nowISO());
       row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, num);
       if (adoptThis) summary.subsAdopted++; else summary.createdNew++;
-    } else if (v.owner && v.owner !== row.owner_name) {
-      // dueño desde el ticket (para subs que el roster de flota no trae)
-      run(`UPDATE trucks SET owner_name = ? WHERE org_id = ? AND number = ?`, v.owner, orgId, num);
+    } else {
+      if (row.archived) {
+        // estaba archivado por inactividad pero VOLVIÓ a correr carga → regresa al board
+        // en su mismo lugar (división/área que ya tenía)
+        run(`UPDATE trucks SET archived = 0, maybe_removed = 0, updated_at = ? WHERE org_id = ? AND number = ?`, nowISO(), orgId, num);
+        summary.resurfaced = (summary.resurfaced || 0) + 1;
+      }
+      if (v.owner && v.owner !== row.owner_name) {
+        // dueño desde el ticket (para subs que el roster de flota no trae)
+        run(`UPDATE trucks SET owner_name = ? WHERE org_id = ? AND number = ?`, v.owner, orgId, num);
+      }
     }
     run(`INSERT INTO activity_log (org_id, number, load_date, driver, loads) VALUES (?,?,?,?,?)
          ON CONFLICT(org_id, number, load_date) DO UPDATE SET loads = excluded.loads, driver = excluded.driver`,
@@ -346,16 +354,16 @@ async function syncActivity(client, days) {
         if (/^\d{1,4}$/.test(n)) candidates.push('CKJ' + n);
         let hit = null;
         for (const c of [...new Set(candidates)]) {
-          hit = get('SELECT org_id, number FROM trucks WHERE number = ? AND archived = 0', c);
+          hit = get('SELECT org_id, number, archived FROM trucks WHERE number = ?', c);
           if (hit) break;
         }
         // último recurso: display_number ("LT245" del sub 245, "211" del IC CKJ211)
-        if (!hit) hit = get('SELECT org_id, number FROM trucks WHERE display_number = ? AND archived = 0', n);
+        if (!hit) hit = get('SELECT org_id, number, archived FROM trucks WHERE display_number = ?', n);
         if (!hit) continue;
         matched.add(hit.org_id + '|' + hit.number);
-        // asignado en NewMile = claramente ACTIVO → fuera de "¿de baja?" (falsa alarma
-        // del cotejo de roster; el dispatcher no debe revisar trucks que están rodando)
-        run(`UPDATE trucks SET maybe_removed = 0 WHERE org_id = ? AND number = ? AND maybe_removed = 1`, hit.org_id, hit.number);
+        // asignado en NewMile = claramente ACTIVO → fuera de "¿de baja?" y des-archivado
+        // (falsas alarmas; el dispatcher no debe revisar trucks que están rodando)
+        run(`UPDATE trucks SET maybe_removed = 0, archived = 0 WHERE org_id = ? AND number = ? AND (maybe_removed = 1 OR archived = 1)`, hit.org_id, hit.number);
         const st = get('SELECT * FROM dispatch_state WHERE date = ? AND org_id = ? AND number = ?', dateISO, hit.org_id, hit.number);
         if (!st) {
           run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_at, nm_confirmed) VALUES (?,?,?,'a','auto',?,1)`,
@@ -382,6 +390,23 @@ async function syncActivity(client, days) {
   }
   // corrió carga esta semana = ACTIVO → limpiar "¿de baja?" (falsas alarmas del roster)
   run(`UPDATE trucks SET maybe_removed = 0 WHERE maybe_removed = 1 AND last_load_date >= ?`, shiftISO(today, -7));
+
+  // SOLO LOS QUE TRABAJAN: un truck sin carga en 30 días se ARCHIVA solo (no estorba en
+  // el board). Regresa SOLO en cuanto corra carga o venga asignado (arriba). Protegidos:
+  // ⭐ stars, ⚑ nuevos, editados hace poco, con time off vigente/futuro o marcas recientes.
+  // Corre únicamente en el sync COMPLETO (ventana >= 21 d) y con pull sano, para que un
+  // jalón fallido de NewMile no archive media flota.
+  if ((days || ACTIVITY_WINDOW_DAYS) >= 21 && summary.matched >= 50) {
+    const cutoff = shiftISO(today, -30);
+    const r = run(`UPDATE trucks SET archived = 1
+         WHERE archived = 0 AND is_new = 0 AND star = 0
+           AND (last_load_date IS NULL OR last_load_date < ?)
+           AND updated_at < ?
+           AND NOT EXISTS (SELECT 1 FROM time_off o WHERE o.org_id = trucks.org_id AND o.number = trucks.number AND o.to_date >= ?)
+           AND NOT EXISTS (SELECT 1 FROM dispatch_state s WHERE s.org_id = trucks.org_id AND s.number = trucks.number AND s.date >= ? AND s.source = 'manual')`,
+      cutoff, cutoff + 'T00:00:00.000Z', today, shiftISO(today, -14));
+    summary.dormantArchived = r.changes;
+  }
 
   if (autoOn) {
     await coverFromAssignments(today, 'today');
