@@ -103,6 +103,8 @@ h1 span{color:var(--gold);}
 .chip .act.bad{color:var(--red);}
 .chip .note{font-size:11px;color:#a8622f;margin-top:3px;line-height:1.25;}
 .chip .park{font-size:11px;font-weight:700;color:var(--blue);margin-top:3px;}
+/* A DÓNDE VA: la orden NewMile del día, directo en el cuadrito (cliente → destino) */
+.chip .dest{font-size:11px;font-weight:700;color:#2456a6;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
 .chip .park.mut{color:#9aa1b2;font-weight:600;}
 .btn-loc{position:absolute;bottom:6px;right:6px;width:24px;height:24px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:12px;cursor:pointer;line-height:1;}
 .btn-loc:hover{border-color:var(--blue);color:var(--blue);}
@@ -776,6 +778,7 @@ function chipHtml(t){
     <button class="btn-down" onclick="tapDown(event,'${t.org_id}','${esc(t.number)}')" title="Mark down">✕</button>
     <div class="top"><span class="num"><button class="star-btn ${t.star?"on":""}" onclick="toggleStar(event,'${t.org_id}','${esc(t.number)}')" title="${t.star?"Star driver — tap to remove":"Mark as star driver"}">${t.star?"★":"☆"}</button>${esc(dnum(t))}${isVirtual()?`<span class="orgtag ${t.org_id==="KT"?(t.is_sub?"ic":"kt"):(t.is_sub?"sub":"")}">${t.org_id==="KT"?(t.is_sub?"IC":"KT"):(t.is_sub?"SUB":"CACTUS")}</span>`:""}</span>${t.trailer_type?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(t.trailer_type)}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}</div>
     <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ NO DRIVER"}</div>
+    ${t.state==="a"&&t.nm_dest&&t.nm_dest.length?`<div class="dest" title="${esc(t.nm_dest.map(d=>[d.n,d.c,d.m,d.d].filter(Boolean).join(" · ")).join("  +  "))}">🚚 ${t.nm_dest.map(d=>esc([d.c||d.n,d.d||d.m].filter(Boolean).join(" → "))).join(" + ")}</div>`:""}
     ${groupMode==="owner"?`<div class="park mut" style="color:#7a2fa8;">📌 zone: ${esc(areaLbl(t.area||"(SIN YARD)"))}</div>`:""}
     ${parkHtml(t)}
     ${actHtml(t)}
@@ -811,6 +814,14 @@ function renderBanners(){
       html+=`<div class="banner baja"><b>⚠ PLANNED HERE, NOT IN NEWMILE · ${ghost.length}</b> — you marked these but they are NOT assigned in NewMile for this day:<br>`+
         ghost.map(t=>`<span class="chip-mini" onclick="jumpTo('${t.org_id}','${esc(t.number)}')">${esc(dnum(t))}</span>`).join("")+`</div>`;
     }
+  }
+  // HUECOS EN ÓRDENES: a estas órdenes de NewMile les faltan trucks este día. El otro lado
+  // del blindaje: ni un truck olvidado, ni una orden corta. Tap → panel de órdenes.
+  if(nm.connected&&!board.historical&&(board.nm_gaps||[]).length){
+    const gaps=board.nm_gaps, totalGap=gaps.reduce((s,g)=>s+(g.gap||0),0);
+    html+=`<div class="banner baja" onclick="openOrders()" style="cursor:pointer;"><b>📋 ${gaps.length} ORDER${gaps.length>1?"S":""} STILL SHORT ${totalGap} TRUCK${totalGap!==1?"S":""}</b> — tap to fill:<br>`+
+      gaps.slice(0,8).map(g=>`<span class="chip-mini">${esc(g.c||g.n)}${g.m?" · "+esc(g.m):""} · <b>needs ${g.gap}</b></span>`).join("")+
+      (gaps.length>8?` <span class="chip-mini">+${gaps.length-8} more…</span>`:"")+`</div>`;
   }
   if(offline){
     const c=localStorage.getItem(CACHE_KEY+":"+ORG);
@@ -1093,6 +1104,65 @@ async function pushAssign(){
     openModal(`<h3>🚀 Push failed</h3><p style="font-size:14px;color:var(--red);">${esc(e.message)}</p><p style="font-size:13px;color:var(--mut);">Nothing was marked locally. Try again or assign in NewMile.</p><div class="actions"><button class="b-cancel" onclick="renderOrders()">← Orders</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
   }
 }
+// ---------- ASIGNAR DESDE EL TRUCK: veo qué anda libre y le busco jale ----------
+// El flujo natural del dispatcher, volteado: truck libre → "¿a dónde lo mando?" → tap
+// en la orden → PUSH real a NewMile (draft+confirm) → el cuadrito se pone ⚡ solo.
+async function openSendTruck(org,num){
+  const t=truckOf(org,num);if(!t)return;
+  openModal(`<h3>🚀 ${esc(dnum(t))} → order</h3><p style="color:var(--mut);font-size:14px;">Loading NewMile orders for ${mdy(date)}…</p>`);
+  try{
+    const r=await fetch(`${API}/api/orders?date=${date}`);
+    if(r.status===401){openModal(`<h3>🚀 Send to order</h3><p style="font-size:14px;">NewMile is not connected. <a class="connect" href="${API}/api/newmile/connect">Tap here to sign in</a> and try again.</p><div class="actions"><button class="b-cancel" onclick="closeModal()">Close</button></div>`);return;}
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    _orders=await r.json();
+    renderSendTruck(org,num);
+  }catch(e){openModal(`<h3>🚀 Send to order</h3><p style="font-size:14px;color:var(--red);">Could not load orders: ${esc(e.message)}</p><div class="actions"><button class="b-cancel" onclick="closeModal()">Close</button></div>`);}
+}
+function renderSendTruck(org,num){
+  const t=truckOf(org,num);if(!t)return;
+  const os=[...((_orders&&_orders.orders)||[])].filter(o=>!/cancel/i.test(o.status||""));
+  const gapOf=o=>o.planned!=null?Math.max(0,o.planned-o.assigned.length):null;
+  // con hueco primero (más faltantes arriba); luego las demás por si quiere reforzar una
+  os.sort((a,b)=>((gapOf(b)||0)-(gapOf(a)||0))||(a.name>b.name?1:-1));
+  const onIt=os.filter(o=>(o.assigned||[]).some(a=>a.org===t.org_id&&a.number===t.number));
+  openModal(`<h3>🚀 ${esc(dnum(t))} — where to?</h3>
+    <div style="font-size:12.5px;color:var(--stone);margin-bottom:8px;">${esc(t.driver)||"⚠ no driver"}${t.trailer_type?" · "+esc(t.trailer_type):""} · ${esc(areaLbl(t.area||"(SIN YARD)"))} · wk ${t.loads_week||0} loads</div>
+    ${onIt.length?`<div style="font-size:12.5px;color:#2456a6;font-weight:700;margin-bottom:8px;">already on: ${onIt.map(o=>esc(o.customer||o.name)).join(", ")}</div>`:""}
+    ${os.length?"":`<p style="color:var(--mut);font-size:14px;">No NewMile orders for this day yet.</p>`}
+    <div style="max-height:52vh;overflow:auto;">
+    ${os.map(o=>{const gap=gapOf(o);
+      return `<div onclick="sendTruckTo(${o.id},'${t.org_id}','${esc(t.number)}')" style="border:1.5px solid ${gap?"#c98a2f":"var(--line)"};background:${gap?"#FDF8EC":"#fff"};border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer;">
+        <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+          <b style="font-size:14.5px;">${esc(o.customer||o.name)}</b>
+          <span style="margin-left:auto;font-weight:800;font-size:13px;color:${gap?"#8a5a10":"var(--green)"};">${o.assigned.length}${o.planned!=null?"/"+o.planned:""}${gap?` · NEEDS ${gap}`:" · full"}</span>
+        </div>
+        <div style="font-size:12px;color:var(--stone);margin-top:2px;">${esc(o.material)}${o.qty!=null?` · ${o.qty} ${esc(o.unit)}`:""}${o.dropoff?` · → ${esc(o.dropoff)}`:""}</div>
+      </div>`;}).join("")}
+    </div>
+    <div class="row2" style="margin-top:8px;"><div><label>Loads (optional)</label><input type="number" id="sendLds" placeholder="x3" min="1" style="width:100%;"></div><div></div></div>
+    <div class="actions"><button class="b-cancel" onclick="closeModal()">Cancel</button></div>`);
+}
+async function sendTruckTo(orderId,org,num){
+  ensureWho();
+  const t=truckOf(org,num);
+  const o=((_orders&&_orders.orders)||[]).find(x=>x.id===orderId)||{};
+  const lds=$("sendLds")?$("sendLds").value:"";
+  if(!confirm(`PUSH ${dnum(t)} → "${o.customer||o.name}" in NewMile?${lds?` (${lds} loads)`:""}`))return;
+  openModal(`<h3>🚀 Pushing ${esc(dnum(t))}…</h3><p style="color:var(--mut);font-size:14px;">creating + confirming the assignment…</p>`);
+  try{
+    const r=await fetch(`${API}/api/orders/assign`,{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({order_id:orderId,date,trucks:[{org,number:num}],load_limit:lds||undefined,by:WHO})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(j.error||("HTTP "+r.status));
+    if(j.failed&&j.failed.length)throw new Error(j.failed[0].number+": "+j.failed[0].reason);
+    await fetchBoard();
+    openModal(`<h3>🚀 Done</h3><p style="font-size:14px;">✅ ${esc(dnum(t))} → <b>${esc(o.customer||o.name)}</b>${j.confirmed?" — CONFIRMED, the driver can see it":" — left as DRAFT, confirm in NewMile"}</p>
+      <div class="actions"><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
+  }catch(e){
+    openModal(`<h3>🚀 Push failed</h3><p style="font-size:14px;color:var(--red);">${esc(e.message)}</p><p style="font-size:13px;color:var(--mut);">Nothing was marked locally.</p>
+      <div class="actions"><button class="b-cancel" onclick="renderSendTruck('${org}','${esc(num)}')">← Try again</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
+  }
+}
 async function unassignNM(id,orderName){
   if(!confirm(`Remove this truck from "${orderName}" in NewMile?`))return;
   try{
@@ -1117,6 +1187,11 @@ function openEdit(org,num){
       </div>
     </div>
     ${t.parked_city?`<div class="emod-park">🅿 ${esc(t.parked_city)}${t.parked_at?" · "+new Date(t.parked_at).toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"}):""}${t.last_moved_at?" · last moved "+tsMdy(t.last_moved_at):""}</div>`:""}
+    ${t.state==="a"&&t.nm_dest&&t.nm_dest.length?`<div style="border:1.5px solid #2456a6;background:var(--blue-bg);border-radius:12px;padding:9px 12px;margin:4px 0 8px;font-size:13px;">
+      <b style="color:#2456a6;">⚡ ${mdy(date)} — where it's going:</b>
+      ${t.nm_dest.map(d=>`<div style="margin-top:3px;">🚚 <b>${esc(d.c||d.n)}</b>${d.m?" · "+esc(d.m):""}${d.d?" → "+esc(d.d):""}</div>`).join("")}
+    </div>`:""}
+    ${t.state==="p"&&!board.historical&&!outOfService(t)&&!restsToday(t)?`<button onclick="openSendTruck('${t.org_id}','${esc(t.number)}')" style="width:100%;border:none;background:var(--navy);color:#fff;border-radius:12px;padding:12px;font-weight:700;font-size:15px;cursor:pointer;margin:4px 0 8px;">🚀 SEND TO AN ORDER — ${mdy(date)}</button>`:""}
 
     <div class="sec-t">How is this truck right now?</div>
     <input type="hidden" id="eStatus" value="${esc(cur)}">

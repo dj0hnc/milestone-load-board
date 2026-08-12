@@ -150,6 +150,7 @@ function createRouter({ config, newmile, log }) {
         state: s ? s.state : ((carryMap.get(t.org_id + '|' + t.number) || {}).state === 'd' ? 'd' : 'p'),
         state_source: s ? s.source : ((carryMap.get(t.org_id + '|' + t.number) || {}).state === 'd' ? 'carry' : null),
         nm_confirmed: s ? (s.nm_confirmed || 0) : 0,
+        nm_dest: s && s.nm_info ? (() => { try { return JSON.parse(s.nm_info); } catch (e) { return []; } })() : [],
         loads_week: wkMap.get(t.org_id + '|' + t.number) || 0,
         down_since: !s && (carryMap.get(t.org_id + '|' + t.number) || {}).state === 'd' ? carryMap.get(t.org_id + '|' + t.number).date : null,
         state_by: s ? s.marked_by : null,
@@ -172,6 +173,8 @@ function createRouter({ config, newmile, log }) {
       // ¿este día ya se cotejó contra las asignaciones de NewMile? (para avisar "planeado
       // aquí pero NO está en NewMile" solo cuando hay datos reales que comparar)
       nm_checked: !!metaGet('nm_assign_checked_' + date),
+      // huecos en las órdenes de NewMile de este día (calculado en cada sync de actividad)
+      nm_gaps: (() => { try { return JSON.parse(metaGet('nm_gaps_' + date) || '[]'); } catch (e) { return []; } })(),
       week: weekDatesCT(date),
       trucks: outTrucks,
       meta: {
@@ -193,8 +196,9 @@ function createRouter({ config, newmile, log }) {
       return res.status(400).json({ error: 'body: {date ISO, org, number, state p|a|d}' });
     }
     // nm_confirmed vuelve a 0: la confirmación vs NewMile se re-verifica en el próximo sync
-    run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_by, marked_at, nm_confirmed) VALUES (?,?,?,?,'manual',?,?,0)
-         ON CONFLICT(date, org_id, number) DO UPDATE SET state = excluded.state, source = 'manual', marked_by = excluded.marked_by, marked_at = excluded.marked_at, nm_confirmed = 0`,
+    // (y el destino se limpia — si sigue asignado en NewMile, el sync lo repone solo)
+    run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_by, marked_at, nm_confirmed, nm_info) VALUES (?,?,?,?,'manual',?,?,0,'')
+         ON CONFLICT(date, org_id, number) DO UPDATE SET state = excluded.state, source = 'manual', marked_by = excluded.marked_by, marked_at = excluded.marked_at, nm_confirmed = 0, nm_info = ''`,
       date, normNum(org), normNum(number), state, String(by || '').slice(0, 40), nowISO());
     res.json({ ok: true });
   });
@@ -502,15 +506,21 @@ function createRouter({ config, newmile, log }) {
           try { await newmile.confirmAssignments(ids); confirmed = true; }
           catch (e) { warnings = (warnings || []).concat(['confirm failed (left as draft): ' + (e.message || e)]); }
         }
-        // marca local: asignado ⚡ (verificado — lo acabamos de meter a NewMile)
+        // marca local: asignado ⚡ (verificado — lo acabamos de meter a NewMile), con su
+        // DESTINO para que el cuadrito diga a dónde va desde el primer segundo
         const who = String(by || '').slice(0, 40);
+        const cachedOrder = ((ordersCache[day] && ordersCache[day].data.orders) || []).find(o => String(o.id) === String(order_id));
+        const dest = cachedOrder ? JSON.stringify([{
+          n: String(cachedOrder.name || '').slice(0, 60), c: String(cachedOrder.customer || '').slice(0, 40),
+          m: String(cachedOrder.material || '').slice(0, 40), d: String(cachedOrder.dropoff || '').slice(0, 50)
+        }]) : '';
         const byTruckId = new Map(created.map(a => [a.truck_id, a]));
         for (const e of entries) {
           if (ids.length && !byTruckId.has(e.truck_id)) continue; // no regresó creado
-          run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_by, marked_at, nm_confirmed)
-               VALUES (?,?,?,?,'manual',?,?,1)
-               ON CONFLICT(date, org_id, number) DO UPDATE SET state='a', source='manual', marked_by=excluded.marked_by, marked_at=excluded.marked_at, nm_confirmed=1`,
-            day, e._row.org_id, e._row.number, 'a', who, nowISO());
+          run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_by, marked_at, nm_confirmed, nm_info)
+               VALUES (?,?,?,?,'manual',?,?,1,?)
+               ON CONFLICT(date, org_id, number) DO UPDATE SET state='a', source='manual', marked_by=excluded.marked_by, marked_at=excluded.marked_at, nm_confirmed=1, nm_info=excluded.nm_info`,
+            day, e._row.org_id, e._row.number, 'a', who, nowISO(), dest);
           logChange(e._row.org_id, e._row.number, 'nm_assign', '', 'order ' + order_id + (load_limit ? ' x' + load_limit : ''), who);
         }
       }

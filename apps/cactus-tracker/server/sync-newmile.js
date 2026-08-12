@@ -335,14 +335,37 @@ async function syncActivity(client, days) {
   // tomorrow's board already covered with what was pushed to NewMile).
   async function coverFromAssignments(dateISO, label) {
     try {
-      const assigns = await client.assignmentsToday(dateISO);
+      // Órdenes CON asignaciones: cubre trucks Y captura A DÓNDE va cada uno + los huecos
+      const rows = await client.ordersForDate(dateISO);
       const nums = new Set();
       const matched = new Set(); // org|num de los que SÍ están en NewMile ese día
-      for (const a of assigns) {
-        const raw = a.truck_number || (a.truck && (a.truck.truck_number || a.truck.number)) || '';
-        if (raw) nums.add(normNum(raw).replace(/\s+/g, ''));
+      const destByNum = new Map(); // num normalizado -> [{n,c,m,d}] (destinos del día)
+      const gaps = [];             // órdenes a las que les faltan trucks
+      let assignCount = 0;
+      for (const { order: o, assignments } of rows) {
+        const info = {
+          n: String(o.reference || o.project_name || o.customer_name || ('Order ' + o.id)).slice(0, 60),
+          c: String(o.customer_name || '').slice(0, 40),
+          m: String(o.material_name || o.material || '').slice(0, 40),
+          d: String(o.dropoff_location_name || o.dropoff_org_location_name || o.dropoff_site_name || '').slice(0, 50)
+        };
+        const act = (assignments || []).filter(a => !/cancel/i.test(a.assignment_status || ''));
+        assignCount += act.length;
+        for (const a of act) {
+          const raw = a.truck_number || (a.truck && (a.truck.truck_number || a.truck.number)) || '';
+          if (!raw) continue;
+          const key = normNum(raw).replace(/\s+/g, '');
+          nums.add(key);
+          (destByNum.get(key) || destByNum.set(key, []).get(key)).push(info);
+        }
+        const planned = o.planned_truck_count != null ? Number(o.planned_truck_count) : null;
+        if (planned && act.length < planned && !/cancel|complete|closed/i.test(o.status || '')) {
+          gaps.push({ id: o.id, ...info, planned, assigned: act.length, gap: planned - act.length });
+        }
       }
-      summary[label + 'Assignments'] = assigns.length;
+      metaSet('nm_gaps_' + dateISO, JSON.stringify(gaps.sort((a, b) => b.gap - a.gap).slice(0, 40)));
+      summary[label + 'Assignments'] = assignCount;
+      if (gaps.length) summary[label + 'OrderGaps'] = gaps.length;
       for (const n of nums) {
         // assignment numbers usually match the truck resource, but tolerate the
         // load-report styles too: "C1127" (Cactus) and "KT-7040 P"/"CKJ7040" (KT)
@@ -361,26 +384,27 @@ async function syncActivity(client, days) {
         if (!hit) hit = get('SELECT org_id, number, archived FROM trucks WHERE display_number = ?', n);
         if (!hit) continue;
         matched.add(hit.org_id + '|' + hit.number);
+        const dest = JSON.stringify((destByNum.get(n) || []).slice(0, 3));
         // asignado en NewMile = claramente ACTIVO → fuera de "¿de baja?" y des-archivado
         // (falsas alarmas; el dispatcher no debe revisar trucks que están rodando)
         run(`UPDATE trucks SET maybe_removed = 0, archived = 0 WHERE org_id = ? AND number = ? AND (maybe_removed = 1 OR archived = 1)`, hit.org_id, hit.number);
         const st = get('SELECT * FROM dispatch_state WHERE date = ? AND org_id = ? AND number = ?', dateISO, hit.org_id, hit.number);
         if (!st) {
-          run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_at, nm_confirmed) VALUES (?,?,?,'a','auto',?,1)`,
-            dateISO, hit.org_id, hit.number, nowISO());
+          run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_at, nm_confirmed, nm_info) VALUES (?,?,?,'a','auto',?,1,?)`,
+            dateISO, hit.org_id, hit.number, nowISO(), dest);
           summary[label + 'Covered'] = (summary[label + 'Covered'] || 0) + 1;
         } else {
           // el truck YA estaba marcado (a mano o auto) → queda CONFIRMADO contra NewMile:
           // el ✓ del dispatcher se vuelve ⚡. La marca manual nunca se pisa, solo se verifica.
-          run(`UPDATE dispatch_state SET nm_confirmed = 1 WHERE date = ? AND org_id = ? AND number = ?`,
-            dateISO, hit.org_id, hit.number);
+          run(`UPDATE dispatch_state SET nm_confirmed = 1, nm_info = ? WHERE date = ? AND org_id = ? AND number = ?`,
+            dest, dateISO, hit.org_id, hit.number);
         }
       }
       // los que estaban confirmados pero YA NO aparecen en NewMile pierden el ⚡ (p. ej.
       // borraron la asignación) — vuelven a ✓ "planeado aquí, no está en NewMile"
       for (const r of all('SELECT org_id, number FROM dispatch_state WHERE date = ? AND nm_confirmed = 1', dateISO)) {
         if (!matched.has(r.org_id + '|' + r.number)) {
-          run('UPDATE dispatch_state SET nm_confirmed = 0 WHERE date = ? AND org_id = ? AND number = ?', dateISO, r.org_id, r.number);
+          run(`UPDATE dispatch_state SET nm_confirmed = 0, nm_info = '' WHERE date = ? AND org_id = ? AND number = ?`, dateISO, r.org_id, r.number);
         }
       }
       metaSet('nm_assign_checked_' + dateISO, nowISO()); // este día SÍ se cotejó contra NewMile

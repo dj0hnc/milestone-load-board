@@ -192,6 +192,9 @@ function migrate(d) {
   // CONFIRMACIÓN NEWMILE: 1 = la asignación de ese día está VERIFICADA contra NewMile.
   // Un ✓ manual se vuelve ⚡ al confirmarse; si no confirma, es plan que NO llegó a NewMile.
   addCol(d, 'dispatch_state', 'nm_confirmed', 'INTEGER DEFAULT 0');
+  // A DÓNDE VA: JSON compacto con la(s) orden(es) NewMile del truck ese día
+  // [{n:orden, c:cliente, m:material, d:dropoff}] — el cuadrito muestra su destino.
+  addCol(d, 'dispatch_state', 'nm_info', "TEXT DEFAULT ''");
 }
 
 function addCol(d, table, col, decl) {
