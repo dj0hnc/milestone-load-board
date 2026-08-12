@@ -199,14 +199,67 @@ function createTracker(opts) {
   return { router, newmile, config, startScheduler, stopScheduler, log };
 }
 
+// ¿Hay un tracker VIVO respondiendo en el puerto? (distingue "gemelo sano" de "zombie")
+function portHealthy(port) {
+  return new Promise((resolve) => {
+    const req = require('http').get({ host: '127.0.0.1', port, path: '/cactus-tracker/api/health', timeout: 3000 }, (res) => { res.resume(); resolve(res.statusCode === 200); });
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.on('error', () => resolve(false));
+  });
+}
+// Windows deja procesos zombie agarrando el puerto tras un reinicio (nos pasó con el
+// auto-update): el puerto figura ocupado pero nadie responde → 502 eterno. Aquí el
+// tracker se cura solo: encuentra al que tiene el puerto y lo mata antes de arrancar.
+function killPortHolder(port, log) {
+  if (process.platform !== 'win32') return 0;
+  try {
+    const out = execSync('netstat -aon -p tcp', { timeout: 15000 }).toString();
+    const pids = new Set();
+    for (const line of out.split('\n')) {
+      const m = line.trim().match(/^TCP\s+\S+:(\d+)\s+\S+\s+\S+\s+(\d+)\s*$/i);
+      if (m && Number(m[1]) === Number(port) && Number(m[2]) !== process.pid && /LISTENING/i.test(line)) pids.add(m[2]);
+    }
+    for (const pid of pids) {
+      log(`puerto ${port} secuestrado por proceso zombie ${pid} — matándolo`);
+      try { execSync('taskkill /F /PID ' + pid, { timeout: 10000 }); } catch (e) {}
+    }
+    return pids.size;
+  } catch (e) {
+    log('no pude revisar el puerto: ' + String(e.message || e).split('\n')[0]);
+    return 0;
+  }
+}
+
 if (require.main === module) {
-  const t = createTracker();
-  const app = express();
-  app.use('/cactus-tracker', t.router);
-  app.get('/', (req, res) => res.redirect('/cactus-tracker/'));
-  const port = process.env.PORT || (t.config.port || 8791);
-  app.listen(port, () => t.log('escuchando en http://localhost:' + port + '/cactus-tracker/'));
-  t.startScheduler();
+  (async () => {
+    const t = createTracker();
+    const app = express();
+    app.use('/cactus-tracker', t.router);
+    app.get('/', (req, res) => res.redirect('/cactus-tracker/'));
+    const port = process.env.PORT || (t.config.port || 8791);
+
+    if (await portHealthy(port)) {
+      // ya hay OTRO tracker sano sirviendo (dos ventanas abiertas): no pelear el puerto.
+      t.log(`ya hay un tracker sano en el puerto ${port} — esta ventana sobra, reviso en 60 s`);
+      setTimeout(() => process.exit(0), 60000); // el loop del .cmd re-checa cada minuto
+      return;
+    }
+
+    const start = (retried) => {
+      const srv = app.listen(port, () => { t.log('escuchando en http://localhost:' + port + '/cactus-tracker/'); t.startScheduler(); });
+      srv.on('error', (e) => {
+        if (e && e.code === 'EADDRINUSE' && !retried) {
+          t.log(`puerto ${port} ocupado pero sin responder — liberándolo…`);
+          killPortHolder(port, t.log);
+          setTimeout(() => start(true), 2500);
+        } else {
+          t.log('no pude arrancar: ' + (e.message || e));
+          setTimeout(() => process.exit(1), 1000); // el loop del .cmd reintenta
+        }
+      });
+    };
+    start(false);
+  })();
 }
 
 module.exports = { createTracker };
