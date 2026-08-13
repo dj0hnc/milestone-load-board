@@ -76,6 +76,7 @@ footer b{color:var(--sand);font-weight:700;letter-spacing:.4px;}
 <div class="toolbar">
   <button class="b-pdf" onclick="window.print()">🖨 Print / Save as PDF</button>
   <button class="b-csv" onclick="downloadCSV()">⬇ Excel (CSV)</button>
+  <button class="b-faron" onclick="location.href='faron.html'+(date?'?date='+date:'')" style="background:var(--sand);color:#2B2D30;">★ FARON Report</button>
   <a class="b-back" href="./">← Tracker</a>
 </div>
 <div id="out"><p class="empty">Loading the board…</p></div>
@@ -87,6 +88,9 @@ let board=null;
 const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const dnum=t=>t.display_number||t.number;
 const mdy=iso=>iso?iso.slice(5).replace("-","/").replace(/^0/,""):"";
+// DB placeholders / NewMile names sometimes carry Spanish — always show English
+const enArea=a=>(a==="(SIN YARD)"||!a)?"(NO YARD)":a;
+const enTxt=s=>String(s||"").replace(/SIN DRIVER/ig,"NO DRIVER").replace(/\(SIN YARD\)/ig,"(NO YARD)");
 const OFF_LBL={vacation:"VACATION",shop:"SHOP",down:"DOWN",personal:"PERSONAL"};
 const STATUS_LBL={shop:"IN SHOP",down:"DOWN",no_driver:"NO DRIVER",vacation:"VACATION",deleased:"DE-LEASED"};
 function offOf(t){return (t.time_off||[]).find(o=>o.from_date<=date&&date<=o.to_date)||null;}
@@ -160,7 +164,7 @@ function render(){
   h+=`<h2>⛔ Not working · ${notWorking.length} <small>down first, then shop, vacation, no driver</small></h2>`;
   h+=notWorking.length?rows(notWorking,[
     ["Truck",t=>esc(dnum(t)),"num"],
-    ["Driver",t=>esc(t.driver||"·")],
+    ["Driver",t=>esc(enTxt(t.driver)||"·")],
     ["Fleet",t=>`<span class="divtag">${esc(divLbl(t))}</span>`],
     ["Why",t=>`<span class="${sev(t)===0?"why":"ret"}">${esc(reasonOf(t)||"down")}</span>${t.note?` <span class="divtag">${esc(t.note)}</span>`:""}`],
     ["Back",t=>esc(t.return_date||"")]
@@ -191,9 +195,9 @@ function downloadCSV(){
   const LBL={assigned:"ASSIGNED",down:"DOWN",off:"NOT AVAILABLE",open:"OPEN"};
   const order={assigned:0,down:1,off:2,open:3};
   [...ts].sort((a,b)=>(order[classify(a)]-order[classify(b)])||byDivNum(a,b)).forEach(t=>{
-    lines.push([date,LBL[classify(t)],divLbl(t),dnum(t),t.driver||"",t.owner_name||"",t.trailer_type||"",t.area||"",
+    lines.push([date,LBL[classify(t)],divLbl(t),dnum(t),enTxt(t.driver),t.owner_name||"",t.trailer_type||"",enArea(t.area),
       destTxt(t),(t.state_source==="auto"||t.nm_confirmed)?"YES":(t.state==="a"?"no":""),
-      (reasonOf(t)||t.note||""),t.return_date||"",t.state_by||"",t.loads_week||0].map(csvCell).join(","));
+      enTxt(reasonOf(t)||t.note||""),t.return_date||"",t.state_by||"",t.loads_week||0].map(csvCell).join(","));
   });
   const blob=new Blob(["﻿"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
   const a=document.createElement("a");

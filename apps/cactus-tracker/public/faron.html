@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cactus Daily Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* FARON's report: Cactus fleet only, plain words, big readable type, zero jargon.
+   Made to be saved as a PDF and read by someone who doesn't do tech. */
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{--road:#4A4F55;--sand:#B89A4E;--stone:#7A7D80;--line:#E5E2DB;--green:#4E8C63;--red:#B0442F;--amber:#8a5a10;}
+body{font-family:'Poppins','Segoe UI',system-ui,-apple-system,Roboto,sans-serif;color:var(--road);background:#fff;padding:18px 16px 40px;max-width:820px;margin:0 auto;font-size:15px;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.rephead{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-bottom:3px solid var(--sand);padding-bottom:10px;}
+.rephead img{height:46px;width:auto;}
+.rephead .rtitle{margin-left:auto;text-align:right;}
+.rephead .rtitle b{display:block;font-size:16px;font-weight:700;letter-spacing:1px;text-transform:uppercase;}
+.rephead .rtitle span{font-size:13px;color:var(--stone);font-weight:600;}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 16px;}
+.toolbar button,.toolbar a{border:none;border-radius:10px;padding:13px 18px;font-family:inherit;font-weight:700;font-size:15px;cursor:pointer;text-decoration:none;display:inline-block;}
+.b-pdf{background:var(--road);color:#fff;}
+.b-back{background:#eef0f5;color:var(--road);}
+.bigsum{font-size:17px;line-height:1.65;background:#FBFAF7;border:1.5px solid var(--line);border-radius:14px;padding:14px 18px;margin-bottom:6px;}
+.bigsum b.g{color:var(--green);} .bigsum b.r{color:var(--red);} .bigsum b.a{color:var(--amber);}
+h2{font-size:16px;text-transform:uppercase;letter-spacing:.6px;border-bottom:2px solid var(--sand);padding-bottom:4px;margin:20px 0 8px;}
+table{width:100%;border-collapse:collapse;font-size:14.5px;}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--stone);padding:4px 10px 4px 0;border-bottom:1px solid var(--line);}
+td{padding:6px 10px 6px 0;border-bottom:1px solid #F1EFE9;vertical-align:top;}
+tr{page-break-inside:avoid;}
+td.num{font-weight:700;white-space:nowrap;}
+.why{color:var(--red);font-weight:600;} .ret{color:var(--amber);font-weight:600;}
+.haul{color:#2456a6;font-weight:600;}
+.empty{color:var(--stone);padding:6px 0;}
+.plain{font-size:14.5px;line-height:1.6;margin:4px 0;}
+footer{margin-top:24px;border-top:1.5px solid var(--line);padding-top:8px;color:var(--stone);font-size:11px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+footer b{color:var(--sand);}
+.err{background:#F7EAE6;border:1.5px solid var(--red);color:var(--red);border-radius:12px;padding:12px;}
+@page{margin:12mm;}
+@media print{
+  .toolbar{display:none;}
+  body{padding:0;font-size:12px;max-width:none;}
+  .rephead img{height:36px;}
+  .bigsum{font-size:13px;padding:9px 14px;}
+  h2{font-size:13px;margin:12px 0 5px;}
+  table{font-size:11px;}
+  th{font-size:9px;} td{padding:3px 8px 3px 0;}
+  .plain{font-size:11px;}
+  body.dense table{font-size:9.5px;} body.dense td{padding:2px 7px 2px 0;}
+  footer{font-size:9px;}
+}
+</style>
+</head>
+<body>
+<div class="rephead">
+  <img src="milestone-supply.png" alt="Milestone Supply">
+  <div class="rtitle"><b>Cactus Fleet · Daily Report</b><span id="sub">Loading…</span></div>
+</div>
+<div class="toolbar">
+  <button class="b-pdf" onclick="window.print()">🖨 Save as PDF to send to Faron</button>
+  <a class="b-back" href="report.html">← Full report</a>
+  <a class="b-back" href="./">← Tracker</a>
+</div>
+<div id="out"><p class="empty">Loading…</p></div>
+<footer id="foot"></footer>
+<script>
+const qs=new URLSearchParams(location.search);
+let date=/^\d{4}-\d{2}-\d{2}$/.test(qs.get("date")||"")?qs.get("date"):"";
+let board=null;
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const dnum=t=>t.display_number||t.number;
+const mdy=iso=>iso?iso.slice(5).replace("-","/").replace(/^0/,""):"";
+const enTxt=s=>String(s||"").replace(/SIN DRIVER/ig,"NO DRIVER").replace(/\(SIN YARD\)/ig,"(NO YARD)");
+const OFF_LBL={vacation:"on vacation",shop:"in the shop",down:"broke down",personal:"personal day"};
+const STATUS_LBL={shop:"in the shop",down:"broke down",no_driver:"no driver right now",vacation:"on vacation",deleased:"no longer leased on"};
+function offOf(t){return (t.time_off||[]).find(o=>o.from_date<=date&&date<=o.to_date)||null;}
+function restsToday(t){
+  if(!t.rest_days||!board)return false;
+  const wd=Object.entries(board.week||{}).find(([,iso])=>iso===date);
+  return wd?t.rest_days.split(",").map(s=>s.trim()).includes(wd[0]):false;
+}
+function classify(t){
+  if(t.state==="a")return "working";
+  if(t.state==="d"||t.status==="down")return "down";
+  const off=offOf(t);
+  if(off||["shop","vacation","deleased","no_driver"].includes(t.status)||restsToday(t))return "off";
+  return "open";
+}
+// plain words for Faron — no app jargon
+function plainReason(t){
+  if(t.state==="d")return "broke down"+(t.down_since?" (since "+mdy(t.down_since)+")":"")+(t.status_note?" · "+enTxt(t.status_note):"");
+  const off=offOf(t);
+  if(off)return (OFF_LBL[off.reason]||off.reason)+" until "+mdy(off.to_date)+(off.note?" · "+enTxt(off.note):"");
+  if(restsToday(t))return "regular day off";
+  if(t.status&&t.status!=="ok")return (STATUS_LBL[t.status]||t.status)+(t.status_note?" · "+enTxt(t.status_note):"");
+  return "not running today";
+}
+function haulTxt(t){
+  const d=(t.nm_dest||[]);
+  if(!d.length)return "assigned for the day";
+  return d.map(x=>[x.c||x.n,x.d].filter(Boolean).join(" → ")).join("  +  ");
+}
+const byNum=(a,b)=>String(dnum(a)).localeCompare(String(dnum(b)),undefined,{numeric:true});
+
+async function load(){
+  try{
+    // Cactus fleet only — this report is Faron's
+    const r=await fetch(`./api/board?org=CACTUS${date?("&date="+date):""}`);
+    if(r.status===401){location.href="login.html";return;}
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    board=await r.json();
+    date=date||board.date;
+    render();
+  }catch(e){
+    document.getElementById("out").innerHTML=`<div class="err">Could not load: ${esc(e.message)}. Check the connection and refresh.</div>`;
+  }
+}
+function render(){
+  const ts=(board.trucks||[]).filter(t=>!t.archived&&!t.is_sub);
+  const g={working:[],down:[],off:[],open:[]};
+  for(const t of ts)g[classify(t)].push(t);
+  for(const k in g)g[k].sort(byNum);
+  const longDate=new Date(date+"T12:00:00Z").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric",timeZone:"UTC"});
+  document.getElementById("sub").textContent=longDate;
+  document.title=`Cactus ${date}`;
+
+  let h=`<div class="bigsum">Out of <b>${ts.length}</b> Cactus trucks today:
+    <b class="g">${g.working.length} are working</b> ·
+    <b class="r">${g.down.length} broke down</b> ·
+    <b class="a">${g.off.length} in the shop / off</b> ·
+    <b>${g.open.length}</b> without work yet.</div>`;
+
+  const notWorking=[...g.down,...g.off];
+  const sev=t=>t.state==="d"||t.status==="down"?0:1;
+  notWorking.sort((a,b)=>(sev(a)-sev(b))||byNum(a,b));
+  if(g.working.length+notWorking.length>55)document.body.classList.add("dense");
+  h+=`<h2>Trucks not running · ${notWorking.length}</h2>`;
+  h+=notWorking.length?`<table><tr><th>Truck</th><th>Driver</th><th>What happened</th><th>Back</th></tr>`+
+    notWorking.map(t=>`<tr><td class="num">${esc(dnum(t))}</td><td>${esc(enTxt(t.driver)||"·")}</td>
+      <td><span class="${sev(t)===0?"why":"ret"}">${esc(plainReason(t))}</span></td><td>${esc(t.return_date||"")}</td></tr>`).join("")+`</table>`
+    :`<p class="empty">Every truck is running today.</p>`;
+
+  h+=`<h2>Trucks working today · ${g.working.length}</h2>`;
+  h+=g.working.length?`<table><tr><th>Truck</th><th>Driver</th><th>Hauling for</th></tr>`+
+    g.working.map(t=>`<tr><td class="num">${esc(dnum(t))}</td><td>${esc(enTxt(t.driver)||"·")}</td>
+      <td><span class="haul">${esc(haulTxt(t))}</span></td></tr>`).join("")+`</table>`
+    :`<p class="empty">No trucks assigned yet for this day.</p>`;
+
+  h+=`<h2>No work yet · ${g.open.length}</h2>`;
+  if(!g.open.length)h+=`<p class="plain">Every available truck has work. 👍</p>`;
+  else if(g.open.length>30)h+=`<p class="plain">${g.open.length} trucks are ready but don't have work assigned yet.</p>`;
+  else h+=`<p class="plain">${g.open.map(t=>`<b>${esc(dnum(t))}</b>`).join(", ")}</p>`;
+
+  document.getElementById("out").innerHTML=h;
+  document.getElementById("foot").innerHTML=`<span><b>MILESTONE SUPPLY</b> · Cactus Express fleet</span>
+    <span>Prepared ${esc(new Date().toLocaleString("en-US",{month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"}))}</span>`;
+}
+load();
+</script>
+</body>
+</html>
