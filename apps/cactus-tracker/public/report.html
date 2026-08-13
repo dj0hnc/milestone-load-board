@@ -37,7 +37,10 @@ td .ret{color:var(--amber);font-weight:600;}
 .empty{color:var(--mut);font-size:13px;padding:8px 0;}
 footer{margin-top:26px;color:var(--mut);font-size:11px;text-align:center;}
 .err{background:#F7EAE6;border:1.5px solid var(--red);color:var(--red);border-radius:12px;padding:12px;font-size:14px;}
-@media print{.toolbar{display:none;} body{padding:0;} h2{margin-top:14px;}}
+.sumline{font-size:12.5px;line-height:1.6;margin:2px 0;}
+.sumline b{font-weight:700;}
+@page{margin:11mm;}
+@media print{.toolbar{display:none;} body{padding:0;font-size:11px;} h2{margin-top:10px;font-size:13px;} table{font-size:11px;} .tile b{font-size:17px;} .tile{padding:5px 10px;min-width:70px;} .sumline{font-size:11px;}}
 </style>
 </head>
 <body>
@@ -120,40 +123,33 @@ function render(){
     <div class="tile a"><b>${g.off.length}</b><span>Off / Shop</span></div>
     <div class="tile"><b>${g.open.length}</b><span>Open</span></div>
   </div>`;
-  h+=`<h2>✅ Assigned — ${g.assigned.length} <small>⚡ = verified in NewMile</small></h2>`;
-  h+=g.assigned.length?rows(g.assigned,[
-    ["",t=>(t.state_source==="auto"||t.nm_confirmed)?'<span class="zap">⚡</span>':'<span class="chk">✓</span>'],
+  // FOCO DEL REPORTE: los que NO están trabajando, con motivo. Lo demás, resumido — 1 página.
+  const notWorking=[...g.down,...g.off];
+  const sev=t=>t.state==="d"||t.status==="down"?0:t.status==="shop"?1:2;
+  notWorking.sort((a,b)=>(sev(a)-sev(b))||byDivNum(a,b));
+  h+=`<h2>⛔ Not working — ${notWorking.length} <small>down · shop · vacation · no driver</small></h2>`;
+  h+=notWorking.length?rows(notWorking,[
     ["Truck",t=>esc(dnum(t)),"num"],
     ["Driver",t=>esc(t.driver||"—")],
     ["Fleet",t=>`<span class="divtag">${esc(divLbl(t))}</span>`],
-    ["Where it's going",t=>`<span class="dest">${esc(destTxt(t))||"—"}</span>`],
-    ["By",t=>esc(t.state_by||(t.state_source==="auto"?"auto":""))]
-  ]):`<p class="empty">none</p>`;
-  h+=`<h2>⛔ Down — ${g.down.length}</h2>`;
-  h+=g.down.length?rows(g.down,[
-    ["Truck",t=>esc(dnum(t)),"num"],
-    ["Driver",t=>esc(t.driver||"—")],
-    ["Fleet",t=>`<span class="divtag">${esc(divLbl(t))}</span>`],
-    ["Why / since",t=>`<span class="why">${esc(reasonOf(t)||"down")}</span>${t.last_moved_at?` <span class="divtag">last moved ${esc(t.last_moved_at.slice(5,10).replace("-","/"))}</span>`:""}`],
-    ["Note",t=>esc(t.note||"")]
-  ]):`<p class="empty">none 🎉</p>`;
-  h+=`<h2>🔧 Not available — ${g.off.length} <small>shop · vacation · no driver · scheduled off</small></h2>`;
-  h+=g.off.length?rows(g.off,[
-    ["Truck",t=>esc(dnum(t)),"num"],
-    ["Driver",t=>esc(t.driver||"—")],
-    ["Fleet",t=>`<span class="divtag">${esc(divLbl(t))}</span>`],
-    ["Reason",t=>`<span class="ret">${esc(reasonOf(t)||"—")}</span>`],
-    ["Returns",t=>esc(t.return_date||"")]
-  ]):`<p class="empty">none</p>`;
-  h+=`<h2>🟡 Open (not assigned) — ${g.open.length}</h2>`;
-  h+=g.open.length?rows(g.open,[
-    ["Truck",t=>esc(dnum(t)),"num"],
-    ["Driver",t=>esc(t.driver||"—")],
-    ["Fleet",t=>`<span class="divtag">${esc(divLbl(t))}</span>`],
-    ["Zone",t=>esc(t.area||"")],
-    ["Type",t=>esc(t.trailer_type||"")],
-    ["Wk loads",t=>String(t.loads_week||0)]
-  ]):`<p class="empty">none — full coverage 🎉</p>`;
+    ["Why",t=>`<span class="${sev(t)===0?"why":"ret"}">${esc(reasonOf(t)||"down")}</span>${t.note?` <span class="divtag">${esc(t.note)}</span>`:""}`],
+    ["Back",t=>esc(t.return_date||"")]
+  ]):`<p class="empty">everyone is working 🎉</p>`;
+
+  // resumen compacto por flota (asignados) + libres LISTADOS (son pocos y son la chamba)
+  const perDiv=list=>{const m=new Map();for(const t of list){const k=divLbl(t);m.set(k,(m.get(k)||0)+1);}
+    return [...m.entries()].sort().map(([k,n])=>`${esc(k)} <b>${n}</b>`).join(" · ");};
+  h+=`<h2>✅ Assigned — ${g.assigned.length} <small>${zap} ⚡ verified in NewMile</small></h2>`;
+  h+=`<p class="sumline">${g.assigned.length?perDiv(g.assigned):"none"}</p>`;
+  h+=`<h2>🟡 Still open — ${g.open.length}</h2>`;
+  if(!g.open.length)h+=`<p class="empty">none — full coverage 🎉</p>`;
+  else if(g.open.length>40){
+    // día sin planear: la lista sería kilométrica → solo conteos por flota (cabe en 1 página)
+    h+=`<p class="sumline">${perDiv(g.open)}</p>`;
+  }else{
+    const m=new Map();for(const t of g.open){const k=divLbl(t);(m.get(k)||m.set(k,[]).get(k)).push(t);}
+    h+=[...m.entries()].sort().map(([k,list])=>`<p class="sumline"><b>${esc(k)} (${list.length}):</b> ${list.map(t=>esc(dnum(t))).join(", ")}</p>`).join("");
+  }
   document.getElementById("out").innerHTML=h;
   document.getElementById("foot").textContent=`Milestone Texas Tracker · ${date} · ${(board.meta||{}).version?"v"+board.meta.version:""}`;
 }
