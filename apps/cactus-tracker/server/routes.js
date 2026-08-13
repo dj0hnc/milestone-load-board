@@ -248,6 +248,19 @@ function createRouter({ config, newmile, log }) {
     res.json({ ok: true, truck: updated });
   });
 
+  // QUITAR DEL BOARD a mano (ruido: trucks viejos, sin chofer, de orgs que ya no corren).
+  // Es archivado, NO borrado: el historial queda, y si el truck vuelve a correr carga o
+  // llega asignado en NewMile, REGRESA SOLO al board. Cero riesgo de perderlo.
+  router.post('/api/truck/:org/:number/remove', (req, res) => {
+    const orgId = normNum(req.params.org), number = normNum(req.params.number);
+    const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number);
+    if (!row) return res.status(404).json({ error: 'truck not found' });
+    const by = String((req.body || {}).by || '').slice(0, 40);
+    run(`UPDATE trucks SET archived = 1, is_new = 0, maybe_removed = 0 WHERE org_id = ? AND number = ?`, orgId, number);
+    logChange(orgId, number, 'removed', '', 'removed from board (returns by itself if it hauls again)', by);
+    res.json({ ok: true });
+  });
+
   // Time off programado: "vacaciones toda la semana que viene" con un tap. Entra y
   // regresa solo por fecha; MISSING lo excluye únicamente esos días.
   router.post('/api/truck/:org/:number/timeoff', (req, res) => {

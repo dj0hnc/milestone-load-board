@@ -1251,11 +1251,26 @@ function openEdit(org,num){
       </div>
     </details>
 
+    <div style="text-align:center;margin-top:14px;">
+      <button onclick="removeTruck('${t.org_id}','${esc(t.number)}')" style="border:1.5px solid var(--red);background:none;color:var(--red);border-radius:10px;padding:9px 16px;font-weight:700;font-size:13px;cursor:pointer;">🗑 Remove from board</button>
+      <div style="font-size:11px;color:var(--mut);margin-top:4px;">history is kept — it comes back by itself if it hauls again</div>
+    </div>
+
     <div class="actions">
       <button class="b-cancel" onclick="openHistory('${t.org_id}','${esc(t.number)}')">History</button>
       <button class="b-cancel" onclick="closeModal()">Cancel</button>
       <button class="b-save" onclick="saveEdit('${t.org_id}','${esc(t.number)}')">Save</button>
     </div></div>`);
+}
+async function removeTruck(org,num){
+  const t=truckOf(org,num);
+  if(!confirm(`Remove ${dnum(t)} from the board?\n\nNothing is deleted — history stays, and it comes back automatically if it hauls or gets assigned in NewMile again.`))return;
+  ensureWho();
+  try{
+    const r=await fetch(`${API}/api/truck/${org}/${encodeURIComponent(num)}/remove`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({by:WHO})});
+    if(!r.ok){const j=await r.json().catch(()=>({}));alert("Could not remove: "+(j.error||r.status));return;}
+    closeModal();await fetchBoard();
+  }catch(e){alert("Could not remove: no connection");}
 }
 // tiles de status: un tap pinta el estado con su color; "returns/nota" aparece si no está OK
 function pickStatus(k){

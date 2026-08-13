@@ -430,6 +430,23 @@ async function syncActivity(client, days) {
            AND NOT EXISTS (SELECT 1 FROM dispatch_state s WHERE s.org_id = trucks.org_id AND s.number = trucks.number AND s.date >= ? AND s.source = 'manual')`,
       cutoff, cutoff + 'T00:00:00.000Z', today, shiftISO(today, -14));
     summary.dormantArchived = r.changes;
+
+    // RUIDO FUERA: SIN CHOFER + dueño/org INACTIVO (ningún truck de ese dueño ha corrido
+    // carga en 30 días) = no pinta en el board, aunque traiga bandera de NUEVO. Solo
+    // flota propia (is_sub = 0): los SUBS no tienen Samsara y se rigen por la regla de
+    // 30 días sin carga de arriba (su trabajo SÍ se ve en NewMile). Protegidos: ⭐ stars,
+    // time off vigente y marcas manuales recientes. Regresan solos con carga/asignación.
+    const noDrv = run(`UPDATE trucks SET archived = 1, is_new = 0
+         WHERE archived = 0 AND star = 0 AND is_sub = 0
+           AND (TRIM(COALESCE(driver, '')) = '' OR status = 'no_driver'
+                OR driver LIKE '%SIN DRIVER%' OR driver LIKE '%NO DRIVER%')
+           AND (last_load_date IS NULL OR last_load_date < ?)
+           AND NOT EXISTS (SELECT 1 FROM time_off o WHERE o.org_id = trucks.org_id AND o.number = trucks.number AND o.to_date >= ?)
+           AND NOT EXISTS (SELECT 1 FROM dispatch_state s WHERE s.org_id = trucks.org_id AND s.number = trucks.number AND s.date >= ? AND s.source = 'manual')
+           AND (COALESCE(owner_name, '') = '' OR NOT EXISTS (
+                SELECT 1 FROM trucks t2 WHERE t2.owner_name = trucks.owner_name AND t2.last_load_date >= ?))`,
+      cutoff, today, shiftISO(today, -14), cutoff);
+    summary.noDriverArchived = noDrv.changes;
   }
 
   if (autoOn) {
