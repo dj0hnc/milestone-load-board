@@ -3,53 +3,80 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Dispatch Report</title>
+<title>Daily Dispatch Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
-/* Reporte diario: pantalla limpia, y al imprimir (o Guardar como PDF) sale perfecto. */
+/* Daily dispatch report, Milestone brand (Poppins · Road/Sand/Stone/Dirt).
+   Screen = clean; print (Save as PDF) = corporate one-pager, guaranteed single page. */
 *{box-sizing:border-box;margin:0;padding:0;}
-:root{--ink:#2B2D30;--mut:#8A8D92;--sand:#B89A4E;--line:#E5E2DB;--green:#4E8C63;--red:#B0442F;--amber:#8a5a10;--blue:#2456a6;}
-body{font-family:'Poppins','Segoe UI',system-ui,-apple-system,Roboto,sans-serif;color:var(--ink);background:#fff;padding:18px 16px 40px;max-width:900px;margin:0 auto;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-h1{font-size:21px;letter-spacing:.3px;}
-h1 span{color:var(--sand);}
-.sub{color:var(--mut);font-size:13px;margin:2px 0 14px;}
-.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
+:root{--road:#4A4F55;--sand:#B89A4E;--stone:#7A7D80;--dirt:#8B7355;--line:#E5E2DB;--green:#4E8C63;--red:#B0442F;--amber:#8a5a10;--blue:#2456a6;}
+body{font-family:'Poppins','Segoe UI',system-ui,-apple-system,Roboto,sans-serif;color:var(--road);background:#fff;padding:18px 16px 40px;max-width:900px;margin:0 auto;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.rephead{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-bottom:3px solid var(--sand);padding-bottom:10px;margin-bottom:6px;}
+.rephead img{height:44px;width:auto;}
+.rephead .rtitle{margin-left:auto;text-align:right;}
+.rephead .rtitle b{display:block;font-size:15px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--road);}
+.rephead .rtitle span{font-size:12px;color:var(--stone);font-weight:600;}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px;}
 .toolbar button,.toolbar a{border:none;border-radius:10px;padding:11px 16px;font-family:inherit;font-weight:700;font-size:14px;cursor:pointer;text-decoration:none;display:inline-block;}
-.b-pdf{background:#31353A;color:#fff;}
+.b-pdf{background:var(--road);color:#fff;}
 .b-csv{background:var(--green);color:#fff;}
-.b-back{background:#eef0f5;color:var(--ink);}
-.tiles{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
-.tile{border:1.5px solid var(--line);border-radius:12px;padding:8px 14px;text-align:center;min-width:86px;}
-.tile b{display:block;font-size:22px;line-height:1.1;}
-.tile span{font-size:11px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+.b-back{background:#eef0f5;color:var(--road);}
+.tiles{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+.tile{border:1.5px solid var(--line);border-radius:12px;padding:7px 13px;text-align:center;min-width:82px;background:#FBFAF7;}
+.tile b{display:block;font-size:21px;line-height:1.1;color:var(--road);}
+.tile span{font-size:10px;color:var(--stone);font-weight:600;text-transform:uppercase;letter-spacing:.5px;}
 .tile.g b{color:var(--green);} .tile.r b{color:var(--red);} .tile.a b{color:var(--amber);}
-h2{font-size:15px;text-transform:uppercase;letter-spacing:.6px;border-bottom:2px solid var(--sand);padding-bottom:3px;margin:20px 0 8px;}
-h2 small{color:var(--mut);font-weight:600;font-size:12px;text-transform:none;}
+h2{font-size:14px;text-transform:uppercase;letter-spacing:.8px;border-bottom:2px solid var(--sand);padding-bottom:3px;margin:16px 0 7px;color:var(--road);}
+h2 small{color:var(--stone);font-weight:600;font-size:11px;text-transform:none;letter-spacing:0;}
 table{width:100%;border-collapse:collapse;font-size:12.5px;}
-th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);padding:4px 8px 4px 0;border-bottom:1px solid var(--line);}
-td{padding:5px 8px 5px 0;border-bottom:1px solid #F1EFE9;vertical-align:top;}
+th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--stone);padding:3px 8px 3px 0;border-bottom:1px solid var(--line);}
+td{padding:4px 8px 4px 0;border-bottom:1px solid #F1EFE9;vertical-align:top;}
 tr{page-break-inside:avoid;}
 td.num{font-weight:700;white-space:nowrap;}
 td .why{color:var(--red);font-weight:600;}
 td .ret{color:var(--amber);font-weight:600;}
-.dest{color:var(--blue);font-weight:600;}
-.divtag{font-size:10px;font-weight:700;color:var(--mut);white-space:nowrap;}
-.zap{color:var(--blue);font-weight:800;} .chk{color:var(--green);font-weight:800;}
-.empty{color:var(--mut);font-size:13px;padding:8px 0;}
-footer{margin-top:26px;color:var(--mut);font-size:11px;text-align:center;}
-.err{background:#F7EAE6;border:1.5px solid var(--red);color:var(--red);border-radius:12px;padding:12px;font-size:14px;}
-.sumline{font-size:12.5px;line-height:1.6;margin:2px 0;}
+.divtag{font-size:10px;font-weight:600;color:var(--stone);white-space:nowrap;}
+.empty{color:var(--stone);font-size:13px;padding:6px 0;}
+.sumline{font-size:12.5px;line-height:1.55;margin:2px 0;}
 .sumline b{font-weight:700;}
-@page{margin:11mm;}
-@media print{.toolbar{display:none;} body{padding:0;font-size:11px;} h2{margin-top:10px;font-size:13px;} table{font-size:11px;} .tile b{font-size:17px;} .tile{padding:5px 10px;min-width:70px;} .sumline{font-size:11px;}}
+.opencols{column-count:1;}
+footer{margin-top:22px;border-top:1.5px solid var(--line);padding-top:8px;color:var(--stone);font-size:10.5px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+footer b{color:var(--sand);font-weight:700;letter-spacing:.4px;}
+.err{background:#F7EAE6;border:1.5px solid var(--red);color:var(--red);border-radius:12px;padding:12px;font-size:14px;}
+/* PRINT: one page, corporate. Tight type, two-column open list, compact tiles. */
+@page{margin:10mm;}
+@media print{
+  .toolbar{display:none;}
+  body{padding:0;font-size:10px;max-width:none;}
+  .rephead img{height:34px;}
+  .rephead{padding-bottom:6px;}
+  .rephead .rtitle b{font-size:12px;} .rephead .rtitle span{font-size:9.5px;}
+  .tiles{gap:6px;margin-bottom:8px;}
+  .tile{padding:3px 9px;min-width:64px;border-radius:8px;}
+  .tile b{font-size:14px;} .tile span{font-size:8px;}
+  h2{margin:8px 0 4px;font-size:11px;}
+  h2 small{font-size:9px;}
+  table{font-size:9.5px;}
+  th{font-size:8px;padding:2px 6px 2px 0;}
+  td{padding:2px 6px 2px 0;}
+  .sumline{font-size:9.5px;line-height:1.45;}
+  .opencols{column-count:2;column-gap:18px;}
+  body.dense table{font-size:8.5px;}
+  body.dense td{padding:1px 5px 1px 0;}
+  footer{margin-top:10px;font-size:8.5px;}
+}
 </style>
 </head>
 <body>
-<h1>MILESTONE TEXAS <span>DISPATCH REPORT</span></h1>
-<div class="sub" id="sub">Loading…</div>
+<div class="rephead">
+  <img src="milestone-supply.png" alt="Milestone Supply">
+  <div class="rtitle"><b>Daily Dispatch Report</b><span id="sub">Loading…</span></div>
+</div>
 <div class="toolbar">
   <button class="b-pdf" onclick="window.print()">🖨 Print / Save as PDF</button>
   <button class="b-csv" onclick="downloadCSV()">⬇ Excel (CSV)</button>
-  <a class="b-back" href="./" >← Tracker</a>
+  <a class="b-back" href="./">← Tracker</a>
 </div>
 <div id="out"><p class="empty">Loading the board…</p></div>
 <footer id="foot"></footer>
@@ -68,7 +95,7 @@ function restsToday(t){
   const wd=Object.entries(board.week||{}).find(([,iso])=>iso===date);
   return wd?t.rest_days.split(",").map(s=>s.trim()).includes(wd[0]):false;
 }
-// clasificación por truck: la MISMA lógica visual del board, aplanada para el reporte
+// same visual logic as the board, flattened for the report
 function classify(t){
   if(t.state==="a")return "assigned";
   if(t.state==="d"||t.status==="down")return "down";
@@ -77,11 +104,11 @@ function classify(t){
   return "open";
 }
 function reasonOf(t){
-  if(t.state==="d")return "marked DOWN"+(t.down_since?" since "+mdy(t.down_since):"")+(t.status_note?" — "+t.status_note:"");
+  if(t.state==="d")return "marked DOWN"+(t.down_since?" since "+mdy(t.down_since):"")+(t.status_note?" · "+t.status_note:"");
   const off=offOf(t);
-  if(off)return (OFF_LBL[off.reason]||off.reason)+" "+mdy(off.from_date)+"–"+mdy(off.to_date)+(off.note?" — "+off.note:"");
+  if(off)return (OFF_LBL[off.reason]||off.reason)+" "+mdy(off.from_date)+"-"+mdy(off.to_date)+(off.note?" · "+off.note:"");
   if(restsToday(t))return "weekly day off";
-  if(t.status&&t.status!=="ok")return (STATUS_LBL[t.status]||t.status)+(t.status_note?" — "+t.status_note:"");
+  if(t.status&&t.status!=="ok")return (STATUS_LBL[t.status]||t.status)+(t.status_note?" · "+t.status_note:"");
   return "";
 }
 function destTxt(t){return (t.nm_dest||[]).map(d=>[d.c||d.n,d.m,d.d].filter(Boolean).join(" · ")).join("  +  ");}
@@ -114,8 +141,9 @@ function render(){
   for(const k in g)g[k].sort(byDivNum);
   const zap=g.assigned.filter(t=>t.state_source==="auto"||t.nm_confirmed).length;
   const wd=Object.entries(board.week||{}).find(([,iso])=>iso===date);
-  document.getElementById("sub").textContent=`${wd?wd[0]+" ":""}${date} · generated ${new Date().toLocaleString("en-US",{month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"})} · ${ts.length} trucks on the board`;
-  document.title=`Dispatch ${date} Milestone TX`;
+  document.getElementById("sub").textContent=`${wd?wd[0]+" ":""}${mdy(date)} · ${date.slice(0,4)} · ${ts.length} trucks`;
+  document.title=`Dispatch ${date} Milestone Supply`;
+
   let h=`<div class="tiles">
     <div class="tile g"><b>${g.assigned.length}</b><span>Assigned</span></div>
     <div class="tile"><b>${zap}</b><span>⚡ in NewMile</span></div>
@@ -123,35 +151,36 @@ function render(){
     <div class="tile a"><b>${g.off.length}</b><span>Off / Shop</span></div>
     <div class="tile"><b>${g.open.length}</b><span>Open</span></div>
   </div>`;
-  // FOCO DEL REPORTE: los que NO están trabajando, con motivo. Lo demás, resumido — 1 página.
+
+  // THE report: who is NOT working and why. Everything else is a summary line.
   const notWorking=[...g.down,...g.off];
   const sev=t=>t.state==="d"||t.status==="down"?0:t.status==="shop"?1:2;
   notWorking.sort((a,b)=>(sev(a)-sev(b))||byDivNum(a,b));
-  h+=`<h2>⛔ Not working — ${notWorking.length} <small>down · shop · vacation · no driver</small></h2>`;
+  if(notWorking.length>30)document.body.classList.add("dense"); // still one page when the list runs long
+  h+=`<h2>⛔ Not working · ${notWorking.length} <small>down first, then shop, vacation, no driver</small></h2>`;
   h+=notWorking.length?rows(notWorking,[
     ["Truck",t=>esc(dnum(t)),"num"],
-    ["Driver",t=>esc(t.driver||"—")],
+    ["Driver",t=>esc(t.driver||"·")],
     ["Fleet",t=>`<span class="divtag">${esc(divLbl(t))}</span>`],
     ["Why",t=>`<span class="${sev(t)===0?"why":"ret"}">${esc(reasonOf(t)||"down")}</span>${t.note?` <span class="divtag">${esc(t.note)}</span>`:""}`],
     ["Back",t=>esc(t.return_date||"")]
   ]):`<p class="empty">everyone is working 🎉</p>`;
 
-  // resumen compacto por flota (asignados) + libres LISTADOS (son pocos y son la chamba)
   const perDiv=list=>{const m=new Map();for(const t of list){const k=divLbl(t);m.set(k,(m.get(k)||0)+1);}
     return [...m.entries()].sort().map(([k,n])=>`${esc(k)} <b>${n}</b>`).join(" · ");};
-  h+=`<h2>✅ Assigned — ${g.assigned.length} <small>${zap} ⚡ verified in NewMile</small></h2>`;
+  h+=`<h2>✅ Assigned · ${g.assigned.length} <small>${zap} ⚡ verified in NewMile</small></h2>`;
   h+=`<p class="sumline">${g.assigned.length?perDiv(g.assigned):"none"}</p>`;
-  h+=`<h2>🟡 Still open — ${g.open.length}</h2>`;
-  if(!g.open.length)h+=`<p class="empty">none — full coverage 🎉</p>`;
+  h+=`<h2>🟡 Still open · ${g.open.length}</h2>`;
+  if(!g.open.length)h+=`<p class="empty">none · full coverage 🎉</p>`;
   else if(g.open.length>40){
-    // día sin planear: la lista sería kilométrica → solo conteos por flota (cabe en 1 página)
     h+=`<p class="sumline">${perDiv(g.open)}</p>`;
   }else{
     const m=new Map();for(const t of g.open){const k=divLbl(t);(m.get(k)||m.set(k,[]).get(k)).push(t);}
-    h+=[...m.entries()].sort().map(([k,list])=>`<p class="sumline"><b>${esc(k)} (${list.length}):</b> ${list.map(t=>esc(dnum(t))).join(", ")}</p>`).join("");
+    h+=`<div class="opencols">`+[...m.entries()].sort().map(([k,list])=>`<p class="sumline"><b>${esc(k)} (${list.length}):</b> ${list.map(t=>esc(dnum(t))).join(", ")}</p>`).join("")+`</div>`;
   }
   document.getElementById("out").innerHTML=h;
-  document.getElementById("foot").textContent=`Milestone Texas Tracker · ${date} · ${(board.meta||{}).version?"v"+board.meta.version:""}`;
+  document.getElementById("foot").innerHTML=`<span><b>MILESTONE SUPPLY</b> · Aggregate Distribution. Simplified.</span>
+    <span>Generated ${esc(new Date().toLocaleString("en-US",{month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"}))} · Milestone Texas Tracker${(board.meta||{}).version?" · v"+esc(board.meta.version):""}</span>`;
 }
 function csvCell(v){v=String(v==null?"":v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
 function downloadCSV(){
