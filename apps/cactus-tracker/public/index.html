@@ -368,6 +368,7 @@ html{overflow-x:hidden;}
       <button id="grpZone" onclick="setGroupMode('zone')" title="Group by area/zone">📍 By zone</button>
       <button id="grpOwner" onclick="setGroupMode('owner')" title="Group by truck owner / organization">🏢 By owner</button>
       <button onclick="openOrders()" title="NewMile orders for this day — assign and PUSH" style="color:var(--gold-d);font-weight:800;">📋 Orders</button>
+      <button onclick="window.open('report.html?date='+date,'_blank')" title="Daily report — print to PDF or download Excel" style="font-weight:800;">📄 Report</button>
     </div>
   </div>
   <div id="bulkBar" style="display:none;background:var(--blue-bg);border:1.5px solid var(--blue);border-radius:12px;padding:9px 12px;margin:-6px 0 12px;font-size:13.5px;color:var(--blue);align-items:center;gap:10px;flex-wrap:wrap;"></div>

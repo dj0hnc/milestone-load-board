@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dispatch Report</title>
+<style>
+/* Reporte diario: pantalla limpia, y al imprimir (o Guardar como PDF) sale perfecto. */
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{--ink:#2B2D30;--mut:#8A8D92;--sand:#B89A4E;--line:#E5E2DB;--green:#4E8C63;--red:#B0442F;--amber:#8a5a10;--blue:#2456a6;}
+body{font-family:'Poppins','Segoe UI',system-ui,-apple-system,Roboto,sans-serif;color:var(--ink);background:#fff;padding:18px 16px 40px;max-width:900px;margin:0 auto;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+h1{font-size:21px;letter-spacing:.3px;}
+h1 span{color:var(--sand);}
+.sub{color:var(--mut);font-size:13px;margin:2px 0 14px;}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
+.toolbar button,.toolbar a{border:none;border-radius:10px;padding:11px 16px;font-family:inherit;font-weight:700;font-size:14px;cursor:pointer;text-decoration:none;display:inline-block;}
+.b-pdf{background:#31353A;color:#fff;}
+.b-csv{background:var(--green);color:#fff;}
+.b-back{background:#eef0f5;color:var(--ink);}
+.tiles{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
+.tile{border:1.5px solid var(--line);border-radius:12px;padding:8px 14px;text-align:center;min-width:86px;}
+.tile b{display:block;font-size:22px;line-height:1.1;}
+.tile span{font-size:11px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+.tile.g b{color:var(--green);} .tile.r b{color:var(--red);} .tile.a b{color:var(--amber);}
+h2{font-size:15px;text-transform:uppercase;letter-spacing:.6px;border-bottom:2px solid var(--sand);padding-bottom:3px;margin:20px 0 8px;}
+h2 small{color:var(--mut);font-weight:600;font-size:12px;text-transform:none;}
+table{width:100%;border-collapse:collapse;font-size:12.5px;}
+th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);padding:4px 8px 4px 0;border-bottom:1px solid var(--line);}
+td{padding:5px 8px 5px 0;border-bottom:1px solid #F1EFE9;vertical-align:top;}
+tr{page-break-inside:avoid;}
+td.num{font-weight:700;white-space:nowrap;}
+td .why{color:var(--red);font-weight:600;}
+td .ret{color:var(--amber);font-weight:600;}
+.dest{color:var(--blue);font-weight:600;}
+.divtag{font-size:10px;font-weight:700;color:var(--mut);white-space:nowrap;}
+.zap{color:var(--blue);font-weight:800;} .chk{color:var(--green);font-weight:800;}
+.empty{color:var(--mut);font-size:13px;padding:8px 0;}
+footer{margin-top:26px;color:var(--mut);font-size:11px;text-align:center;}
+.err{background:#F7EAE6;border:1.5px solid var(--red);color:var(--red);border-radius:12px;padding:12px;font-size:14px;}
+@media print{.toolbar{display:none;} body{padding:0;} h2{margin-top:14px;}}
+</style>
+</head>
+<body>
+<h1>MILESTONE TEXAS <span>DISPATCH REPORT</span></h1>
+<div class="sub" id="sub">Loading…</div>
+<div class="toolbar">
+  <button class="b-pdf" onclick="window.print()">🖨 Print / Save as PDF</button>
+  <button class="b-csv" onclick="downloadCSV()">⬇ Excel (CSV)</button>
+  <a class="b-back" href="./" >← Tracker</a>
+</div>
+<div id="out"><p class="empty">Loading the board…</p></div>
+<footer id="foot"></footer>
+<script>
+const qs=new URLSearchParams(location.search);
+let date=/^\d{4}-\d{2}-\d{2}$/.test(qs.get("date")||"")?qs.get("date"):"";
+let board=null;
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const dnum=t=>t.display_number||t.number;
+const mdy=iso=>iso?iso.slice(5).replace("-","/").replace(/^0/,""):"";
+const OFF_LBL={vacation:"VACATION",shop:"SHOP",down:"DOWN",personal:"PERSONAL"};
+const STATUS_LBL={shop:"IN SHOP",down:"DOWN",no_driver:"NO DRIVER",vacation:"VACATION",deleased:"DE-LEASED"};
+function offOf(t){return (t.time_off||[]).find(o=>o.from_date<=date&&date<=o.to_date)||null;}
+function restsToday(t){
+  if(!t.rest_days||!board)return false;
+  const wd=Object.entries(board.week||{}).find(([,iso])=>iso===date);
+  return wd?t.rest_days.split(",").map(s=>s.trim()).includes(wd[0]):false;
+}
+// clasificación por truck: la MISMA lógica visual del board, aplanada para el reporte
+function classify(t){
+  if(t.state==="a")return "assigned";
+  if(t.state==="d"||t.status==="down")return "down";
+  const off=offOf(t);
+  if(off||["shop","vacation","deleased","no_driver"].includes(t.status)||restsToday(t))return "off";
+  return "open";
+}
+function reasonOf(t){
+  if(t.state==="d")return "marked DOWN"+(t.down_since?" since "+mdy(t.down_since):"")+(t.status_note?" — "+t.status_note:"");
+  const off=offOf(t);
+  if(off)return (OFF_LBL[off.reason]||off.reason)+" "+mdy(off.from_date)+"–"+mdy(off.to_date)+(off.note?" — "+off.note:"");
+  if(restsToday(t))return "weekly day off";
+  if(t.status&&t.status!=="ok")return (STATUS_LBL[t.status]||t.status)+(t.status_note?" — "+t.status_note:"");
+  return "";
+}
+function destTxt(t){return (t.nm_dest||[]).map(d=>[d.c||d.n,d.m,d.d].filter(Boolean).join(" · ")).join("  +  ");}
+function divLbl(t){
+  const d=(board.divisions||[]).find(x=>x.org_id===t.org_id&&x.id===t.division);
+  return d?d.label:(t.division||t.org_id);
+}
+const byDivNum=(a,b)=>divLbl(a).localeCompare(divLbl(b))||String(dnum(a)).localeCompare(String(dnum(b)),undefined,{numeric:true});
+
+async function load(){
+  try{
+    const r=await fetch(`./api/board?org=ALL${date?("&date="+date):""}`);
+    if(r.status===401){location.href="login.html";return;}
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    board=await r.json();
+    date=date||board.date;
+    render();
+  }catch(e){
+    document.getElementById("out").innerHTML=`<div class="err">Could not load the board: ${esc(e.message)}. Check the connection and refresh.</div>`;
+  }
+}
+function rows(list,cols){
+  return `<table><tr>${cols.map(c=>`<th>${c[0]}</th>`).join("")}</tr>`+
+    list.map(t=>`<tr>${cols.map(c=>`<td class="${c[2]||""}">${c[1](t)}</td>`).join("")}</tr>`).join("")+`</table>`;
+}
+function render(){
+  const ts=(board.trucks||[]).filter(t=>!t.archived);
+  const g={assigned:[],down:[],off:[],open:[]};
+  for(const t of ts)g[classify(t)].push(t);
+  for(const k in g)g[k].sort(byDivNum);
+  const zap=g.assigned.filter(t=>t.state_source==="auto"||t.nm_confirmed).length;
+  const wd=Object.entries(board.week||{}).find(([,iso])=>iso===date);
+  document.getElementById("sub").textContent=`${wd?wd[0]+" ":""}${date} · generated ${new Date().toLocaleString("en-US",{month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"})} · ${ts.length} trucks on the board`;
+  document.title=`Dispatch ${date} Milestone TX`;
+  let h=`<div class="tiles">
+    <div class="tile g"><b>${g.assigned.length}</b><span>Assigned</span></div>
+    <div class="tile"><b>${zap}</b><span>⚡ in NewMile</span></div>
+    <div class="tile r"><b>${g.down.length}</b><span>Down</span></div>
+    <div class="tile a"><b>${g.off.length}</b><span>Off / Shop</span></div>
+    <div class="tile"><b>${g.open.length}</b><span>Open</span></div>
+  </div>`;
+  h+=`<h2>✅ Assigned — ${g.assigned.length} <small>⚡ = verified in NewMile</small></h2>`;
+  h+=g.assigned.length?rows(g.assigned,[
+    ["",t=>(t.state_source==="auto"||t.nm_confirmed)?'<span class="zap">⚡</span>':'<span class="chk">✓</span>'],
+    ["Truck",t=>esc(dnum(t)),"num"],
+    ["Driver",t=>esc(t.driver||"—")],
+    ["Fleet",t=>`<span class="divtag">${esc(divLbl(t))}</span>`],
+    ["Where it's going",t=>`<span class="dest">${esc(destTxt(t))||"—"}</span>`],
+    ["By",t=>esc(t.state_by||(t.state_source==="auto"?"auto":""))]
+  ]):`<p class="empty">none</p>`;
+  h+=`<h2>⛔ Down — ${g.down.length}</h2>`;
+  h+=g.down.length?rows(g.down,[
+    ["Truck",t=>esc(dnum(t)),"num"],
+    ["Driver",t=>esc(t.driver||"—")],
+    ["Fleet",t=>`<span class="divtag">${esc(divLbl(t))}</span>`],
+    ["Why / since",t=>`<span class="why">${esc(reasonOf(t)||"down")}</span>${t.last_moved_at?` <span class="divtag">last moved ${esc(t.last_moved_at.slice(5,10).replace("-","/"))}</span>`:""}`],
+    ["Note",t=>esc(t.note||"")]
+  ]):`<p class="empty">none 🎉</p>`;
+  h+=`<h2>🔧 Not available — ${g.off.length} <small>shop · vacation · no driver · scheduled off</small></h2>`;
+  h+=g.off.length?rows(g.off,[
+    ["Truck",t=>esc(dnum(t)),"num"],
+    ["Driver",t=>esc(t.driver||"—")],
+    ["Fleet",t=>`<span class="divtag">${esc(divLbl(t))}</span>`],
+    ["Reason",t=>`<span class="ret">${esc(reasonOf(t)||"—")}</span>`],
+    ["Returns",t=>esc(t.return_date||"")]
+  ]):`<p class="empty">none</p>`;
+  h+=`<h2>🟡 Open (not assigned) — ${g.open.length}</h2>`;
+  h+=g.open.length?rows(g.open,[
+    ["Truck",t=>esc(dnum(t)),"num"],
+    ["Driver",t=>esc(t.driver||"—")],
+    ["Fleet",t=>`<span class="divtag">${esc(divLbl(t))}</span>`],
+    ["Zone",t=>esc(t.area||"")],
+    ["Type",t=>esc(t.trailer_type||"")],
+    ["Wk loads",t=>String(t.loads_week||0)]
+  ]):`<p class="empty">none — full coverage 🎉</p>`;
+  document.getElementById("out").innerHTML=h;
+  document.getElementById("foot").textContent=`Milestone Texas Tracker · ${date} · ${(board.meta||{}).version?"v"+board.meta.version:""}`;
+}
+function csvCell(v){v=String(v==null?"":v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
+function downloadCSV(){
+  if(!board)return;
+  const ts=(board.trucks||[]).filter(t=>!t.archived);
+  const head=["Date","Group","Fleet","Truck","Driver","Owner","Type","Zone","Destination (NewMile)","Verified NM","Reason / Note","Returns","Marked by","Loads this week"];
+  const lines=[head.join(",")];
+  const LBL={assigned:"ASSIGNED",down:"DOWN",off:"NOT AVAILABLE",open:"OPEN"};
+  const order={assigned:0,down:1,off:2,open:3};
+  [...ts].sort((a,b)=>(order[classify(a)]-order[classify(b)])||byDivNum(a,b)).forEach(t=>{
+    lines.push([date,LBL[classify(t)],divLbl(t),dnum(t),t.driver||"",t.owner_name||"",t.trailer_type||"",t.area||"",
+      destTxt(t),(t.state_source==="auto"||t.nm_confirmed)?"YES":(t.state==="a"?"no":""),
+      (reasonOf(t)||t.note||""),t.return_date||"",t.state_by||"",t.loads_week||0].map(csvCell).join(","));
+  });
+  const blob=new Blob(["﻿"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);a.download=`dispatch-${date}.csv`;
+  document.body.appendChild(a);a.click();a.remove();
+}
+load();
+</script>
+</body>
+</html>
