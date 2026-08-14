@@ -42,7 +42,7 @@ on:
       kind:
         description: 'Report to run'
         type: choice
-        options: [morning, night]
+        options: [morning, night, recheck]
         default: night
       offsubs:
         description: 'OFF-APP subs count (blank = use the MAB_OFFSUBS variable)'
@@ -160,6 +160,11 @@ jobs:
             fi
             echo "scheduled run - Central hour $HOUR -> $KIND (cloud covering: office down or unsent)"
             node report-engine/report-cli.js "$KIND" --send
+            # ~9AM RE-CHECK: second pass over the 7:30 call list (who fixed themselves, who is
+            # still down). Own once-per-day lock; report-cli skips it if morning just went out.
+            if [ "$KIND" = "morning" ] && [ "$HOUR" -ge 9 ] && [ "$HOUR" -le 11 ]; then
+              node report-engine/report-cli.js recheck --send
+            fi
           fi
       # save the rotated token/lock back to cache for the next run
       - uses: actions/cache/save@v4
