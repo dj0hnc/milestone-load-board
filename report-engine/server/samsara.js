@@ -167,6 +167,58 @@ async function hosClocks(sid, cfg, log) {
   return out;
 }
 
+// MOVEMENT EVIDENCE for the morning no-show report: for a small set of flagged trucks,
+// pull today's GPS + engine history so the email can say "no movement today · engine off ·
+// 28 mi from pickup" instead of just "parked" — killing most verification phone calls.
+// list = [{ num, ent: {id, tok} }] (ent from the gpsSnapshot map). Returns
+// { NUMKEY: { lastMoveMs, movedToday, engineOn, lat, lon } }; missing trucks simply absent.
+async function movementEvidence(cfg, list, sinceMs, log) {
+  const toks = tokensOf(cfg);
+  const byTok = {};
+  const id2num = {};
+  (list || []).forEach(x => {
+    if (!x || !x.ent || !x.ent.id) return;
+    (byTok[x.ent.tok] = byTok[x.ent.tok] || []).push(String(x.ent.id));
+    id2num[String(x.ent.id)] = (x.num || '').trim().toUpperCase().replace(/\s+/g, ' ');
+  });
+  const out = {};
+  const startIso = new Date(sinceMs).toISOString(), endIso = new Date().toISOString();
+  for (const ti of Object.keys(byTok)) {
+    const tok = toks[ti] && toks[ti].token; if (!tok) continue;
+    // batch ≤ 20 vehicle ids per call; paginate each batch
+    const ids = byTok[ti];
+    for (let i = 0; i < ids.length; i += 20) {
+      const batch = ids.slice(i, i + 20).join(',');
+      try {
+        let after = '', pages = 0;
+        do {
+          const u = 'https://api.samsara.com/fleet/vehicles/stats/history?types=gps,engineStates'
+            + '&vehicleIds=' + encodeURIComponent(batch)
+            + '&startTime=' + encodeURIComponent(startIso) + '&endTime=' + encodeURIComponent(endIso)
+            + (after ? '&after=' + encodeURIComponent(after) : '');
+          const r = await fetch(u, { headers: { Authorization: 'Bearer ' + tok, Accept: 'application/json' } });
+          if (!r.ok) { log && log('samsara history HTTP ' + r.status); break; }
+          const j = await r.json();
+          (j.data || []).forEach(v => {
+            const key = id2num[String(v.id)]; if (!key) return;
+            const e = (out[key] = out[key] || { lastMoveMs: null, movedToday: false, engineOn: null, lat: null, lon: null });
+            (v.gps || []).forEach(p => {
+              const t = p.time ? new Date(p.time).getTime() : null;
+              if (p.latitude != null) { e.lat = p.latitude; e.lon = p.longitude; }
+              if (t && (p.speedMilesPerHour || 0) >= 2 && (!e.lastMoveMs || t > e.lastMoveMs)) { e.lastMoveMs = t; e.movedToday = true; }
+            });
+            const es = v.engineStates || [];
+            if (es.length) { const last = es[es.length - 1]; e.engineOn = /on|idle/i.test(String(last.value || '')); }
+          });
+          after = (j.pagination && j.pagination.hasNextPage) ? j.pagination.endCursor : '';
+          pages++;
+        } while (after && pages < 12);
+      } catch (e) { log && log('samsara history failed: ' + e.message); }
+    }
+  }
+  return out;
+}
+
 async function sendDriverMsg(cfg, { driverId, tok, text }) {
   const toks = tokensOf(cfg);
   const token = toks[tok] && toks[tok].token;
@@ -180,4 +232,4 @@ async function sendDriverMsg(cfg, { driverId, tok, text }) {
   return { ok: true };
 }
 
-module.exports = { getSamsara, camera, drivers, testToken, sendDriverMsg, hosClocks, clearCaches };
+module.exports = { getSamsara, camera, drivers, testToken, sendDriverMsg, hosClocks, clearCaches, movementEvidence };
