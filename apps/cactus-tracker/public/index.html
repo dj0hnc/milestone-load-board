@@ -105,6 +105,9 @@ h1 span{color:var(--gold);}
 .chip .park{font-size:11px;font-weight:700;color:var(--blue);margin-top:3px;}
 /* A DÓNDE VA: la orden NewMile del día, directo en el cuadrito (cliente → destino) */
 .chip .dest{font-size:11px;font-weight:700;color:#2456a6;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+/* HOS: horas de servicio que le quedan al driver (hoy y de la semana) */
+.chip .hos{font-size:10.5px;font-weight:600;color:var(--mut);margin-top:2px;white-space:nowrap;}
+.chip .hos b.ok{color:var(--green);} .chip .hos b.low{color:#b8853a;} .chip .hos b.out{color:var(--red);}
 .chip .park.mut{color:#9aa1b2;font-weight:600;}
 .btn-loc{position:absolute;bottom:6px;right:6px;width:24px;height:24px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:12px;cursor:pointer;line-height:1;}
 .btn-loc:hover{border-color:var(--blue);color:var(--blue);}
@@ -656,6 +659,17 @@ function jumpTo(org,num){
   if(el){el.scrollIntoView({behavior:"smooth",block:"center"});el.style.boxShadow="0 0 0 4px var(--gold)";setTimeout(()=>el.style.boxShadow="",1200);}
 }
 function areaLbl(a){return a==="(SIN YARD)"?"(NO YARD)":a;}
+// HOS: fresco = leído en las últimas 20 h (los relojes viejos confunden, mejor nada)
+function hosFresh(t){return t.hos_at&&(Date.now()-Date.parse(t.hos_at))<20*3600e3&&(t.hos_drive_ms!=null||t.hos_cycle_ms!=null);}
+function hosH(ms){return ms==null?null:Math.max(0,Math.round(ms/360000)/10);} // ms → horas 1 decimal
+function hosCls(h,lowAt,outAt){return h==null?"":(h<=outAt?"out":(h<lowAt?"low":"ok"));}
+function hosHtml(t){
+  if(!hosFresh(t))return "";
+  const d=hosH(t.hos_drive_ms),c=hosH(t.hos_cycle_ms);
+  return `<div class="hos" title="Hours of service (Samsara) — drive left today / cycle left this week${t.hos_driver?" · "+esc(t.hos_driver):""}">⏱ `+
+    (d!=null?`<b class="${hosCls(d,3,0.5)}">${d}h today</b>`:"")+(d!=null&&c!=null?" · ":"")+
+    (c!=null?`<b class="${hosCls(c,20,8)}">${Math.round(c)}h wk</b>`:"")+`</div>`;
+}
 function dnum(t){return t.display_number||t.number;} // el número COMO EN NEWMILE
 function isVirtual(){return ORG==="ALL"||ORG==="SUBS";}
 function tabLbl(t){
@@ -780,6 +794,7 @@ function chipHtml(t){
     <div class="top"><span class="num"><button class="star-btn ${t.star?"on":""}" onclick="toggleStar(event,'${t.org_id}','${esc(t.number)}')" title="${t.star?"Star driver — tap to remove":"Mark as star driver"}">${t.star?"★":"☆"}</button>${esc(dnum(t))}${isVirtual()?`<span class="orgtag ${t.org_id==="KT"?(t.is_sub?"ic":"kt"):(t.is_sub?"sub":"")}">${t.org_id==="KT"?(t.is_sub?"IC":"KT"):(t.is_sub?"SUB":"CACTUS")}</span>`:""}</span>${t.trailer_type?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(t.trailer_type)}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}</div>
     <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ NO DRIVER"}</div>
     ${t.state==="a"&&t.nm_dest&&t.nm_dest.length?`<div class="dest" title="${esc(t.nm_dest.map(d=>[d.n,d.c,d.m,d.d].filter(Boolean).join(" · ")).join("  +  "))}">🚚 ${t.nm_dest.map(d=>esc([d.c||d.n,d.d||d.m].filter(Boolean).join(" → "))).join(" + ")}</div>`:""}
+    ${hosHtml(t)}
     ${groupMode==="owner"?`<div class="park mut" style="color:#7a2fa8;">📌 zone: ${esc(areaLbl(t.area||"(SIN YARD)"))}</div>`:""}
     ${parkHtml(t)}
     ${actHtml(t)}
@@ -1193,6 +1208,12 @@ function openEdit(org,num){
       ${t.nm_dest.map(d=>`<div style="margin-top:3px;">🚚 <b>${esc(d.c||d.n)}</b>${d.m?" · "+esc(d.m):""}${d.d?" → "+esc(d.d):""}</div>`).join("")}
     </div>`:""}
     ${t.state==="p"&&!board.historical&&!outOfService(t)&&!restsToday(t)?`<button onclick="openSendTruck('${t.org_id}','${esc(t.number)}')" style="width:100%;border:none;background:var(--navy);color:#fff;border-radius:12px;padding:12px;font-weight:700;font-size:15px;cursor:pointer;margin:4px 0 8px;">🚀 SEND TO AN ORDER — ${mdy(date)}</button>`:""}
+    ${hosFresh(t)?`<div style="border:1.5px solid var(--line);background:#FAF9F6;border-radius:12px;padding:9px 12px;margin:4px 0 8px;font-size:13px;">
+      <b style="color:var(--stone);font-size:11px;text-transform:uppercase;letter-spacing:.5px;">⏱ Hours of service (Samsara)</b>
+      <div style="margin-top:3px;">Drive left today: <b>${hosH(t.hos_drive_ms)!=null?hosH(t.hos_drive_ms)+" h":"?"}</b> · Shift: <b>${hosH(t.hos_shift_ms)!=null?hosH(t.hos_shift_ms)+" h":"?"}</b></div>
+      <div>Week (cycle) left: <b>${hosH(t.hos_cycle_ms)!=null?hosH(t.hos_cycle_ms)+" h":"?"}</b></div>
+      <div style="font-size:11px;color:var(--mut);margin-top:2px;">${esc(t.hos_driver||"")} · as of ${new Date(t.hos_at).toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"})}</div>
+    </div>`:""}
 
     <div class="sec-t">How is this truck right now?</div>
     <input type="hidden" id="eStatus" value="${esc(cur)}">

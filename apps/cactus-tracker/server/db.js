@@ -195,6 +195,14 @@ function migrate(d) {
   // A DÓNDE VA: JSON compacto con la(s) orden(es) NewMile del truck ese día
   // [{n:orden, c:cliente, m:material, d:dropoff}] — el cuadrito muestra su destino.
   addCol(d, 'dispatch_state', 'nm_info', "TEXT DEFAULT ''");
+  // HOS (Samsara /fleet/hos/clocks): cuánto manejo le queda HOY y cuántas horas del
+  // CICLO semanal — para saber quién aguanta el fin de semana sin abrir Samsara.
+  addCol(d, 'trucks', 'samsara_driver_id', 'TEXT');
+  addCol(d, 'trucks', 'hos_drive_ms', 'INTEGER');
+  addCol(d, 'trucks', 'hos_shift_ms', 'INTEGER');
+  addCol(d, 'trucks', 'hos_cycle_ms', 'INTEGER');
+  addCol(d, 'trucks', 'hos_at', "TEXT DEFAULT ''");
+  addCol(d, 'trucks', 'hos_driver', "TEXT DEFAULT ''");
 }
 
 function addCol(d, table, col, decl) {

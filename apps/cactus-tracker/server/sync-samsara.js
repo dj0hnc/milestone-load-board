@@ -131,6 +131,69 @@ async function fetchVehicles(token) {
   return out;
 }
 
+// ---- HOS: relojes de horas de servicio por DRIVER (/fleet/hos/clocks) ----
+// driveRemaining = manejo que le queda HOY · shiftRemaining = turno de hoy ·
+// cycleRemaining = lo que le queda de la SEMANA (ciclo 60/70 h). Con eso el board
+// responde "¿puede jalar el fin de semana?" sin abrir Samsara.
+async function fetchHosClocks(token) {
+  let out = [], after = '', pages = 0;
+  do {
+    const url = 'https://api.samsara.com/fleet/hos/clocks?limit=512' + (after ? '&after=' + encodeURIComponent(after) : '');
+    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
+    if (!r.ok) throw new Error('Samsara hos HTTP ' + r.status);
+    const j = await r.json();
+    out = out.concat(j.data || []);
+    after = (j.pagination && j.pagination.hasNextPage) ? j.pagination.endCursor : '';
+    pages++;
+  } while (after && pages < 10);
+  return out;
+}
+// nombres: mayúsculas, sin signos, tokens ORDENADOS ("Perez Juan" == "JUAN PEREZ")
+const normDrvName = s => String(s || '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ');
+
+async function syncHOS(cfg) {
+  const orgs = all('SELECT * FROM orgs WHERE enabled = 1 AND samsara = 1 ORDER BY sort');
+  const summary = { drivers: 0, matched: 0, skippedOrgs: [] };
+  for (const org of orgs) {
+    const token = tokenFor(cfg, org.samsara_org);
+    if (!token) { summary.skippedOrgs.push(org.id + ' (sin token)'); continue; }
+    let clocks;
+    try { clocks = await fetchHosClocks(token); } catch (e) { summary['error_' + org.id] = String(e.message || e); continue; }
+    summary.drivers += clocks.length;
+    const trucks = all('SELECT org_id, number, driver, samsara_driver_id FROM trucks WHERE org_id = ? AND archived = 0', org.id);
+    const byDrvId = new Map(trucks.filter(t => t.samsara_driver_id).map(t => [String(t.samsara_driver_id), t]));
+    // por nombre solo si es ÚNICO en la flota (dos "JUAN PEREZ" = ambiguo, no adivinar);
+    // "Elaine Raper / Lonnie Seat" cuenta por cada segmento
+    const byName = new Map();
+    for (const t of trucks) {
+      for (const part of String(t.driver || '').split('/')) {
+        const k = normDrvName(part);
+        if (!k || k === 'NO DRIVER' || k === 'DRIVER SIN') continue;
+        byName.set(k, byName.has(k) ? null : t);
+      }
+    }
+    const now = nowISO();
+    for (const c of clocks) {
+      const drv = c.driver || {}, ck = c.clocks || {};
+      const pick = (o, ...keys) => { for (const k of keys) if (o && o[k] != null) return Number(o[k]); return null; };
+      const drive = pick(ck.drive, 'driveRemainingDurationMs', 'remainingDurationMs');
+      const shift = pick(ck.shift, 'shiftRemainingDurationMs', 'remainingDurationMs');
+      const cycle = pick(ck.cycle, 'cycleRemainingDurationMs', 'remainingDurationMs');
+      if (drive == null && shift == null && cycle == null) continue;
+      const t = byDrvId.get(String(drv.id)) || byName.get(normDrvName(drv.name));
+      if (!t) continue;
+      run(`UPDATE trucks SET hos_drive_ms = ?, hos_shift_ms = ?, hos_cycle_ms = ?, hos_at = ?, hos_driver = ?,
+             samsara_driver_id = COALESCE(samsara_driver_id, ?)
+           WHERE org_id = ? AND number = ?`,
+        drive, shift, cycle, now, String(drv.name || '').slice(0, 60),
+        drv.id != null ? String(drv.id) : null, t.org_id, t.number);
+      summary.matched++;
+    }
+  }
+  metaSet('last_sync_hos', nowISO());
+  return summary;
+}
+
 // GPS snapshot with reverse-geo (same endpoint the desktop uses, plus reverseGeo).
 async function fetchGps(token) {
   let out = {}, after = '', pages = 0;
@@ -380,6 +443,9 @@ async function syncSamsara(cfg) {
       const sets = [], vals = [];
       const sid = v.id != null ? String(v.id) : null;
       if (sid && sid !== row.samsara_id) { sets.push('samsara_id = ?'); vals.push(sid); }
+      // driver asignado al vehículo en Samsara → mapea los relojes de HOS a ESTE truck
+      const sdrv = v.staticAssignedDriver && v.staticAssignedDriver.id != null ? String(v.staticAssignedDriver.id) : null;
+      if (sdrv && sdrv !== row.samsara_driver_id) { sets.push('samsara_driver_id = ?'); vals.push(sdrv); }
       if (flag !== (row.samsara_flag || '')) { sets.push('samsara_flag = ?'); vals.push(flag); if (flag) summary.flags++; }
 
       // terminal → suggestion ONLY while the truck has no division (⚑ NUEVO).
@@ -438,6 +504,9 @@ async function syncSamsara(cfg) {
       summary.gpsError = String(e.message || e);
     }
   }
+
+  // HOS de pasada: el mismo SYNC NOW / sync diario deja las horas al día
+  try { summary.hos = await syncHOS(cfg); } catch (e) { summary.hosError = String(e.message || e); }
 
   metaSet('last_sync_samsara', nowISO());
   metaSet('last_sync_samsara_summary', JSON.stringify(summary));
@@ -504,4 +573,4 @@ async function locateTruck(cfg, orgRow, truck) {
   return { city: city || '', time: g.time || null, speed, moved, last_moved_at: (finalRow && finalRow.last_moved_at) || null };
 }
 
-module.exports = { syncSamsara, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };
+module.exports = { syncSamsara, syncHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };
