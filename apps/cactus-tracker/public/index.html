@@ -661,17 +661,31 @@ function jumpTo(org,num){
 function areaLbl(a){return a==="(SIN YARD)"?"(NO YARD)":a;}
 // HOS: fresco = leído en las últimas 20 h (los relojes viejos confunden, mejor nada)
 function hosFresh(t){return t.hos_at&&(Date.now()-Date.parse(t.hos_at))<20*3600e3&&(t.hos_drive_ms!=null||t.hos_cycle_ms!=null);}
-function hosH(ms){return ms==null?null:Math.max(0,Math.round(ms/360000)/10);} // ms → horas 1 decimal
+function hosH(ms){return ms==null?null:Math.max(0,ms)/3600e3;} // horas exactas (para colores)
 function hosCls(h,lowAt,outAt){return h==null?"":(h<=outAt?"out":(h<lowAt?"low":"ok"));}
+// SIN redondeos: "6h23m" · bajo 1h → "42m10s" · exacto en cero → "0m"
+function hosFmt(ms){
+  if(ms==null)return null;
+  const s=Math.floor(Math.max(0,ms)/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
+  if(h>0)return h+"h"+(m<10?"0":"")+m+"m";
+  if(m>0)return m+"m"+(sec<10?"0":"")+sec+"s";
+  return sec>0?sec+"s":"0m";
+}
+// detalle completo h/m/s para el panel del lápiz
+function hosFmtFull(ms){
+  if(ms==null)return "?";
+  const s=Math.floor(Math.max(0,ms)/1000);
+  return Math.floor(s/3600)+"h "+Math.floor((s%3600)/60)+"m "+(s%60)+"s";
+}
 function hosHtml(t){
   if(!hosFresh(t))return "";
   const d=hosH(t.hos_drive_ms),c=hosH(t.hos_cycle_ms),tm=hosH(t.hos_cycle_tmrw_ms);
   // si la semana anda seca pero MAÑANA le regresan horas (ciclo rodante), enséñalo:
-  // "0h wk (+8h tmrw)" = hoy no, mañana sí — la respuesta del fin de semana
-  const tmTxt=(c!=null&&c<20&&tm!=null&&tm>0)?` <b class="ok">(+${Math.round(tm)}h tmrw)</b>`:"";
+  // "0m wk (+8h30m tmrw)" = hoy no, mañana sí — la respuesta del fin de semana
+  const tmTxt=(c!=null&&c<20&&tm!=null&&tm>0)?` <b class="ok">(+${hosFmt(t.hos_cycle_tmrw_ms)} tmrw)</b>`:"";
   return `<div class="hos" title="Hours of service (Samsara) — drive left today / cycle left this week / hours coming back tomorrow${t.hos_driver?" · "+esc(t.hos_driver):""}">⏱ `+
-    (d!=null?`<b class="${hosCls(d,3,0.5)}">${d}h today</b>`:"")+(d!=null&&c!=null?" · ":"")+
-    (c!=null?`<b class="${hosCls(c,20,8)}">${Math.round(c)}h wk</b>`:"")+tmTxt+`</div>`;
+    (d!=null?`<b class="${hosCls(d,3,0.5)}">${hosFmt(t.hos_drive_ms)} today</b>`:"")+(d!=null&&c!=null?" · ":"")+
+    (c!=null?`<b class="${hosCls(c,20,8)}">${hosFmt(t.hos_cycle_ms)} wk</b>`:"")+tmTxt+`</div>`;
 }
 function dnum(t){return t.display_number||t.number;} // el número COMO EN NEWMILE
 function isVirtual(){return ORG==="ALL"||ORG==="SUBS";}
@@ -1213,8 +1227,8 @@ function openEdit(org,num){
     ${t.state==="p"&&!board.historical&&!outOfService(t)&&!restsToday(t)?`<button onclick="openSendTruck('${t.org_id}','${esc(t.number)}')" style="width:100%;border:none;background:var(--navy);color:#fff;border-radius:12px;padding:12px;font-weight:700;font-size:15px;cursor:pointer;margin:4px 0 8px;">🚀 SEND TO AN ORDER — ${mdy(date)}</button>`:""}
     ${hosFresh(t)?`<div style="border:1.5px solid var(--line);background:#FAF9F6;border-radius:12px;padding:9px 12px;margin:4px 0 8px;font-size:13px;">
       <b style="color:var(--stone);font-size:11px;text-transform:uppercase;letter-spacing:.5px;">⏱ Hours of service (Samsara)</b>
-      <div style="margin-top:3px;">Drive left today: <b>${hosH(t.hos_drive_ms)!=null?hosH(t.hos_drive_ms)+" h":"?"}</b> · Shift: <b>${hosH(t.hos_shift_ms)!=null?hosH(t.hos_shift_ms)+" h":"?"}</b></div>
-      <div>Week (cycle) left: <b>${hosH(t.hos_cycle_ms)!=null?hosH(t.hos_cycle_ms)+" h":"?"}</b>${hosH(t.hos_cycle_tmrw_ms)!=null?` · Comes back tomorrow: <b>+${hosH(t.hos_cycle_tmrw_ms)} h</b>`:""}</div>
+      <div style="margin-top:3px;">Drive left today: <b>${hosFmtFull(t.hos_drive_ms)}</b> · Shift: <b>${hosFmtFull(t.hos_shift_ms)}</b></div>
+      <div>Week (cycle) left: <b>${hosFmtFull(t.hos_cycle_ms)}</b>${t.hos_cycle_tmrw_ms!=null?` · Comes back tomorrow: <b>+${hosFmtFull(t.hos_cycle_tmrw_ms)}</b>`:""}</div>
       <div style="font-size:11px;color:var(--mut);margin-top:2px;">${esc(t.hos_driver||"")} · as of ${new Date(t.hos_at).toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"})}</div>
     </div>`:""}
 
