@@ -151,7 +151,7 @@ async function fetchHosClocks(token) {
 // nombres: mayúsculas, sin signos, tokens ORDENADOS ("Perez Juan" == "JUAN PEREZ")
 const normDrvName = s => String(s || '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ');
 
-async function syncHOS(cfg) {
+async function syncHOS(cfg, vehiclesByOrg) {
   const orgs = all('SELECT * FROM orgs WHERE enabled = 1 AND samsara = 1 ORDER BY sort');
   const summary = { drivers: 0, matched: 0, assignedIds: 0, skippedOrgs: [] };
   for (const org of orgs) {
@@ -161,9 +161,10 @@ async function syncHOS(cfg) {
     try { clocks = await fetchHosClocks(token); } catch (e) { summary['error_' + org.id] = String(e.message || e); continue; }
     summary.drivers += clocks.length;
     // Vehículo→driver desde el propio Samsara: la asignación oficial gana siempre.
-    // (así "Andrew David Whipkey" de NewMile no importa: el vehículo dice quién es)
+    // (reusa la lista si el caller ya la trajo — cero llamadas dobles)
     try {
-      for (const v of await fetchVehicles(token)) {
+      const vlist = (vehiclesByOrg && vehiclesByOrg.get(org.id)) || await fetchVehicles(token);
+      for (const v of vlist) {
         const sd = v.staticAssignedDriver && v.staticAssignedDriver.id != null ? String(v.staticAssignedDriver.id) : null;
         if (!sd) continue;
         const res = resolveSamsaraTruck(org.id, v.name || '');
@@ -712,9 +713,11 @@ function applyPlacements(org, summary) {
   }
 }
 
-async function syncSamsara(cfg) {
+async function syncSamsara(cfg, opts) {
+  const light = !!(opts && opts.light); // SYNC NOW del botón: fresco sí, histórico pesado no
   const orgs = all('SELECT * FROM orgs WHERE enabled = 1 AND samsara = 1 ORDER BY sort');
   const summary = { vehicles: 0, matched: 0, flags: 0, suggestions: 0, gps: 0, parkingLogged: 0, areaSuggestions: 0, skippedOrgs: [] };
+  const vehiclesByOrg = new Map(); // se los pasamos a syncHOS para no pedirlos DOS veces
 
   for (const org of orgs) {
     const token = tokenFor(cfg, org.samsara_org);
@@ -724,6 +727,7 @@ async function syncSamsara(cfg) {
     const tagToDiv = new Map(divs.filter(d => d.samsara_tag_id).map(d => [String(d.samsara_tag_id), d.id]));
 
     const vehicles = await fetchVehicles(token);
+    vehiclesByOrg.set(org.id, vehicles);
     summary.vehicles += vehicles.length;
 
     for (const v of vehicles) {
@@ -806,11 +810,11 @@ async function syncSamsara(cfg) {
   }
 
   // HOS de pasada: el mismo SYNC NOW / sync diario deja las horas al día
-  try { summary.hos = await syncHOS(cfg); } catch (e) { summary.hosError = String(e.message || e); }
-  // y el HISTORIAL diario (8 días) para ver día a día lo que trabajaron
-  try { summary.hosDaily = await syncHOSDaily(cfg, 8); } catch (e) { summary.hosDailyError = String(e.message || e); }
-  // y la JORNADA (prendió/apagó) de hoy y ayer
-  try { summary.workTimes = await syncWorkTimes(cfg, 2); } catch (e) { summary.workTimesError = String(e.message || e); }
+  try { summary.hos = await syncHOS(cfg, vehiclesByOrg); } catch (e) { summary.hosError = String(e.message || e); }
+  // HISTORIAL diario: el botón solo trae lo fresco (2 días); el sync nocturno los 8
+  try { summary.hosDaily = await syncHOSDaily(cfg, light ? 2 : 8); } catch (e) { summary.hosDailyError = String(e.message || e); }
+  // y la JORNADA (prendió/apagó): hoy en el botón, hoy+ayer en el nocturno
+  try { summary.workTimes = await syncWorkTimes(cfg, light ? 1 : 2); } catch (e) { summary.workTimesError = String(e.message || e); }
 
   metaSet('last_sync_samsara', nowISO());
   metaSet('last_sync_samsara_summary', JSON.stringify(summary));

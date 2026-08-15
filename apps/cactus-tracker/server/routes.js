@@ -617,7 +617,7 @@ function createRouter({ config, newmile, log }) {
       // syncSamsara ya jala la posición ACTUAL de cada troke y los re-acomoda por GPS
       // (applyPlacements adentro). El backfill de 2 noches de historial es pesado y lo
       // corre el scheduler/boot — meterlo aquí alargaba la petición y la cortaba (499).
-      const s = await syncSamsara(config);
+      const s = await syncSamsara(config, { light: true }); // botón = fresco; lo pesado es del nocturno
       res.json({ ok: true, ...s });
     } catch (e) {
       say('sync samsara error: ' + e.message);
