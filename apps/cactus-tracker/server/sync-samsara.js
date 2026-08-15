@@ -209,13 +209,18 @@ async function syncHOS(cfg, vehiclesByOrg) {
       const shift = pick(ck.shift, 'shiftRemainingDurationMs', 'remainingDurationMs', 'shiftRemainingMs');
       const cycle = pick(ck.cycle, 'cycleRemainingDurationMs', 'remainingDurationMs', 'cycleRemainingMs');
       const tmrw = pick(ck.cycle, 'cycleTomorrowDurationMs'); // lo que RECUPERA mañana
+      // cuánto se PASARON (violations) — el board lo enseña como horas en NEGATIVO
+      const vio = c.violations || {};
+      const vShift = pick(vio, 'shiftDrivingViolationDurationMs', 'shiftViolationDurationMs');
+      const vCycle = pick(vio, 'cycleViolationDurationMs');
       if (drive == null && shift == null && cycle == null) continue;
       const t = byDrvId.get(String(drv.id)) || subsetMatch(normDrvName(drv.name));
       if (!t) continue;
-      run(`UPDATE trucks SET hos_drive_ms = ?, hos_shift_ms = ?, hos_cycle_ms = ?, hos_cycle_tmrw_ms = ?, hos_at = ?, hos_driver = ?,
+      run(`UPDATE trucks SET hos_drive_ms = ?, hos_shift_ms = ?, hos_cycle_ms = ?, hos_cycle_tmrw_ms = ?,
+             hos_viol_shift_ms = ?, hos_viol_cycle_ms = ?, hos_at = ?, hos_driver = ?,
              samsara_driver_id = COALESCE(samsara_driver_id, ?)
            WHERE org_id = ? AND number = ?`,
-        drive, shift, cycle, tmrw, now, String(drv.name || '').slice(0, 60),
+        drive, shift, cycle, tmrw, vShift, vCycle, now, String(drv.name || '').slice(0, 60),
         drv.id != null ? String(drv.id) : null, t.org_id, t.number);
       summary.matched++;
     }
@@ -258,10 +263,14 @@ async function refreshHOSTruck(cfg, row) {
   const shift = pick(ck.shift, 'shiftRemainingDurationMs', 'remainingDurationMs', 'shiftRemainingMs');
   const cycle = pick(ck.cycle, 'cycleRemainingDurationMs', 'remainingDurationMs', 'cycleRemainingMs');
   const tmrw = pick(ck.cycle, 'cycleTomorrowDurationMs');
+  const vio = c.violations || {};
+  const vShift = pick(vio, 'shiftDrivingViolationDurationMs', 'shiftViolationDurationMs');
+  const vCycle = pick(vio, 'cycleViolationDurationMs');
   if (drive == null && shift == null && cycle == null) return null;
-  run(`UPDATE trucks SET hos_drive_ms = ?, hos_shift_ms = ?, hos_cycle_ms = ?, hos_cycle_tmrw_ms = ?, hos_at = ?, hos_driver = ?
+  run(`UPDATE trucks SET hos_drive_ms = ?, hos_shift_ms = ?, hos_cycle_ms = ?, hos_cycle_tmrw_ms = ?,
+         hos_viol_shift_ms = ?, hos_viol_cycle_ms = ?, hos_at = ?, hos_driver = ?
        WHERE org_id = ? AND number = ?`,
-    drive, shift, cycle, tmrw, nowISO(), String((c.driver || {}).name || '').slice(0, 60), row.org_id, row.number);
+    drive, shift, cycle, tmrw, vShift, vCycle, nowISO(), String((c.driver || {}).name || '').slice(0, 60), row.org_id, row.number);
   return { drive, shift, cycle, tmrw };
 }
 

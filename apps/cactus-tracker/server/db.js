@@ -202,6 +202,9 @@ function migrate(d) {
   addCol(d, 'trucks', 'hos_shift_ms', 'INTEGER');
   addCol(d, 'trucks', 'hos_cycle_ms', 'INTEGER');
   addCol(d, 'trucks', 'hos_cycle_tmrw_ms', 'INTEGER'); // horas que le REGRESAN mañana (ciclo rodante)
+  // VIOLACIONES: cuánto se PASARON del límite (Samsara violations) — se pinta en negativo
+  addCol(d, 'trucks', 'hos_viol_shift_ms', 'INTEGER');
+  addCol(d, 'trucks', 'hos_viol_cycle_ms', 'INTEGER');
   addCol(d, 'trucks', 'hos_at', "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'hos_driver', "TEXT DEFAULT ''");
   // ÚLTIMA SEÑAL GPS recibida: si tiene samsara_id pero lleva >24 h sin mandar señal,

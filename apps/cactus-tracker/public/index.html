@@ -708,10 +708,11 @@ function areaLbl(a){return a==="(SIN YARD)"?"(NO YARD)":a;}
 function hosFresh(t){return t.hos_at&&(Date.now()-Date.parse(t.hos_at))<20*3600e3&&(t.hos_drive_ms!=null||t.hos_cycle_ms!=null);}
 function hosH(ms){return ms==null?null:Math.max(0,ms)/3600e3;} // horas exactas (para colores)
 function hosCls(h,lowAt,outAt){return h==null?"":(h<=outAt?"out":(h<lowAt?"low":"ok"));}
-// SIN redondeos: "6h23m" · bajo 1h → "42m10s" · exacto en cero → "0m"
+// SIN redondeos: "6h23m" · bajo 1h → "42m10s" · exacto en cero → "0m" · negativo → "-1h12m"
 function hosFmt(ms){
   if(ms==null)return null;
-  const s=Math.floor(Math.max(0,ms)/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
+  if(ms<0)return "-"+hosFmt(-ms);
+  const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
   if(h>0)return h+"h"+(m<10?"0":"")+m+"m";
   if(m>0)return m+"m"+(sec<10?"0":"")+sec+"s";
   return sec>0?sec+"s":"0m";
@@ -719,8 +720,20 @@ function hosFmt(ms){
 // detalle completo h/m/s para el panel del lápiz
 function hosFmtFull(ms){
   if(ms==null)return "?";
-  const s=Math.floor(Math.max(0,ms)/1000);
+  if(ms<0)return "-"+hosFmtFull(-ms);
+  const s=Math.floor(ms/1000);
   return Math.floor(s/3600)+"h "+Math.floor((s%3600)/60)+"m "+(s%60)+"s";
+}
+// EN CERO pero con VIOLACIÓN registrada → enséñalo en NEGATIVO (cuánto se pasó)
+function hosLeftEff(t){
+  if(t.hos_drive_ms==null)return null;
+  if(t.hos_drive_ms<=0&&t.hos_viol_shift_ms>0)return -t.hos_viol_shift_ms;
+  return t.hos_drive_ms;
+}
+function hosCycleEff(t){
+  if(t.hos_cycle_ms==null)return null;
+  if(t.hos_cycle_ms<=0&&t.hos_viol_cycle_ms>0)return -t.hos_viol_cycle_ms;
+  return t.hos_cycle_ms;
 }
 function hosHtml(t){
   // HISTORIAL: viendo un día pasado, enseña lo que TRABAJÓ ese día + acumulado semanal
@@ -741,7 +754,8 @@ function hosHtml(t){
   const w=t.hos_worked?(t.hos_worked.duty_ms!=null?t.hos_worked.duty_ms:t.hos_worked.drive_ms):null;
   const wkw=t.hos_worked_wk_ms;
   const parts=[];
-  if(fresh&&t.hos_drive_ms!=null)parts.push(`<b class="${hosCls(hosH(t.hos_drive_ms),3,0.5)}">left ${hosFmt(t.hos_drive_ms)}</b>`);
+  const le=hosLeftEff(t);
+  if(fresh&&le!=null)parts.push(`<b class="${le<0?"out":hosCls(hosH(le),3,0.5)}" ${le<0?'title="OVER his hours — in violation"':""}>left ${hosFmt(le)}</b>`);
   if(w!=null)parts.push(`did <b>${hosFmt(w)}</b>`);
   if(wkw!=null)parts.push(`wk <b>${hosFmt(wkw)}</b>`);
   if(!parts.length)return "";
@@ -1322,8 +1336,8 @@ function openEdit(org,num){
     ${t.state==="p"&&!board.historical&&!outOfService(t)&&!restsToday(t)?`<button onclick="openSendTruck('${t.org_id}','${esc(t.number)}')" style="width:100%;border:none;background:var(--navy);color:#fff;border-radius:12px;padding:12px;font-weight:700;font-size:15px;cursor:pointer;margin:4px 0 8px;">🚀 SEND TO AN ORDER — ${mdy(date)}</button>`:""}
     ${hosFresh(t)&&date===board.today?`<div style="border:1.5px solid var(--line);background:#FAF9F6;border-radius:12px;padding:9px 12px;margin:4px 0 8px;font-size:13px;">
       <b style="color:var(--stone);font-size:11px;text-transform:uppercase;letter-spacing:.5px;">⏱ Hours of service (Samsara) — right now</b>
-      <div style="margin-top:3px;">Drive left today: <b>${hosFmtFull(t.hos_drive_ms)}</b> · Shift: <b>${hosFmtFull(t.hos_shift_ms)}</b></div>
-      <div>Week (cycle) left: <b>${hosFmtFull(t.hos_cycle_ms)}</b>${t.hos_cycle_tmrw_ms!=null?` · Comes back tomorrow: <b>+${hosFmtFull(t.hos_cycle_tmrw_ms)}</b>`:""}</div>
+      <div style="margin-top:3px;">Drive left today: <b style="${hosLeftEff(t)<0?"color:var(--red);":""}">${hosFmtFull(hosLeftEff(t))}${hosLeftEff(t)<0?" ⚠ IN VIOLATION":""}</b> · Shift: <b>${hosFmtFull(t.hos_shift_ms)}</b></div>
+      <div>Week (cycle) left: <b style="${hosCycleEff(t)<0?"color:var(--red);":""}">${hosFmtFull(hosCycleEff(t))}${hosCycleEff(t)<0?" ⚠ OVER":""}</b>${t.hos_cycle_tmrw_ms!=null?` · Comes back tomorrow: <b>+${hosFmtFull(t.hos_cycle_tmrw_ms)}</b>`:""}</div>
       ${t.hos_worked?`<div>Worked today: <b>${hosFmtFull(t.hos_worked.duty_ms!=null?t.hos_worked.duty_ms:t.hos_worked.drive_ms)}</b>${t.hos_worked_wk_ms?` · this week so far: <b>${hosFmtFull(t.hos_worked_wk_ms)}</b>`:""}</div>`:""}
       <div style="font-size:11px;color:var(--mut);margin-top:2px;">${esc(t.hos_driver||"")} · as of ${new Date(t.hos_at).toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"})}</div>
     </div>`:""}
