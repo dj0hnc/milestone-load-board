@@ -791,8 +791,16 @@ function hosHtml(t){
 function dnum(t){return t.display_number||t.number;} // el número COMO EN NEWMILE
 function isVirtual(){return ORG==="ALL"||ORG==="SUBS";}
 // SUBS solo viven en su tab: fuera de las terminales KT y de Cactus N/S (ruido visual —
-// ni Samsara tienen). Los CKJ ICs NO son subs de a de veras: se quedan en su tab ICS.
-function subOnlyOk(t){return ORG==="SUBS"||!t.is_sub||(t.org_id==="KT"&&/^CKJ/i.test(t.number));}
+// ni Samsara tienen). Los CKJ ICs NO son subs de a de veras: se quedan en su tab ICS —
+// pero un SUBHAULER (Gold Key, LT, BW…) jamás pinta en ICS aunque ande bajo el fleet CKJ.
+function isSubhauler(t){return /SUBHAULER/i.test(t.tags||"");}
+function isRealIC(t){return t.org_id==="KT"&&!isSubhauler(t)&&(/CKJ\s*IC/i.test(t.tags||"")||/^CKJ/i.test(t.number));}
+function subOnlyOk(t){
+  if(ORG==="SUBS")return true;
+  if(isSubhauler(t))return false;   // subhaulers: SOLO en su tab
+  if(!t.is_sub)return true;
+  return isRealIC(t);
+}
 function tabLbl(t){
   const tab=(board.tabs||[]).find(x=>x.org_id===t.org_id&&x.id===t.division);
   return tab?tab.label:(t.org_id+(t.division?" "+t.division:" ⚑ UNASSIGNED"));
@@ -883,12 +891,16 @@ function render(){
   // abajo de su grupo, y un grupo entero inactivo se va hasta abajo del tab. Siguen
   // visibles y buscables — solo dejan de estorbar arriba.
   const inact=t=>(t.days_since_last_load==null||t.days_since_last_load>=30)?1:0;
+  const dead=t=>t.days_since_last_load==null?9999:t.days_since_last_load; // días dormido
   const last=g=>g==="SUBS"||g==="(NO OWNER)"?1:0;
   const allInact=g=>groups[g].every(inact)?1:0;
+  // grupo dormido: el que lleva MÁS tiempo sin carga se va más abajo (el alfabético no manda)
+  const grpDead=g=>Math.min(...groups[g].map(dead));
   const areaCmp=(x,y)=>areaLbl(x.area||"(SIN YARD)").localeCompare(areaLbl(y.area||"(SIN YARD)"));
-  for(const g of Object.keys(groups).sort((a,b)=>allInact(a)-allInact(b)||last(a)-last(b)||a.localeCompare(b))){
+  for(const g of Object.keys(groups).sort((a,b)=>allInact(a)-allInact(b)||last(a)-last(b)||
+      (allInact(a)?grpDead(a)-grpDead(b):0)||a.localeCompare(b))){
     const list=groups[g];
-    list.sort((x,y)=>inact(x)-inact(y)||rank(x)-rank(y)||(groupMode==="owner"?areaCmp(x,y):0)||String(dnum(x)).localeCompare(String(dnum(y)),undefined,{numeric:true}));
+    list.sort((x,y)=>inact(x)-inact(y)||(inact(x)?dead(x)-dead(y):0)||rank(x)-rank(y)||(groupMode==="owner"?areaCmp(x,y):0)||String(dnum(x)).localeCompare(String(dnum(y)),undefined,{numeric:true}));
     const key=groupKey(g);
     const closed=collapsed.has(key);
     const asig=list.filter(t=>t.state==="a").length;
