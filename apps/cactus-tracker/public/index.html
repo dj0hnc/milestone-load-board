@@ -641,7 +641,16 @@ async function openCamera(org,num){
     const r=await fetch(`${API}/api/truck/${org}/${encodeURIComponent(num)}/camera`,{method:"POST",signal:ctrl.signal});
     clearTimeout(to);
     const j=await r.json().catch(()=>({}));
-    if(!r.ok)throw new Error(j.error||("HTTP "+r.status));
+    if(!r.ok){
+      if(/CAMERA_OFFLINE/.test(j.error||"")){
+        openModal(`<h3>📷 ${esc(dnum(t))}</h3>
+          <p style="font-size:14px;color:var(--red);"><b>The camera isn't recording — not now and not at its last known movement.</b></p>
+          <p style="font-size:13px;color:var(--mut);">Cameras only record while the truck is ON. If the truck HAS been running and this still fails, the camera is disconnected — tell the driver to check it and its cable.</p>
+          <div class="actions"><button class="b-save" onclick="openCamera('${org}','${esc(num)}')">↻ Retake</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
+        return;
+      }
+      throw new Error(j.error||("HTTP "+r.status));
+    }
     const L={dashcamRoadFacing:"🛣 Road (front)",dashcamDriverFacing:"👤 Cab (inside)"};
     if(!j.images||!j.images.length){
       openModal(`<h3>📷 ${esc(dnum(t))}</h3>
@@ -650,7 +659,8 @@ async function openCamera(org,num){
         <div class="actions"><button class="b-save" onclick="openCamera('${org}','${esc(num)}')">↻ Retake</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
       return;
     }
-    openModal(`<h3>📷 ${esc(dnum(t))} <small style="font-weight:600;color:var(--mut);">· live snapshot</small></h3>`+
+    const when=j.live?"· live snapshot":`· camera off now (parked) — last recorded ${j.at?new Date(j.at).toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit",timeZone:"America/Chicago"}):""}`;
+    openModal(`<h3>📷 ${esc(dnum(t))} <small style="font-weight:600;color:var(--mut);">${when}</small></h3>`+
       j.images.map(im=>`<div style="margin-bottom:10px;">
         <div style="font-size:12px;font-weight:700;color:var(--stone);margin-bottom:4px;">${L[im.input]||esc(im.input)}</div>
         <img src="${esc(im.url)}" style="width:100%;border-radius:12px;border:1.5px solid var(--line);" onerror="this.outerHTML='<p style=\\'color:var(--red);font-size:13px;\\'>image expired — hit Retake</p>'">

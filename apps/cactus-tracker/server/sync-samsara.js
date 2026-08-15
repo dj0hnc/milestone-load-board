@@ -330,22 +330,38 @@ async function cameraSnapshot(cfg, row) {
   const token = tokenFor(cfg, org.samsara_org);
   if (!token) throw new Error('no Samsara token for ' + org.id);
   if (!row.samsara_id) throw new Error('truck has no Samsara id yet — run Sync now first');
-  const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
-  const create = await fetch('https://api.samsara.com/cameras/media/retrieval', {
-    method: 'POST',
-    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({
-      startTime: now, endTime: now, vehicleId: String(row.samsara_id),
-      inputs: ['dashcamRoadFacing', 'dashcamDriverFacing'], mediaType: 'image'
-    })
-  });
-  if (!create.ok) {
-    const txt = await create.text().catch(() => '');
-    throw new Error('camera request HTTP ' + create.status + (txt ? ' · ' + txt.slice(0, 140) : ''));
+
+  // La cámara solo graba con el truck ENCENDIDO. Si "ahorita" no está grabando (parado
+  // de noche), caemos al último momento en que SÍ grabó: último movimiento / última señal.
+  const headers = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Accept: 'application/json' };
+  const tryCreate = async (atISO) => {
+    const r = await fetch('https://api.samsara.com/cameras/media/retrieval', {
+      method: 'POST', headers,
+      body: JSON.stringify({
+        startTime: atISO, endTime: atISO, vehicleId: String(row.samsara_id),
+        inputs: ['dashcamRoadFacing', 'dashcamDriverFacing'], mediaType: 'image'
+      })
+    });
+    if (r.ok) { const j = await r.json(); return { rid: j && j.data && (j.data.retrievalId || j.data.id) }; }
+    const txt = await r.text().catch(() => '');
+    if (r.status === 400 && /not recording/i.test(txt)) return { notRecording: true };
+    throw new Error('camera request HTTP ' + r.status + (txt ? ' · ' + txt.slice(0, 140) : ''));
+  };
+  const minusMin = (iso, m) => new Date(Date.parse(iso) - m * 60000).toISOString().replace(/\.\d+Z$/, 'Z');
+  const nowISO2 = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+  const wd = get('SELECT ended_at FROM work_days WHERE org_id = ? AND number = ? AND ended_at IS NOT NULL ORDER BY date DESC LIMIT 1', row.org_id, row.number);
+  const candidates = [{ at: nowISO2, live: true }];
+  for (const ts of [row.last_moved_at, wd && wd.ended_at, row.samsara_seen_at].filter(Boolean)) {
+    candidates.push({ at: minusMin(ts, 2), live: false }); // 2 min antes de apagar: aún grababa
   }
-  const cj = await create.json();
-  const rid = cj && cj.data && (cj.data.retrievalId || cj.data.id);
-  if (!rid) throw new Error('Samsara did not return a retrieval id');
+  let rid = null, used = null;
+  for (const c of candidates.slice(0, 4)) {
+    const res = await tryCreate(c.at);
+    if (res.rid) { rid = res.rid; used = c; break; }
+    // notRecording → prueba el siguiente candidato
+  }
+  if (!rid) throw new Error('CAMERA_OFFLINE'); // ni un momento grabado reciente: cámara mal
+
   const images = new Map();
   for (let i = 0; i < 9; i++) {
     await new Promise(r => setTimeout(r, i === 0 ? 3500 : 2500));
@@ -361,7 +377,7 @@ async function cameraSnapshot(cfg, row) {
     }
     if (images.size >= 2) break;
   }
-  return { images: [...images.entries()].map(([input, url]) => ({ input, url })) };
+  return { images: [...images.entries()].map(([input, url]) => ({ input, url })), at: used.at, live: used.live };
 }
 
 // ---- JORNADA: a qué hora PRENDIÓ y APAGÓ cada truck (engine states, eventos ligeros) ----
