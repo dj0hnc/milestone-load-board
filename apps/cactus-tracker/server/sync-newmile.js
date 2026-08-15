@@ -146,7 +146,19 @@ async function reconcileICs(client, opts) {
     const driver = String(t.driver_name || t.driver || '').trim();
     const trailer = shortTrailer(t.truck_type || '');
     const nmId = t.id != null ? t.id : null;
-    const row = get(`SELECT * FROM trucks WHERE org_id = 'KT' AND (number = ? OR nm_truck_id = ?)`, key, nmId);
+    let row = get(`SELECT * FROM trucks WHERE org_id = 'KT' AND (number = ? OR nm_truck_id = ?)`, key, nmId);
+    // NewMile a veces trae el MISMO camión dos veces: "2018" y "2018 - DUMP-Er". Si ya
+    // existe uno del MISMO DUEÑO con los mismos dígitos, es el mismo truck: no duplicar.
+    if (!row && t.owner_id != null) {
+      const dig = (bare.match(/\d+/) || [''])[0];
+      if (dig) {
+        row = get(`SELECT * FROM trucks WHERE org_id = 'KT' AND owner_id = ?
+                     AND (number = ? OR number = ? OR display_number = ?
+                          OR (number LIKE ? AND REPLACE(REPLACE(number,'CKJ',''),'ARANGO','') = ?))`,
+          t.owner_id, 'CKJ' + dig, key, raw, '%' + dig + '%', dig);
+        if (row) out.skipped.push(display + ' = mismo truck que ' + (row.display_number || row.number) + ' (' + ownerName + ')');
+      }
+    }
     if (row) {
       if (row.archived) {
         if (!dry) run(`UPDATE trucks SET archived = 0, maybe_removed = 0, updated_at = ? WHERE org_id = 'KT' AND number = ?`, nowISO(), row.number);
