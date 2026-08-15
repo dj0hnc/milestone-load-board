@@ -652,7 +652,8 @@ async function locateNow(org,num){
         t.parked_city=j.truck.parked_city;t.parked_at=j.truck.parked_at;
         if(j.last_moved_at)t.last_moved_at=j.last_moved_at;
         // el ↻ también trae las HOS frescas de ese driver — píntalas ya
-        for(const k of ["hos_drive_ms","hos_shift_ms","hos_cycle_ms","hos_cycle_tmrw_ms","hos_at","hos_driver","samsara_driver_id"])t[k]=j.truck[k];
+        // el ⟳ repinta TODO al instante: horas, rodando/parado y última señal
+        for(const k of ["hos_drive_ms","hos_shift_ms","hos_cycle_ms","hos_cycle_tmrw_ms","hos_viol_shift_ms","hos_viol_cycle_ms","hos_at","hos_driver","samsara_driver_id","moving","moving_at","samsara_seen_at"])t[k]=j.truck[k];
         // el GPS manda: si el server lo movió de zona/terminal, el cuadrito se muda ya
         if(j.moved){
           t.area=j.truck.area;t.division=j.truck.division;t.suggested_area=j.truck.suggested_area||"";
