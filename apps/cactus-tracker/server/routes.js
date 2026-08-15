@@ -11,7 +11,7 @@ const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
 const { todayCT, weekDatesCT, daysBetween, normNum, canonArea, canonicalTruckNumber } = require('./util');
 const { syncRoster, syncActivity, scanRipRap } = require('./sync-newmile');
-const { syncSamsara, backfillParking, locateTruck, debugHOS, refreshHOSTruck } = require('./sync-samsara');
+const { syncSamsara, backfillParking, locateTruck, debugHOS, refreshHOSTruck, cameraSnapshot } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
 
 const VALID_STATUS = ['ok', 'shop', 'down', 'no_driver', 'vacation', 'deleased'];
@@ -370,6 +370,16 @@ function createRouter({ config, newmile, log }) {
     } catch (e) {
       res.status(502).json({ error: String(e.message || e) });
     }
+  });
+
+  // 📷 Snapshot de las cámaras (frontal + cabina) AL MOMENTO — sin abrir Samsara.
+  // Tarda ~10-20 s (la cámara sube la foto); si no regresa nada, la cámara está mal.
+  router.post('/api/truck/:org/:number/camera', async (req, res) => {
+    const orgId = normNum(req.params.org), number = normNum(req.params.number);
+    const t = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number);
+    if (!t) return res.status(404).json({ error: 'truck not found' });
+    try { res.json({ ok: true, ...(await cameraSnapshot(config, t)) }); }
+    catch (e) { res.status(502).json({ error: String(e.message || e) }); }
   });
 
   // Re-corre el acomodo por GPS a demanda (noches de los últimos {days}, default 2).

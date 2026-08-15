@@ -320,6 +320,50 @@ async function syncHOSDaily(cfg, days) {
   return summary;
 }
 
+// ---- CÁMARAS: snapshot AL MOMENTO (frontal + cabina) sin abrir Samsara ----
+// Pide una captura fresca y espera a que la cámara la suba (~10-20 s). Si no regresa
+// nada, la cámara está desconectada / el truck no trae dashcam — el mismo botón sirve
+// de prueba de vida para mandar al chofer a revisar el cable.
+async function cameraSnapshot(cfg, row) {
+  const org = get('SELECT * FROM orgs WHERE id = ?', row.org_id);
+  if (!org || !org.samsara) throw new Error('this truck has no Samsara');
+  const token = tokenFor(cfg, org.samsara_org);
+  if (!token) throw new Error('no Samsara token for ' + org.id);
+  if (!row.samsara_id) throw new Error('truck has no Samsara id yet — run Sync now first');
+  const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+  const create = await fetch('https://api.samsara.com/cameras/media/retrieval', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({
+      startTime: now, endTime: now, vehicleId: String(row.samsara_id),
+      inputs: ['dashcamRoadFacing', 'dashcamDriverFacing'], mediaType: 'image'
+    })
+  });
+  if (!create.ok) {
+    const txt = await create.text().catch(() => '');
+    throw new Error('camera request HTTP ' + create.status + (txt ? ' · ' + txt.slice(0, 140) : ''));
+  }
+  const cj = await create.json();
+  const rid = cj && cj.data && (cj.data.retrievalId || cj.data.id);
+  if (!rid) throw new Error('Samsara did not return a retrieval id');
+  const images = new Map();
+  for (let i = 0; i < 9; i++) {
+    await new Promise(r => setTimeout(r, i === 0 ? 3500 : 2500));
+    const r = await fetch('https://api.samsara.com/cameras/media/retrieval?retrievalId=' + encodeURIComponent(rid),
+      { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
+    if (!r.ok) continue;
+    const j = await r.json();
+    let media = (j.data && (j.data.media || j.data)) || [];
+    if (!Array.isArray(media)) media = [];
+    for (const m of media) {
+      const url = (m.urlInfo && m.urlInfo.url) || m.url || m.downloadUrl;
+      if (m.input && url && (!m.status || /available/i.test(String(m.status)))) images.set(m.input, url);
+    }
+    if (images.size >= 2) break;
+  }
+  return { images: [...images.entries()].map(([input, url]) => ({ input, url })) };
+}
+
 // ---- JORNADA: a qué hora PRENDIÓ y APAGÓ cada truck (engine states, eventos ligeros) ----
 async function fetchEngineHistory(token, startISO, endISO) {
   let out = [], after = '', pages = 0;
@@ -711,6 +755,9 @@ async function syncSamsara(cfg) {
         if (!row && res.icBare) row = discoverIC(org.id, res.icBare, g.city, g.lat, g.lon, summary);
         if (!row) continue;
         summary.gps++;
+        // señal VIVA: llegó lectura GPS de este truck (aunque sea vieja, trae timestamp
+        // real del equipo — si el equipo murió, este campo se queda congelado y el board avisa)
+        if (g.time) run(`UPDATE trucks SET samsara_seen_at = ? WHERE org_id = ? AND number = ? AND (samsara_seen_at = '' OR samsara_seen_at < ?)`, g.time, org.id, row.number, g.time);
         // reverse-geo sin ciudad (pura carretera) → pueblo de operación más cercano;
         // y JAMÁS pisar una ubicación conocida con un blanco — se queda la última buena
         const city = g.city || nearestTown(g.lat, g.lon) || '';
@@ -773,6 +820,8 @@ async function locateTruck(cfg, orgRow, truck) {
     }
   }
   if (!g) throw new Error('truck not found in Samsara');
+  // señal viva confirmada por el ↻ (el timestamp real del equipo manda)
+  if (g.time) run(`UPDATE trucks SET samsara_seen_at = ? WHERE org_id = ? AND number = ? AND (samsara_seen_at = '' OR samsara_seen_at < ?)`, g.time, truck.org_id, truck.number, g.time);
   const city = g._city || cityFrom(g.reverseGeo && g.reverseGeo.formattedLocation) || nearestTown(g.latitude, g.longitude);
   // ubicación conocida jamás se pisa con un blanco — se queda la última buena
   if (city) {
@@ -814,4 +863,4 @@ async function locateTruck(cfg, orgRow, truck) {
   return { city: city || '', time: g.time || null, speed, moved, last_moved_at: (finalRow && finalRow.last_moved_at) || null };
 }
 
-module.exports = { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, refreshHOSTruck, debugHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };
+module.exports = { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, refreshHOSTruck, cameraSnapshot, debugHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };

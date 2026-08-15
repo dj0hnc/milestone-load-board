@@ -204,6 +204,9 @@ function migrate(d) {
   addCol(d, 'trucks', 'hos_cycle_tmrw_ms', 'INTEGER'); // horas que le REGRESAN mañana (ciclo rodante)
   addCol(d, 'trucks', 'hos_at', "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'hos_driver', "TEXT DEFAULT ''");
+  // ÚLTIMA SEÑAL GPS recibida: si tiene samsara_id pero lleva >24 h sin mandar señal,
+  // la cámara/cableado está mal → el board lo grita para que el chofer lo arregle.
+  addCol(d, 'trucks', 'samsara_seen_at', "TEXT DEFAULT ''");
   // HISTORIAL HOS día a día (Samsara daily logs): cuánto MANEJÓ/TRABAJÓ cada driver
   // cada día — el board lo enseña por fecha y acumula la semana.
   d.exec(`CREATE TABLE IF NOT EXISTS hos_days (

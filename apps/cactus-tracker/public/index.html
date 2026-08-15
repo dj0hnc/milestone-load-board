@@ -112,6 +112,8 @@ h1 span{color:var(--gold);}
 .btn-loc{position:absolute;bottom:6px;right:6px;width:24px;height:24px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:12px;cursor:pointer;line-height:1;}
 .btn-loc:hover{border-color:var(--blue);color:var(--blue);}
 .btn-loc.busy{border-color:var(--blue);color:var(--blue);animation:locspin 1s linear infinite;}
+.btn-cam{position:absolute;bottom:6px;right:36px;width:24px;height:24px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;font-size:12px;cursor:pointer;line-height:1;}
+.btn-cam:hover{border-color:var(--blue);}
 @keyframes locspin{to{transform:rotate(360deg)}}
 .chip .badge{display:inline-block;font-size:10px;font-weight:800;border-radius:5px;padding:2px 6px;margin-top:3px;margin-right:4px;}
 .chip .badge.drvchg{background:#f3e8fb;color:#7a2fa8;}
@@ -199,10 +201,11 @@ h1 span{color:var(--sand);}
 .chip.starred{border-color:var(--sand);box-shadow:0 0 0 1.5px var(--sand),var(--sh-card);}
 
 /* Corner buttons — ghost, refined, evenly pitched (only edit + down here now) */
-.btn-down,.btn-edit,.btn-loc{border:1px solid var(--line);background:#FAF9F6;color:#A6A29A;border-radius:9px;transition:all .12s;}
+.btn-down,.btn-edit,.btn-loc,.btn-cam{border:1px solid var(--line);background:#FAF9F6;color:#A6A29A;border-radius:9px;transition:all .12s;}
 .btn-down{top:8px;right:8px;}
 .btn-edit{top:8px;right:40px;}
 .btn-loc{bottom:8px;right:8px;}
+.btn-cam{bottom:8px;right:40px;}
 
 /* Segmented controls — pill, tactile */
 .seg,.grpseg{border-color:var(--line);border-radius:12px;box-shadow:var(--sh-card);}
@@ -628,6 +631,35 @@ async function locateNow(org,num){
   _locating.delete(key);
   render();
 }
+// 📷 CÁMARAS EN VIVO: pide snapshot fresco a Samsara y lo enseña aquí mismo.
+// Si no regresa imagen = la cámara está desconectada → mismo aviso para el chofer.
+async function openCamera(org,num){
+  const t=truckOf(org,num);if(!t)return;
+  openModal(`<h3>📷 ${esc(dnum(t))} — cameras</h3><p style="color:var(--mut);font-size:14px;">📡 Asking the truck for fresh snapshots… takes 10-20 seconds, hang on.</p>`);
+  try{
+    const ctrl=new AbortController();const to=setTimeout(()=>ctrl.abort(),50000);
+    const r=await fetch(`${API}/api/truck/${org}/${encodeURIComponent(num)}/camera`,{method:"POST",signal:ctrl.signal});
+    clearTimeout(to);
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(j.error||("HTTP "+r.status));
+    const L={dashcamRoadFacing:"🛣 Road (front)",dashcamDriverFacing:"👤 Cab (inside)"};
+    if(!j.images||!j.images.length){
+      openModal(`<h3>📷 ${esc(dnum(t))}</h3>
+        <p style="font-size:14px;color:var(--red);"><b>No image came back.</b> The camera is likely disconnected — or this truck has no dashcam.</p>
+        <p style="font-size:13px;color:var(--mut);">If it should have one: tell the driver to check the camera and its cable, then hit Retake.</p>
+        <div class="actions"><button class="b-save" onclick="openCamera('${org}','${esc(num)}')">↻ Retake</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
+      return;
+    }
+    openModal(`<h3>📷 ${esc(dnum(t))} <small style="font-weight:600;color:var(--mut);">· live snapshot</small></h3>`+
+      j.images.map(im=>`<div style="margin-bottom:10px;">
+        <div style="font-size:12px;font-weight:700;color:var(--stone);margin-bottom:4px;">${L[im.input]||esc(im.input)}</div>
+        <img src="${esc(im.url)}" style="width:100%;border-radius:12px;border:1.5px solid var(--line);" onerror="this.outerHTML='<p style=\\'color:var(--red);font-size:13px;\\'>image expired — hit Retake</p>'">
+      </div>`).join("")+
+      `<div class="actions"><button class="b-save" onclick="openCamera('${org}','${esc(num)}')">↻ Retake</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
+  }catch(e){
+    openModal(`<h3>📷 Camera</h3><p style="font-size:14px;color:var(--red);">${esc(e.message)}</p><div class="actions"><button class="b-save" onclick="openCamera('${org}','${esc(num)}')">↻ Try again</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
+  }
+}
 function actHtml(t){
   // equidad: cargas de ESTA semana en cada cuadrito (wk N) — para repartir parejo
   const wk=t.loads_week?` · <b>wk ${t.loads_week}</b>`:"";
@@ -832,7 +864,9 @@ function chipHtml(t){
     ${groupMode==="owner"?`<div class="park mut" style="color:#7a2fa8;">📌 zone: ${esc(areaLbl(t.area||"(SIN YARD)"))}</div>`:""}
     ${parkHtml(t)}
     ${actHtml(t)}
-    ${hasGPS(t)?`<button class="btn-loc" title="Refresh live GPS" onclick="event.stopPropagation();locateNow('${t.org_id}','${esc(t.number)}')">⟳</button>`:""}
+    ${hasGPS(t)?`<button class="btn-loc" title="Refresh live GPS + HOS" onclick="event.stopPropagation();locateNow('${t.org_id}','${esc(t.number)}')">⟳</button>`:""}
+    ${hasGPS(t)&&t.samsara_id?`<button class="btn-cam" title="Live camera snapshots (road + cab)" onclick="event.stopPropagation();openCamera('${t.org_id}','${esc(t.number)}')">📷</button>`:""}
+    ${date===board.today&&!board.historical&&t.samsara_id&&!t.is_sub&&t.samsara_seen_at&&(Date.now()-Date.parse(t.samsara_seen_at))>24*3600e3?`<span class="badge flag" title="no GPS signal in over 24h — tap to re-check right now" onclick="event.stopPropagation();locateNow('${t.org_id}','${esc(t.number)}')">📵 SAMSARA DEAD since ${tsMdy(t.samsara_seen_at)} — camera/cable?</span>`:""}
     ${t.state==="a"&&t.state_source!=="auto"&&!t.nm_confirmed&&board.nm_checked&&!board.historical?`<span class="badge" style="background:#fdf3e3;color:#8a5a10;border:1px solid #c98a2f;">⚠ not in NewMile</span>`:""}
     ${t.state==="d"&&t.state_source==="carry"?`<span class="badge" style="background:var(--red-bg);color:var(--red);">⛔ DOWN since ${mdy(t.down_since)}${lastMovedLbl(t)} — confirm driver</span>`:""}
     ${t.state==="d"&&t.state_source!=="carry"&&t.last_moved_at?`<span class="badge" style="background:var(--red-bg);color:var(--red);">⏱ last moved ${tsMdy(t.last_moved_at)}</span>`:""}
