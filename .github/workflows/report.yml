@@ -29,7 +29,8 @@ on:
     # night reports of 7/10 and 7/11 were missed entirely because no run landed inside the whole
     # 4-hour window. Fire every 15 min during the window hours (both DST offsets) to buy more
     # lottery tickets; out-of-window runs exit in seconds and the once-per-day lock dedupes.
-    - cron: '*/15 1-6,12-17 * * *'
+    # hours 23,0 and 11 UTC feed the pre-window HOLDER runs (6:30-8pm / 6:45-7:30am CT)
+    - cron: '*/15 0-6,11-17,23 * * *'
   # PUSH PINGER: pushing these branches fires the send immediately — punctual and immune to
   # GitHub's schedule starvation. A daily Claude Routine pushes them at ~7:35am / ~8:05pm CT
   # (pure git, no API token needed). Early pings sleep until the window opens; the once-per-day
@@ -41,7 +42,7 @@ on:
       kind:
         description: 'Report to run (sf = weekly service failures + GP of lost loads, last Mon-Sat)'
         type: choice
-        options: [morning, night, sf]
+        options: [morning, night, recheck, sf]
         default: night
       offsubs:
         description: 'OFF-APP subs count (blank = use the MAB_OFFSUBS variable)'
@@ -54,7 +55,8 @@ on:
         default: ''
 
 concurrency:
-  group: mab-reports
+  # previews get their own lane so a dry run never queues behind a sleeping holder run
+  group: mab-reports-${{ github.event.inputs.preview == 'true' && 'preview' || 'send' }}
   cancel-in-progress: false
 
 jobs:
@@ -143,6 +145,19 @@ jobs:
               KIND=morning
             elif [ "$HOUR" -ge 20 ] && [ "$HOUR" -le 23 ]; then
               KIND=night
+            # HOLDER RUNS: GitHub reliably lands crons up to ~7pm CT but starves the 7-9pm band
+            # (nightly missed 3 nights running even at 15-min density). Pre-window crons and the
+            # 15-min in-window entries are lottery tickets; a HOLDER is a guarantee: a run landing
+            # shortly before a window stays alive and sleeps until the window opens, then sends
+            # right on time itself. Concurrency queues later crons behind it; the lock dedupes.
+            elif [ "$NOWM" -ge $((18*60+30)) ] && [ "$NOWM" -lt $((20*60)) ]; then
+              KIND=night
+              echo "holder: $HOUR:$MIN CT — sleeping $((20*60-NOWM)) min to send the night report at 8:00pm CT sharp"
+              sleep $(( (20*60-NOWM)*60 ))
+            elif [ "$NOWM" -ge $((6*60+45)) ] && [ "$NOWM" -lt $((7*60+30)) ]; then
+              KIND=morning
+              echo "holder: $HOUR:$MIN CT — sleeping $((7*60+30-NOWM)) min to send the morning report at 7:30am CT sharp"
+              sleep $(( (7*60+30-NOWM)*60 ))
             else
               echo "Central time $HOUR:$MIN is outside the send windows (7:30-11:59am morning, 8pm-11:59pm night) — nothing to do"
               exit 0
@@ -169,6 +184,11 @@ jobs:
             fi
             echo "scheduled run - Central hour $HOUR -> $KIND (cloud covering: office down or unsent)"
             node report-engine/report-cli.js "$KIND" --send
+            # ~9AM RE-CHECK: second pass over the 7:30 call list (who fixed themselves, who is
+            # still down). Own once-per-day lock; report-cli skips it if morning just went out.
+            if [ "$KIND" = "morning" ] && [ "$HOUR" -ge 9 ] && [ "$HOUR" -le 11 ]; then
+              node report-engine/report-cli.js recheck --send
+            fi
           fi
       # save the rotated token/lock back to cache for the next run
       - uses: actions/cache/save@v4

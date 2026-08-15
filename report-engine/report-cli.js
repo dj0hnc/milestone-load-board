@@ -21,7 +21,7 @@
 const fs = require('fs'), path = require('path');
 const { NewMileClient } = require(path.join(__dirname, '..', 'mcp-client.js'));
 const { buildBoard } = require('./server/mapping');
-const { buildMorning, buildNight } = require('./server/noshow');
+const { buildMorning, buildNight, buildRecheck } = require('./server/noshow');
 const servicefail = require('./server/servicefail');
 let samsara = null; try { samsara = require('./server/samsara'); } catch (e) {}
 let mailer = null; try { mailer = require('./server/mailer'); } catch (e) {}
@@ -60,6 +60,7 @@ async function resolveOffSubs(dateStr) {
 const STATE_DIR = path.join(__dirname, '.state');
 const TOKEN_FILE = path.join(STATE_DIR, 'nm-token.json');
 const SENT_FILE = path.join(STATE_DIR, 'last-sent.json');
+const FLAGGED_FILE = path.join(STATE_DIR, 'morning-flagged.json');   // 7:30 call list, for the 9am re-check
 const FORCE = !!arg('force', false);   // bypass the once-per-day lock (manual test runs)
 
 function sentToday(kind, dateStr) {
@@ -188,15 +189,41 @@ function centralDate(offsetDays) {
   }
   const board = buildBoard(raw, sam, cfg.groups || null);
   // night plans TOMORROW's fleet, so its off-app count is tomorrow's too
-  const offR = await resolveOffSubs(KIND === 'morning' ? today : centralDate(1));
+  const offR = await resolveOffSubs(KIND === 'night' ? centralDate(1) : today);
   const OFF = offR.n;
   console.log('  off-app subs: ' + OFF + ' (source: ' + offR.src + ')');
+
+  // today's GPS+engine history for a handful of flagged trucks → evidence lines in the email
+  function centralMidnightMs() {
+    const n = new Date();
+    const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(n).split(':').map(Number);
+    return n.getTime() - (((p[0] % 24) * 3600 + p[1] * 60 + p[2]) * 1000);
+  }
+  async function getEvidence(rows) {
+    if (!samsara || !samsara.movementEvidence || !rows || !rows.length || !Object.keys(sam).length) return null;
+    const list = rows.map(r => { const k = (r.num || '').trim().toUpperCase().replace(/\s+/g, ' '); return { num: r.num, ent: sam[k] }; }).filter(x => x.ent && x.ent.id);
+    if (!list.length) return null;
+    try { return await samsara.movementEvidence(cfg, list, centralMidnightMs(), l => console.log('  ' + l)); }
+    catch (e) { console.log('  evidence skipped: ' + e.message); return null; }
+  }
 
   let rep, subject;
   if (KIND === 'morning') {
     rep = buildMorning(board, { offSubs: OFF, dateKey: today });
-    subject = '🚛 Morning No-Show Report — ' + rep.count + ' not working (' + rep.dateStr + ' CT)';
-    console.log('MORNING: not-working ' + rep.count + ' · working ' + rep.totalWorking + ' · off-app ' + OFF);
+    const ev = await getEvidence(rep.rows);
+    if (ev && Object.keys(ev).length) rep = buildMorning(board, { offSubs: OFF, dateKey: today, evidence: ev });
+    subject = '🚛 Morning No-Show Report — ' + (rep.callFirst != null && rep.callFirst !== rep.count ? rep.callFirst + ' to call / ' + rep.count + ' not working' : rep.count + ' not working') + ' (' + rep.dateStr + ' CT)';
+    console.log('MORNING: not-working ' + rep.count + ' (call-first ' + rep.callFirst + ', staged ' + rep.stagedN + ') · working ' + rep.totalWorking + ' · off-app ' + OFF);
+  } else if (KIND === 'recheck') {
+    // second pass over the 7:30 call list: who fixed themselves, who is still down
+    let fl = null; try { fl = JSON.parse(fs.readFileSync(FLAGGED_FILE, 'utf8')); } catch (e) {}
+    if (!fl || fl.date !== today || !Array.isArray(fl.rows)) { console.log('no morning call list for today — nothing to re-check'); return; }
+    if (!fl.rows.length) { console.log('morning had zero flagged trucks — nothing to re-check'); return; }
+    if (SEND && !FORCE && fl.sentAt && (Date.now() - fl.sentAt) < 45 * 60000) { console.log('morning went out only ' + Math.round((Date.now() - fl.sentAt) / 60000) + ' min ago — re-check would add nothing yet'); return; }
+    const ev = await getEvidence(fl.rows);
+    rep = buildRecheck(board, { flagged: fl, evidence: ev || {}, dateKey: today });
+    subject = '🔁 Morning Re-check — ' + rep.stillCount + ' still down / ' + rep.resolvedCount + ' now working (' + rep.dateStr + ' CT)';
+    console.log('RECHECK: still-down ' + rep.stillCount + ' · resolved ' + rep.resolvedCount + ' of ' + fl.rows.length);
   } else {
     const dayParam = (arg('day', 'tomorrow') || 'tomorrow').toString();
     const dayIdx = dayParam === 'today' ? 4 : (dayParam === 'yesterday' ? 3 : 5);
@@ -214,6 +241,10 @@ function centralDate(offsetDays) {
     console.log('email: ' + JSON.stringify(m));
     if (!m.ok) process.exit(1);
     markSent(KIND, centralDate(0));   // lock so it won't re-send today
+    // persist the emailed call list so the ~9am re-check can diff against it
+    if (KIND === 'morning') {
+      try { fs.writeFileSync(FLAGGED_FILE, JSON.stringify({ date: today, sentAt: Date.now(), rows: (rep.rows || []).map(r => ({ num: r.num, driver: r.driver, orders: r.orders, fleet: r.fleet, state: r.state })) }, null, 1)); } catch (e) {}
+    }
   } else {
     console.log('(dry run — no email sent)\n');
     console.log('----- REPORT BEGIN -----\n' + rep.text + '\n----- REPORT END -----');
