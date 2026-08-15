@@ -719,9 +719,10 @@ async function syncSamsara(cfg, opts) {
   const summary = { vehicles: 0, matched: 0, flags: 0, suggestions: 0, gps: 0, parkingLogged: 0, areaSuggestions: 0, skippedOrgs: [] };
   const vehiclesByOrg = new Map(); // se los pasamos a syncHOS para no pedirlos DOS veces
 
-  for (const org of orgs) {
+  // Las orgs corren EN PARALELO (Cactus y KT a la vez): mitad del tiempo de pared
+  await Promise.all(orgs.map((org) => (async () => {
     const token = tokenFor(cfg, org.samsara_org);
-    if (!token) { summary.skippedOrgs.push(org.id + ' (sin token)'); continue; }
+    if (!token) { summary.skippedOrgs.push(org.id + ' (sin token)'); return; }
 
     const divs = all('SELECT * FROM divisions WHERE org_id = ?', org.id);
     const tagToDiv = new Map(divs.filter(d => d.samsara_tag_id).map(d => [String(d.samsara_tag_id), d.id]));
@@ -807,7 +808,7 @@ async function syncSamsara(cfg, opts) {
     } catch (e) {
       summary.gpsError = String(e.message || e);
     }
-  }
+  })().catch((e) => { summary['orgError_' + org.id] = String(e.message || e); })));
 
   // HOS de pasada: el mismo SYNC NOW / sync diario deja las horas al día
   try { summary.hos = await syncHOS(cfg, vehiclesByOrg); } catch (e) { summary.hosError = String(e.message || e); }

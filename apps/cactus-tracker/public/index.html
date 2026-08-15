@@ -1095,27 +1095,30 @@ function coverAllBulk(){
 }
 
 // ---------- sync ----------
+// SYNC NOW instantáneo: el server lo corre en el FONDO (NewMile ∥ Samsara en paralelo)
+// y aquí solo vamos pintando lo que va aterrizando cada 5 s. Cero pantalla congelada.
 async function syncNow(){
-  const b=$("btnSync");b.disabled=true;b.textContent="⟳ Syncing NewMile…";
+  const b=$("btnSync");if(b.disabled)return;
+  b.disabled=true;b.textContent="⟳ Syncing…";
   try{
-    const r=await fetch(API+"/api/sync/newmile",{method:"POST"});
-    const j=await r.json().catch(()=>({}));
-    if(r.status===401){if(confirm("NewMile is not connected. Open the sign-in?"))location.href=API+"/api/newmile/connect";}
-    else if(!r.ok)alert("Sync failed: "+(j.error||r.status));
-    // Samsara GPS: refresca dónde está CADA truck y los re-acomoda por zona/terminal.
-    // En Azure gratis a veces tarda y se corta (499/timeout) — eso NO es un error real:
-    // el scheduler y el keepalive completan el GPS solos. Por eso nunca alarmamos aquí;
-    // solo dejamos un aviso suave y seguimos.
-    b.textContent="⟳ Syncing GPS…";
-    try{
-      const ctrl=new AbortController();
-      const to=setTimeout(()=>ctrl.abort(),60000);
-      const r2=await fetch(API+"/api/sync/samsara",{method:"POST",signal:ctrl.signal});
-      clearTimeout(to);
-      if(!r2.ok){const nt=$("netTxt");if(nt)nt.textContent="GPS still updating in the background…";}
-    }catch(e){const nt=$("netTxt");if(nt)nt.textContent="GPS still updating in the background…";}
-    await fetchBoard();
-  }finally{b.disabled=false;b.textContent="⟳ Sync now";}
+    const r=await fetch(API+"/api/sync/now",{method:"POST"});
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    const t0=Date.now();
+    let st=null;
+    while(Date.now()-t0<150000){
+      await new Promise(rs=>setTimeout(rs,5000));
+      await fetchBoard(); // lo que ya llegó se pinta YA, sin esperar al resto
+      st=(board.meta||{}).sync_now;
+      if(!st||!st.running)break;
+      b.textContent="⟳ "+(st.nm==="ok"?"NM ✓":"NM…")+" · "+(st.sam==="ok"?"GPS ✓":"GPS…");
+    }
+    if(st&&/not connected/.test(st.nm||"")){
+      if(confirm("NewMile is not connected. Open the sign-in?"))location.href=API+"/api/newmile/connect";
+    }else if(st&&(/error/.test(st.nm||"")||/error/.test(st.sam||""))){
+      const nt=$("netTxt");if(nt)nt.textContent="⚠ sync had errors — some data may be stale";
+    }
+  }catch(e){const nt=$("netTxt");if(nt)nt.textContent="sync failed — check connection";}
+  finally{b.disabled=false;b.textContent="⟳ Sync now";render();}
 }
 
 // ---------- modals ----------

@@ -199,6 +199,7 @@ function createRouter({ config, newmile, log }) {
         last_sync_samsara: metaGet('last_sync_samsara'),
         auto_mark: metaGet('auto_mark', '1') !== '0',
         syncing: maybeBackgroundSync(),
+        sync_now: (() => { try { return JSON.parse(metaGet('sync_now_status') || 'null'); } catch (e) { return null; } })(),
         newmile: newmile ? newmile.status() : { connected: false }
       }
     });
@@ -594,6 +595,41 @@ function createRouter({ config, newmile, log }) {
     } catch (e) {
       res.status(500).json({ error: String(e.message || e) });
     }
+  });
+
+  // SYNC NOW INSTANTÁNEO: dispara todo en el FONDO (NewMile ∥ Samsara en paralelo) y
+  // regresa de inmediato. El board se refresca solo conforme aterriza cada parte; el
+  // estado vive en meta para que el botón enseñe el avance en vivo.
+  let syncNowBusy = false;
+  async function runSyncNow() {
+    const st = { running: true, nm: 'syncing…', sam: 'syncing…', started: nowISO() };
+    const save = () => metaSet('sync_now_status', JSON.stringify(st));
+    save();
+    await Promise.all([
+      (async () => {
+        try {
+          if (newmile && (newmile.connected || await newmile.resume())) {
+            await syncActivity(newmile, 3); // cargas frescas + auto-cover + destinos + huecos
+            st.nm = 'ok';
+          } else st.nm = 'not connected';
+        } catch (e) { st.nm = 'error: ' + String(e.message || e).slice(0, 80); }
+        save();
+      })(),
+      (async () => {
+        try { await syncSamsara(config, { light: true }); st.sam = 'ok'; }
+        catch (e) { st.sam = 'error: ' + String(e.message || e).slice(0, 80); }
+        save();
+      })()
+    ]);
+    st.running = false; save();
+  }
+  router.post('/api/sync/now', (req, res) => {
+    const already = syncNowBusy;
+    if (!syncNowBusy) {
+      syncNowBusy = true;
+      runSyncNow().catch((e) => say('sync now error: ' + (e.message || e))).finally(() => { syncNowBusy = false; });
+    }
+    res.json({ ok: true, started: true, already });
   });
 
   // ---------- syncs (manual "Sync ahora" + used by the scheduler) ----------
