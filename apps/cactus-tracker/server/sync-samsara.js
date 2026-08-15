@@ -217,19 +217,27 @@ async function debugHOS(cfg, row) {
       out.vehicle_assigned_driver = sd ? (sd.name + ' (id ' + sd.id + ')') : 'NONE — assign the driver to the vehicle in Samsara';
     } catch (e) { out.vehicle_assigned_driver = 'error: ' + (e.message || e); }
   } else out.vehicle_assigned_driver = 'truck has no samsara_id yet';
-  // relojes en vivo: ¿está el driver? ¿hay nombres parecidos?
+  // relojes en vivo: ¿está el driver? ¿hay nombres parecidos? ¿y qué VALORES manda?
   try {
     const clocks = await fetchHosClocks(token);
     out.clock_drivers_total = clocks.length;
     const parts = String(row.driver || '').split('/').map(normDrvName).filter(Boolean);
     const byId = row.samsara_driver_id && clocks.find(c => String((c.driver || {}).id) === String(row.samsara_driver_id));
     out.clock_by_stored_id = byId ? (byId.driver.name || '?') : null;
-    out.exact_name_matches = clocks.filter(c => parts.includes(normDrvName((c.driver || {}).name))).map(c => c.driver.name);
+    const exact = clocks.filter(c => parts.includes(normDrvName((c.driver || {}).name)));
+    out.exact_name_matches = exact.map(c => c.driver.name);
     const tokens = new Set(parts.join(' ').split(' ').filter(w => w.length > 2));
     out.similar_names_in_samsara = clocks
       .map(c => (c.driver || {}).name || '')
       .filter(n => normDrvName(n).split(' ').some(w => tokens.has(w)))
       .slice(0, 8);
+    // CRUDO: el JSON tal cual de Samsara (para cachar claves/unidades mal leídas)
+    const hit = byId || exact[0];
+    out.raw_matched_clocks = hit ? JSON.stringify(hit.clocks || hit).slice(0, 700) : null;
+    out.raw_first_entry = clocks[0] ? JSON.stringify(clocks[0]).slice(0, 700) : null;
+    // ¿cuántos drivers traen ALGO > 0? (si todos vienen en 0, es cosa de Samsara/ELD)
+    const ms = c => { const k = c.clocks || {}; return ['drive', 'shift', 'cycle'].map(x => k[x] || {}).flatMap(o => Object.values(o)).filter(v => typeof v === 'number'); };
+    out.drivers_with_nonzero = clocks.filter(c => ms(c).some(v => v > 0)).length;
   } catch (e) { out.clocks_error = String(e.message || e); }
   return out;
 }
