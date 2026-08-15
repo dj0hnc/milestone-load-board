@@ -11,7 +11,7 @@ const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
 const { todayCT, weekDatesCT, daysBetween, normNum, canonArea, canonicalTruckNumber } = require('./util');
 const { syncRoster, syncActivity, scanRipRap } = require('./sync-newmile');
-const { syncSamsara, backfillParking, locateTruck, debugHOS, refreshHOSTruck, cameraSnapshot } = require('./sync-samsara');
+const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking, locateTruck, debugHOS, refreshHOSTruck, cameraSnapshot } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
 
 const VALID_STATUS = ['ok', 'shop', 'down', 'no_driver', 'vacation', 'deleased'];
@@ -602,26 +602,39 @@ function createRouter({ config, newmile, log }) {
   // estado vive en meta para que el botón enseñe el avance en vivo.
   let syncNowBusy = false;
   async function runSyncNow() {
-    const st = { running: true, nm: 'syncing…', sam: 'syncing…', started: nowISO() };
+    // Progreso REAL por fase, con conteos — el board lo pinta en vivo mientras corre.
+    const st = { running: true, started: nowISO(), parts: {
+      nm: { s: 'run' }, gps: { s: 'run' }, hos: { s: 'wait' }, daily: { s: 'wait' }, work: { s: 'wait' }
+    } };
     const save = () => metaSet('sync_now_status', JSON.stringify(st));
+    const done = (k, n) => { st.parts[k] = { s: 'ok', n: n == null ? undefined : n }; save(); };
+    const fail = (k, e) => { st.parts[k] = { s: 'err', msg: String(e.message || e).slice(0, 80) }; save(); };
     save();
     await Promise.all([
-      (async () => {
+      (async () => { // NewMile: cargas frescas + auto-cover + destinos + huecos
         try {
           if (newmile && (newmile.connected || await newmile.resume())) {
-            await syncActivity(newmile, 3); // cargas frescas + auto-cover + destinos + huecos
-            st.nm = 'ok';
-          } else st.nm = 'not connected';
-        } catch (e) { st.nm = 'error: ' + String(e.message || e).slice(0, 80); }
-        save();
+            const a = await syncActivity(newmile, 3);
+            done('nm', a.matched);
+          } else st.parts.nm = { s: 'off' }, save();
+        } catch (e) { fail('nm', e); }
       })(),
-      (async () => {
-        try { await syncSamsara(config, { light: true }); st.sam = 'ok'; }
-        catch (e) { st.sam = 'error: ' + String(e.message || e).slice(0, 80); }
-        save();
+      (async () => { // Samsara en cadena: GPS primero, luego relojes/diario/jornada EN PARALELO
+        let veh = null;
+        try {
+          const s = await syncSamsara(config, { light: true, skipExtras: true });
+          veh = s.vehiclesByOrg;
+          done('gps', s.gps);
+        } catch (e) { fail('gps', e); }
+        st.parts.hos = { s: 'run' }; st.parts.daily = { s: 'run' }; st.parts.work = { s: 'run' }; save();
+        await Promise.all([
+          syncHOS(config, veh).then(r => done('hos', r.matched)).catch(e => fail('hos', e)),
+          syncHOSDaily(config, 2).then(r => done('daily', r.saved)).catch(e => fail('daily', e)),
+          syncWorkTimes(config, 1).then(r => done('work', r.saved)).catch(e => fail('work', e))
+        ]);
       })()
     ]);
-    st.running = false; save();
+    st.running = false; st.done_at = nowISO(); save();
   }
   router.post('/api/sync/now', (req, res) => {
     const already = syncNowBusy;

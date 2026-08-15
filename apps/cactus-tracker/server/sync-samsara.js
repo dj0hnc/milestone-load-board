@@ -810,15 +810,19 @@ async function syncSamsara(cfg, opts) {
     }
   })().catch((e) => { summary['orgError_' + org.id] = String(e.message || e); })));
 
-  // HOS de pasada: el mismo SYNC NOW / sync diario deja las horas al día
-  try { summary.hos = await syncHOS(cfg, vehiclesByOrg); } catch (e) { summary.hosError = String(e.message || e); }
-  // HISTORIAL diario: el botón solo trae lo fresco (2 días); el sync nocturno los 8
-  try { summary.hosDaily = await syncHOSDaily(cfg, light ? 2 : 8); } catch (e) { summary.hosDailyError = String(e.message || e); }
-  // y la JORNADA (prendió/apagó): hoy en el botón, hoy+ayer en el nocturno
-  try { summary.workTimes = await syncWorkTimes(cfg, light ? 1 : 2); } catch (e) { summary.workTimesError = String(e.message || e); }
+  if (!(opts && opts.skipExtras)) {
+    // HOS de pasada: el mismo SYNC NOW / sync diario deja las horas al día
+    try { summary.hos = await syncHOS(cfg, vehiclesByOrg); } catch (e) { summary.hosError = String(e.message || e); }
+    // HISTORIAL diario: el botón solo trae lo fresco (2 días); el sync nocturno los 8
+    try { summary.hosDaily = await syncHOSDaily(cfg, light ? 2 : 8); } catch (e) { summary.hosDailyError = String(e.message || e); }
+    // y la JORNADA (prendió/apagó): hoy en el botón, hoy+ayer en el nocturno
+    try { summary.workTimes = await syncWorkTimes(cfg, light ? 1 : 2); } catch (e) { summary.workTimesError = String(e.message || e); }
+  }
 
   metaSet('last_sync_samsara', nowISO());
   metaSet('last_sync_samsara_summary', JSON.stringify(summary));
+  // la lista de vehículos viaja al caller (SYNC NOW por fases la reusa) pero NO al meta
+  Object.defineProperty(summary, 'vehiclesByOrg', { value: vehiclesByOrg, enumerable: false });
   return summary;
 }
 

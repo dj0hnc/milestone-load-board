@@ -115,6 +115,7 @@ h1 span{color:var(--gold);}
 .btn-cam{position:absolute;bottom:6px;right:36px;width:24px;height:24px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;font-size:12px;cursor:pointer;line-height:1;}
 .btn-cam:hover{border-color:var(--blue);}
 @keyframes locspin{to{transform:rotate(360deg)}}
+.syncspin{display:inline-block;animation:locspin 1s linear infinite;}
 .chip .badge{display:inline-block;font-size:10px;font-weight:800;border-radius:5px;padding:2px 6px;margin-top:3px;margin-right:4px;}
 .chip .badge.drvchg{background:#f3e8fb;color:#7a2fa8;}
 .chip .badge.flag{background:var(--red-bg);color:var(--red);cursor:pointer;}
@@ -900,6 +901,25 @@ function chipHtml(t){
 function renderBanners(){
   let html="";
   const nm=(board.meta||{}).newmile||{};
+  // BARRA DE PROGRESO del SYNC NOW: cada fase con su palomita y conteo, en vivo
+  const sn=(board.meta||{}).sync_now;
+  if(sn&&sn.running){
+    const P=[["nm","📋 NewMile"],["gps","📡 GPS"],["hos","⏱ Hours"],["daily","📅 Day logs"],["work","🕐 Engine"]];
+    const cell=([k,lbl])=>{const p=(sn.parts||{})[k]||{};
+      if(p.s==="ok")return `<span style="color:var(--green);font-weight:700;">${lbl} ✓${p.n!=null?" "+p.n:""}</span>`;
+      if(p.s==="err")return `<span style="color:var(--red);font-weight:700;" title="${esc(p.msg||"")}">${lbl} ✗</span>`;
+      if(p.s==="off")return `<span style="color:var(--mut);">${lbl} —</span>`;
+      if(p.s==="run")return `<span style="color:#2456a6;font-weight:700;">${lbl} <span class="syncspin">⟳</span></span>`;
+      return `<span style="color:var(--mut);">${lbl} ·</span>`;};
+    html+=`<div class="banner" style="background:#EDF2F7;border:1.5px solid #2456a6;display:flex;gap:12px;flex-wrap:wrap;align-items:center;padding:9px 12px;font-size:13px;">
+      <b style="color:#2456a6;">⟳ SYNCING</b> ${P.map(cell).join(" ")}
+      <span style="margin-left:auto;color:var(--mut);font-size:11px;">${Math.round((Date.now()-Date.parse(sn.started))/1000)}s</span></div>`;
+  }else if(sn&&sn.done_at&&(Date.now()-Date.parse(sn.done_at))<20000){
+    const secs=Math.round((Date.parse(sn.done_at)-Date.parse(sn.started))/1000);
+    const errs=Object.values(sn.parts||{}).filter(p=>p.s==="err").length;
+    html+=`<div class="banner" style="background:${errs?"#fdf3e3":"var(--green-bg)"};border:1.5px solid ${errs?"#c98a2f":"var(--green)"};padding:8px 12px;font-size:13px;">
+      <b style="color:${errs?"#8a5a10":"var(--green)"};">${errs?"⚠ SYNC FINISHED WITH "+errs+" ERROR"+(errs>1?"S":""):"✅ SYNC DONE"}</b> in ${secs}s</div>`;
+  }
   if(!nm.connected){
     html+=`<div class="banner new"><b>⚠ NEWMILE IS NOT CONNECTED</b> — roster, activity and auto-cover are frozen. <a class="connect" style="color:var(--red);font-weight:800;" href="${API}/api/newmile/connect">Tap here to sign in</a>.</div>`;
   }
@@ -1106,16 +1126,15 @@ async function syncNow(){
     const t0=Date.now();
     let st=null;
     while(Date.now()-t0<150000){
-      await new Promise(rs=>setTimeout(rs,5000));
-      await fetchBoard(); // lo que ya llegó se pinta YA, sin esperar al resto
+      await new Promise(rs=>setTimeout(rs,3000));
+      await fetchBoard(); // lo que ya llegó se pinta YA + la barra de progreso avanza
       st=(board.meta||{}).sync_now;
       if(!st||!st.running)break;
-      b.textContent="⟳ "+(st.nm==="ok"?"NM ✓":"NM…")+" · "+(st.sam==="ok"?"GPS ✓":"GPS…");
+      const p=st.parts||{};const okN=Object.values(p).filter(x=>x.s==="ok").length;
+      b.textContent=`⟳ ${okN}/${Object.keys(p).length}…`;
     }
-    if(st&&/not connected/.test(st.nm||"")){
+    if(st&&st.parts&&st.parts.nm&&st.parts.nm.s==="off"){
       if(confirm("NewMile is not connected. Open the sign-in?"))location.href=API+"/api/newmile/connect";
-    }else if(st&&(/error/.test(st.nm||"")||/error/.test(st.sam||""))){
-      const nt=$("netTxt");if(nt)nt.textContent="⚠ sync had errors — some data may be stale";
     }
   }catch(e){const nt=$("netTxt");if(nt)nt.textContent="sync failed — check connection";}
   finally{b.disabled=false;b.textContent="⟳ Sync now";render();}
