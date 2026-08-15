@@ -650,7 +650,12 @@ function createRouter({ config, newmile, log }) {
       syncing,
       newmile_connected: newmile ? !!newmile.connected : false,
       last_sync_activity: metaGet('last_sync_newmile_activity'),
-      last_sync_samsara: metaGet('last_sync_samsara')
+      last_sync_samsara: metaGet('last_sync_samsara'),
+      // diagnóstico HOS a la vista: cuántos drivers reportó Samsara, cuántos se
+      // emparejaron a un truck, y el error exacto si el token no tiene permiso
+      last_sync_hos: metaGet('last_sync_hos'),
+      samsara_summary: (() => { try { return JSON.parse(metaGet('last_sync_samsara_summary') || 'null'); } catch (e) { return null; } })(),
+      hos_trucks: get(`SELECT COUNT(*) AS n FROM trucks WHERE hos_at != '' AND hos_at IS NOT NULL`).n
     });
   });
 
