@@ -81,6 +81,18 @@ function canonicalTruckNumber(orgId, raw) {
   return s;
 }
 
+// ALIAS DE LA FLOTA CKJ: el mismo camión llega con tres nombres según de dónde venga.
+// Arango: registro "01 - Arango" / "069-Arango" / "ARANGO - 1116", tickets "AT01" /
+// "AT269" / "ARANGO - 1105". Todo cae a UNA llave: ARANGO + dígitos (sin quitar ceros:
+// "001" y "01" son camiones distintos). Los pelones son ICs → CKJ###.
+function ckjAliasKey(raw) {
+  const s = normNum(raw).replace(/\s+/g, '');
+  const dig = (s.match(/\d+/) || [''])[0];
+  if (dig && (/ARANGO/i.test(s) || /^AT\d+$/i.test(s))) return 'ARANGO' + dig;
+  if (/^\d{1,4}$/.test(s)) return 'CKJ' + s;
+  return s.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+}
+
 // Normalize a load_tickets truck_number given the fleet it came from.
 // Cactus Express rows arrive prefixed with "C" (C1127 = 1127). Everything else as-is.
 function normLoadTruck(truckNumber, fleetName, cactusFleetNames, prefix) {
@@ -145,4 +157,4 @@ function reportDateToISO(s) {
   return `${y}-${String(m[1]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`;
 }
 
-module.exports = { normNum, canonArea, areaMergeKey, splitNameFlag, canonicalTruckNumber, displayTruckNumber, ktDivisionHint, shortTrailer, normLoadTruck, ctParts, todayCT, shiftISO, daysBetween, weekDatesCT, reportDateToISO, CT };
+module.exports = { normNum, canonArea, areaMergeKey, splitNameFlag, canonicalTruckNumber, displayTruckNumber, ktDivisionHint, shortTrailer, normLoadTruck, ckjAliasKey, ctParts, todayCT, shiftISO, daysBetween, weekDatesCT, reportDateToISO, CT };

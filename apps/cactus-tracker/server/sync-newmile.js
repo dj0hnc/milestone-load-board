@@ -25,7 +25,7 @@
  *     first load lands — no double-marking a truck that is already dispatched.
  */
 const { all, get, run, metaSet, nowISO } = require('./db');
-const { normNum, splitNameFlag, canonicalTruckNumber, displayTruckNumber, ktDivisionHint, shortTrailer, normLoadTruck, todayCT, shiftISO, reportDateToISO } = require('./util');
+const { normNum, splitNameFlag, canonicalTruckNumber, displayTruckNumber, ktDivisionHint, shortTrailer, normLoadTruck, ckjAliasKey, todayCT, shiftISO, reportDateToISO } = require('./util');
 
 const ACTIVITY_WINDOW_DAYS = 21;   // enough history to compute "X días sin carga" up to red (>=14)
 
@@ -62,8 +62,9 @@ function matchLoadRow(r, orgs, subNames) {
         if (/^CKJ\d{1,3}$/.test(cand)) {
           return { orgId: 'KT', num: cand, autoCreate: true, sub: true, tags: 'CKJ IC', suggestedDivision: 'ICS', display: cand.slice(3) };
         }
-        // otros números ajenos rodando bajo el fleet CKJ (Arango…): solo si ya existen
-        const hit = get('SELECT org_id, number FROM trucks WHERE number IN (?, ?)', cand, digits);
+        // otros números ajenos rodando bajo el fleet CKJ (Arango…): por alias o tal cual
+        const alias = ckjAliasKey(r.truck_number);
+        const hit = get('SELECT org_id, number FROM trucks WHERE number IN (?, ?, ?)', alias, cand, digits);
         return hit ? { orgId: hit.org_id, num: hit.number, autoCreate: false } : null;
       }
       // CKJ#### de 4 dígitos: normalmente flota KT, pero si NO hay truck de flota con
@@ -137,7 +138,7 @@ async function reconcileICs(client, opts) {
     // clave del IC: dígitos si el nombre es pelón ("452" → CKJ452); si trae letras
     // (Arango y compañía) se usa el nombre compactado en MAYÚSCULAS como llave estable
     const bare = normNum(raw).replace(/\s+/g, '');
-    const key = /^\d{1,4}$/.test(bare) ? 'CKJ' + bare : bare.replace(/[^A-Z0-9]/g, '');
+    const key = ckjAliasKey(raw); // "01 - Arango"/"AT01" → ARANGO01 · "452" → CKJ452
     const display = /^\d{1,4}$/.test(bare) ? bare : raw;
     const driver = String(t.driver_name || t.driver || '').trim();
     const trailer = shortTrailer(t.truck_type || '');
