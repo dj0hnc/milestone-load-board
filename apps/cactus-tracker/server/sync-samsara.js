@@ -174,8 +174,11 @@ async function syncHOS(cfg, vehiclesByOrg) {
         }
       }
     } catch (e) { summary['vehError_' + org.id] = String(e.message || e); }
-    const trucks = all('SELECT org_id, number, driver, samsara_driver_id FROM trucks WHERE org_id = ? AND archived = 0', org.id);
+    const trucks = all('SELECT org_id, number, driver, samsara_id, samsara_driver_id FROM trucks WHERE org_id = ? AND archived = 0', org.id);
     const byDrvId = new Map(trucks.filter(t => t.samsara_driver_id).map(t => [String(t.samsara_driver_id), t]));
+    // EN QUÉ TRUCK ANDA AHORITA: los relojes traen currentVehicle — perfecto para ICs
+    // y trucks sin driver asignado en Samsara (el que lo trae rodando ES su driver)
+    const byVehId = new Map(trucks.filter(t => t.samsara_id).map(t => [String(t.samsara_id), t]));
     // por nombre solo si es ÚNICO en la flota (dos "JUAN PEREZ" = ambiguo, no adivinar);
     // "Elaine Raper / Lonnie Seat" cuenta por cada segmento
     const byName = new Map();
@@ -214,7 +217,8 @@ async function syncHOS(cfg, vehiclesByOrg) {
       const vShift = pick(vio, 'shiftDrivingViolationDurationMs', 'shiftViolationDurationMs');
       const vCycle = pick(vio, 'cycleViolationDurationMs');
       if (drive == null && shift == null && cycle == null) continue;
-      const t = byDrvId.get(String(drv.id)) || subsetMatch(normDrvName(drv.name));
+      const curVeh = c.currentVehicle && c.currentVehicle.id != null ? String(c.currentVehicle.id) : null;
+      const t = byDrvId.get(String(drv.id)) || (curVeh && byVehId.get(curVeh)) || subsetMatch(normDrvName(drv.name));
       if (!t) continue;
       run(`UPDATE trucks SET hos_drive_ms = ?, hos_shift_ms = ?, hos_cycle_ms = ?, hos_cycle_tmrw_ms = ?,
              hos_viol_shift_ms = ?, hos_viol_cycle_ms = ?, hos_at = ?, hos_driver = ?,
@@ -243,6 +247,12 @@ async function auditHOS(cfg) {
     const vehicles = await fetchVehicles(token);
     const vehById = new Map(vehicles.filter(v => v.id != null).map(v => [String(v.id), v]));
     const clockById = new Map(clocks.filter(c => c.driver && c.driver.id != null).map(c => [String(c.driver.id), c]));
+    // quién trae CADA vehículo ahorita (clave para ICs sin asignación en Samsara)
+    const clockByVeh = new Map();
+    for (const c of clocks) {
+      const cv = c.currentVehicle && c.currentVehicle.id != null ? String(c.currentVehicle.id) : null;
+      if (cv && !clockByVeh.has(cv)) clockByVeh.set(cv, c);
+    }
     const nameIdx = clocks.map(c => [normDrvName((c.driver || {}).name), c]).filter(([k]) => k);
     const nameMatch = (parts) => {
       const hits = new Map();
@@ -271,6 +281,13 @@ async function auditHOS(cfg) {
           run(`UPDATE trucks SET samsara_driver_id = ? WHERE org_id = ? AND number = ?`, String(drvId), t.org_id, t.number);
           out.fixed.push(label + ' → vehicle assignment');
         }
+        out.ok++; continue;
+      }
+      // ¿alguien trae ESTE vehículo rodando ahorita? — ese es su driver (ICs sobre todo)
+      const cv = clockByVeh.get(String(t.samsara_id));
+      if (cv && cv.driver && cv.driver.id != null) {
+        run(`UPDATE trucks SET samsara_driver_id = ? WHERE org_id = ? AND number = ?`, String(cv.driver.id), t.org_id, t.number);
+        out.fixed.push(label + ' → driving it now: ' + (cv.driver.name || cv.driver.id));
         out.ok++; continue;
       }
       // sin id con relojes → intenta por NOMBRE (exacto o subconjunto, único)
