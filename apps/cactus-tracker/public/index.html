@@ -965,7 +965,7 @@ const OFF_EMOJI={vacation:"🌴",shop:"🔧",down:"⛔",personal:"🏠",no_drive
 // ¿rodando o parado AHORITA? (lectura de Samsara de la última media hora)
 function liveMoveHtml(t){
   if(!t.moving_at||date!==board.today)return "";
-  if(Date.now()-Date.parse(t.moving_at)>45*60e3)return ""; // lectura vieja: no inventar
+  if(Date.now()-Date.parse(t.moving_at)>20*60e3)return ""; // lectura vieja: no inventar
   return t.moving?`<span class="live mv" title="rolling right now (Samsara)">▶ MOVING</span>`
                  :`<span class="live pk" title="parked right now (Samsara)">■ PARKED</span>`;
 }

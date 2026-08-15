@@ -865,6 +865,9 @@ function applyPlacements(org, summary) {
 
 async function syncSamsara(cfg, opts) {
   const light = !!(opts && opts.light); // SYNC NOW del botón: fresco sí, histórico pesado no
+  // gpsOnly: SOLO posición (1-2 llamadas por org). Es lo que corre cada pocos minutos
+  // para que "rodando/parado" y la ubicación sean del momento, no de hace horas.
+  const gpsOnly = !!(opts && opts.gpsOnly);
   const orgs = all('SELECT * FROM orgs WHERE enabled = 1 AND samsara = 1 ORDER BY sort');
   const summary = { vehicles: 0, matched: 0, flags: 0, suggestions: 0, gps: 0, parkingLogged: 0, areaSuggestions: 0, skippedOrgs: [] };
   const vehiclesByOrg = new Map(); // se los pasamos a syncHOS para no pedirlos DOS veces
@@ -877,8 +880,8 @@ async function syncSamsara(cfg, opts) {
     const divs = all('SELECT * FROM divisions WHERE org_id = ?', org.id);
     const tagToDiv = new Map(divs.filter(d => d.samsara_tag_id).map(d => [String(d.samsara_tag_id), d.id]));
 
-    const vehicles = await fetchVehicles(token);
-    vehiclesByOrg.set(org.id, vehicles);
+    const vehicles = gpsOnly ? [] : await fetchVehicles(token);
+    if (!gpsOnly) vehiclesByOrg.set(org.id, vehicles);
     summary.vehicles += vehicles.length;
 
     for (const v of vehicles) {

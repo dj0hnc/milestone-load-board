@@ -125,7 +125,7 @@ function createTracker(opts) {
   // PERSISTIDO en la DB. Así funciona igual en la PC de la oficina que en una nube que
   // duerme: si el host estaba dormido a las 4:30, el sync corre al primer despertar del
   // día (la visita que lo despertó lo dispara) en vez de perderse hasta mañana.
-  let lastActivityHourKey = '', timer = null, lastUpdCheck = 0;
+  let lastActivityHourKey = '', timer = null, lastUpdCheck = 0, lastGps = 0, gpsBusy = false;
 
   async function tick() {
     // auto-update en cada tick = cada minuto (también domingos): código nuevo → pull + restart
@@ -134,6 +134,17 @@ function createTracker(opts) {
       if (await selfUpdate(log)) return; // se va a reiniciar: no arranques jobs a medias
     }
     const { dateISO, hour, minute, weekday } = ctParts();
+    // POSICIÓN AL MOMENTO: barrido ligero de puro GPS cada 3 min en horario de trabajo
+    // (cada 15 min de noche). Es lo que hace que "rodando/parado" y la ubicación sean de
+    // ahorita. Corre también en domingo: los trokes se mueven aunque no haya despacho.
+    const gpsEvery = (hour >= 4 && hour <= 20) ? 3 * 60000 : 15 * 60000;
+    if (!gpsBusy && Date.now() - lastGps > gpsEvery) {
+      gpsBusy = true; lastGps = Date.now();
+      syncSamsara(config, { gpsOnly: true, skipExtras: true })
+        .then(s => { if (s.gpsError) log('gps live error: ' + s.gpsError); })
+        .catch(e => log('gps live error: ' + (e.message || e)))
+        .finally(() => { gpsBusy = false; });
+    }
     if (weekday === 'Sun') return; // no dispatch Sundays
     const afterOr = (h, m) => hour > h || (hour === h && minute >= m);
     try {
@@ -186,10 +197,7 @@ function createTracker(opts) {
         try { log('hos daily → ' + JSON.stringify(await syncHOSDaily(config, 1))); } catch (e) { log('hos daily error: ' + (e.message || e)); }
         // y la JORNADA de hoy (prendió/apagó) — "terminó" aparece en cuanto apague
         try { log('work times → ' + JSON.stringify(await syncWorkTimes(config, 1))); } catch (e) { log('work times error: ' + (e.message || e)); }
-        // POSICIÓN FRESCA cada 2 h: sin esto el GPS (y "moving/parked", y la foto de la
-        // cámara del "último movimiento") se quedaban congelados desde las 4 AM.
-        try { log('gps refresh → ' + JSON.stringify(await syncSamsara(config, { light: true, skipExtras: true }))); }
-        catch (e) { log('gps refresh error: ' + (e.message || e)); }
+
         snapshotAllToday(); // el estado del día queda guardado conforme avanza (historial)
       }
     } catch (e) {
