@@ -734,14 +734,20 @@ function hosHtml(t){
     }
     return "";
   }
-  if(!hosFresh(t))return "";
-  const d=hosH(t.hos_drive_ms),c=hosH(t.hos_cycle_ms),tm=hosH(t.hos_cycle_tmrw_ms);
-  // si la semana anda seca pero MAÑANA le regresan horas (ciclo rodante), enséñalo:
-  // "0m wk (+8h30m tmrw)" = hoy no, mañana sí — la respuesta del fin de semana
-  const tmTxt=(c!=null&&c<20&&tm!=null&&tm>0)?` <b class="ok">(+${hosFmt(t.hos_cycle_tmrw_ms)} tmrw)</b>`:"";
-  return `<div class="hos" title="Hours of service (Samsara) — drive left today / cycle left this week / hours coming back tomorrow${t.hos_driver?" · "+esc(t.hos_driver):""}">⏱ `+
-    (d!=null?`<b class="${hosCls(d,3,0.5)}">${hosFmt(t.hos_drive_ms)} today</b>`:"")+(d!=null&&c!=null?" · ":"")+
-    (c!=null?`<b class="${hosCls(c,20,8)}">${hosFmt(t.hos_cycle_ms)} wk</b>`:"")+tmTxt+`</div>`;
+  // HOY: lo TRABAJADO manda (did + wk acumulado Lun→hoy) y lo que le queda va claro
+  // como "left". Así un viernes 11 PM se lee "left 0m · did 9h32m · wk 47h" — real.
+  const fresh=hosFresh(t);
+  const w=t.hos_worked?(t.hos_worked.duty_ms!=null?t.hos_worked.duty_ms:t.hos_worked.drive_ms):null;
+  const wkw=t.hos_worked_wk_ms;
+  const parts=[];
+  if(fresh&&t.hos_drive_ms!=null)parts.push(`<b class="${hosCls(hosH(t.hos_drive_ms),3,0.5)}">left ${hosFmt(t.hos_drive_ms)}</b>`);
+  if(w!=null)parts.push(`did <b>${hosFmt(w)}</b>`);
+  if(wkw!=null)parts.push(`wk <b>${hosFmt(wkw)}</b>`);
+  if(!parts.length)return "";
+  const c=hosH(t.hos_cycle_ms),tm=hosH(t.hos_cycle_tmrw_ms);
+  // ciclo seco pero MAÑANA recupera (ciclo rodante) — la respuesta del fin de semana
+  const tmTxt=(fresh&&c!=null&&c<20&&tm!=null&&tm>0)?` <b class="ok">(+${hosFmt(t.hos_cycle_tmrw_ms)} tmrw)</b>`:"";
+  return `<div class="hos" title="Samsara — left: drive time remaining now · did: worked today · wk: worked Mon through today${t.hos_driver?" · "+esc(t.hos_driver):""}">⏱ ${parts.join(" · ")}${tmTxt}</div>`;
 }
 function dnum(t){return t.display_number||t.number;} // el número COMO EN NEWMILE
 function isVirtual(){return ORG==="ALL"||ORG==="SUBS";}
