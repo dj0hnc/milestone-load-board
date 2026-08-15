@@ -317,6 +317,9 @@ class NewMileClient {
   }
 
   // ---------- read helpers (same verified shapes as the desktop) ----------
+  // OJO: NewMile trae ~1,500 trucks en total. El tope viejo de 10 páginas (1,000) dejaba
+  // fuera cientos — entre ellos ICs de CKJ que jamás llegaban al board. 40 páginas cubren
+  // 4,000 con margen; el corte real lo pone total_pages.
   async listTrucksAll() {
     let rows = [], page = 1, totalPages = 1;
     do {
@@ -324,7 +327,19 @@ class NewMileClient {
       rows = rows.concat((r && (r.trucks || r.results || r.rows)) || []);
       totalPages = (r && (r.total_pages || r.pages)) || 1;
       page++;
-    } while (page <= totalPages && page <= 10);
+    } while (page <= totalPages && page <= 40);
+    return rows;
+  }
+
+  // Trucks de UNA flota, filtrado en el servidor (2 páginas para CKJ en vez de 15).
+  async listTrucksByFleet(fleetId) {
+    let rows = [], page = 1, totalPages = 1;
+    do {
+      const r = await this.callTool('list_resources', { resource_type: 'truck', filters: { fleet_id: fleetId, page, page_size: 100 } });
+      rows = rows.concat((r && (r.trucks || r.results || r.rows)) || []);
+      totalPages = (r && (r.total_pages || r.pages)) || 1;
+      page++;
+    } while (page <= totalPages && page <= 20);
     return rows;
   }
 

@@ -120,16 +120,19 @@ async function reconcileICs(client, opts) {
   const kt = get(`SELECT * FROM orgs WHERE id = 'KT'`);
   if (!kt) return { error: 'KT org not configured' };
   const fleetId = kt.nm_fleet_id;
-  const nmTrucks = await client.listTrucksAll();
-  // fleet 6 + completitud por dueño (Arango y otros llegan con fleet_id vacío)
-  const inFleet = nmTrucks.filter(t => (t.fleet_id != null ? t.fleet_id : (t.fleet && t.fleet.id)) === fleetId);
+  // la flota COMPLETA se pide filtrada en el servidor (no depende del tope de páginas)
+  const inFleet = client.listTrucksByFleet ? await client.listTrucksByFleet(fleetId)
+    : (await client.listTrucksAll()).filter(t => (t.fleet_id != null ? t.fleet_id : (t.fleet && t.fleet.id)) === fleetId);
   const owners = new Set(inFleet.map(t => t.owner_id).filter(x => x != null));
   const mine = inFleet.slice();
+  const seenIds = new Set(inFleet.map(t => t.id));
+  // completitud por dueño: Arango y otros traen fleet_id vacío en la mayoría de sus trokes
+  const nmTrucks = await client.listTrucksAll();
   for (const t of nmTrucks) {
     const fid = t.fleet_id != null ? t.fleet_id : (t.fleet && t.fleet.id);
-    if (!fid && t.owner_id != null && owners.has(t.owner_id) && !mine.includes(t)) mine.push(t);
+    if (!fid && t.owner_id != null && owners.has(t.owner_id) && !seenIds.has(t.id)) { mine.push(t); seenIds.add(t.id); }
   }
-  const out = { nm_ckj_trucks: mine.length, created: [], restored: [], already: 0, kennemer_fleet: 0, skipped: [] };
+  const out = { nm_scanned: nmTrucks.length, nm_ckj_trucks: mine.length, created: [], restored: [], already: 0, kennemer_fleet: 0, skipped: [] };
   for (const t of mine) {
     const raw = String(t.truck_number || '').trim();
     const ownerName = String(t.owner_name || (t.owner && t.owner.name) || '').trim();
