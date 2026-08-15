@@ -24,6 +24,7 @@ function setStatus(st){
   $('#btnReconnect').style.display  = st.connected ? 'none' : ((st.hasToken||st.hasClient) ? '' : 'none');
   $('#btnDisconnect').style.display = st.connected ? '' : 'none';
   $('#btnRefresh').disabled = !st.connected;
+  $('#btnSf').disabled = !st.connected;
 }
 function shortErr(e){ e=String(e); if(e==='NOT_CONNECTED') return 'session expired, reconnect'; return e.length>48?e.slice(0,48)+'…':e; }
 
@@ -311,6 +312,7 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   };
   $('#btnDisconnect').onclick=async()=>{ stopAuto(); setStatus(await window.newmile.disconnect()); toast('Disconnected.'); };
   $('#btnRefresh').onclick=()=>refreshDay(true);   // manual click forces a sequence re-assert
+  $('#btnSf').onclick=()=>window.newmile.sfOpen(); // 📉 weekly service failures + GP of lost loads
 
   // Board → shell bridge: push handoff + dashcam snapshot requests.
   window.addEventListener('message', async (e)=>{

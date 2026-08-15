@@ -51,12 +51,18 @@ function smtpSend(smtp, from, toArr, subject, text, html) {
 }
 
 // ---- Resend (plain HTTPS, no dependency) ----
-async function resendSend(key, from, toArr, subject, html, text) {
+// attachments: [{ filename, content }] where content is a utf8 string (CSV etc.) or a Buffer —
+// Resend wants base64.
+async function resendSend(key, from, toArr, subject, html, text, attachments) {
   try {
+    const atts = (attachments || []).map(a => ({
+      filename: a.filename,
+      content: Buffer.isBuffer(a.content) ? a.content.toString('base64') : Buffer.from(String(a.content), 'utf8').toString('base64')
+    }));
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: from, to: toArr, subject: subject, html: html || undefined, text: text || undefined })
+      body: JSON.stringify({ from: from, to: toArr, subject: subject, html: html || undefined, text: text || undefined, attachments: atts.length ? atts : undefined })
     });
     if (r.ok) return { ok: true };
     const j = await r.json().catch(() => ({}));
@@ -70,6 +76,13 @@ async function sendEmail(cfg, msg) {
   const toArr = (Array.isArray(cfg.to) ? cfg.to : String(cfg.to || '').split(/[,;]/)).map(s => String(s).trim()).filter(Boolean);
   const from = cfg.from || toArr[0];
   if (!toArr.length) return { ok: false, error: 'no recipient (report.to) configured' };
+  // attachments ride only on Resend (the raw SMTP path has no MIME multipart) — when the message
+  // carries attachments and a Resend key exists, go straight to Resend so they aren't dropped.
+  if (msg.attachments && msg.attachments.length && cfg.resendKey) {
+    const r = await resendSend(cfg.resendKey, from, toArr, msg.subject || '', msg.html || '', msg.text || '', msg.attachments);
+    if (r.ok) return { ok: true, via: 'resend', to: toArr };
+    return { ok: false, via: 'resend', error: r.error };
+  }
   // 1) try Office 365 SMTP if creds present
   let smtpErr;
   if (cfg.smtp && cfg.smtp.user && cfg.smtp.pass) {

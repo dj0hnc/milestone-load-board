@@ -78,3 +78,29 @@ newmile.config.json  connection + OAuth (endpoints verified, discovery on)
 ```
 
 See **BUILD.md** to rebuild the .exe from source.
+
+## Cloud reports (report-engine/)
+
+GitHub Actions sends the reports by itself — no PC needed (see `.github/workflows/report.yml`):
+
+- **morning** (7:30am CT) — no-show report.
+- **night** (8pm CT) — fleet assignment for tomorrow.
+- **sf** (Mondays) — **Service Failures + GP dollars of lost loads** for last week Mon-Sat.
+  GP comes from the LOGGED FAILURES (loads counted in the failure notes; Financial/No Show
+  failures with no count = 1; order-level vs truck-level counts deduped), priced at each
+  order's actual avg load size × the PO+material's realized per-unit margin that week
+  (`service_failures` + `orders` + `po_margin` reports). Reported as a range: GP Lost
+  (direct floor) and GP At Risk (every failure ≥1 displaced load). The email attaches the
+  full Design-style PDF (rendered with the runner's Chrome via puppeteer-core; skipped
+  gracefully if unavailable) plus two CSVs (per-order GP + the raw failure log with
+  per-row load counts). Recipients: secret `REPORT_TO_SF` if set (its own list, e.g.
+  leadership), else the shared `REPORT_TO`. Rerun any week manually:
+  Actions → MAB Reports → kind `sf` (uses last week), or locally
+  `node report-engine/report-cli.js sf --local --from=2026-08-03 --to=2026-08-08`.
+
+The same report lives **inside the app**: the **📉 SF Report** button (top bar, enabled when
+connected) opens a viewer for ANY Mon-Sat week — build on demand, **✉ Send** (email with the
+full Design-style PDF + both CSVs attached; Resend key in the window's ⚙ or the config
+`report` block), **🖨 PDF** (the same document the team used to hand-build: executive summary,
+GP of lost loads, failures by day, why/party/customer, no-shows, full failure detail), and
+**💾 Save CSVs**.

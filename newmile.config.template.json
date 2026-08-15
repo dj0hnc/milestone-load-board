@@ -61,5 +61,11 @@
     "rotationSource":  {
                            "mode":  "auto"
                        },
-    "tonsPerLoad":  25
+    "tonsPerLoad":  25,
+    "report":  {
+                   "_comment":  "In-app Service Failure report emailing (📉 SF Report button). to = default recipients (comma-separated); resendKey = Resend API key (or paste it in the SF window's ⚙, stored per user). from must be a Resend-verified sender.",
+                   "to":  "",
+                   "from":  "onboarding@resend.dev",
+                   "resendKey":  ""
+               }
 }
