@@ -194,6 +194,46 @@ async function syncHOS(cfg) {
   return summary;
 }
 
+// Diagnóstico HOS de UN truck: por qué sí/no le llegan relojes. Compara el driver de
+// NewMile contra los nombres reales de Samsara y enseña candidatos parecidos.
+async function debugHOS(cfg, row) {
+  const org = get('SELECT * FROM orgs WHERE id = ?', row.org_id);
+  if (!org || !org.samsara) return { error: 'org has no Samsara' };
+  const token = tokenFor(cfg, org.samsara_org);
+  if (!token) return { error: 'no Samsara token for ' + org.id };
+  const out = {
+    truck: row.display_number || row.number,
+    board_driver: row.driver || '(empty)',
+    samsara_driver_id_stored: row.samsara_driver_id || null,
+    hos_at: row.hos_at || null
+  };
+  // ¿el vehículo tiene driver asignado en Samsara?
+  if (row.samsara_id) {
+    try {
+      const r = await fetch('https://api.samsara.com/fleet/vehicles/' + encodeURIComponent(row.samsara_id),
+        { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
+      const j = r.ok ? await r.json() : null;
+      const sd = j && j.data && j.data.staticAssignedDriver;
+      out.vehicle_assigned_driver = sd ? (sd.name + ' (id ' + sd.id + ')') : 'NONE — assign the driver to the vehicle in Samsara';
+    } catch (e) { out.vehicle_assigned_driver = 'error: ' + (e.message || e); }
+  } else out.vehicle_assigned_driver = 'truck has no samsara_id yet';
+  // relojes en vivo: ¿está el driver? ¿hay nombres parecidos?
+  try {
+    const clocks = await fetchHosClocks(token);
+    out.clock_drivers_total = clocks.length;
+    const parts = String(row.driver || '').split('/').map(normDrvName).filter(Boolean);
+    const byId = row.samsara_driver_id && clocks.find(c => String((c.driver || {}).id) === String(row.samsara_driver_id));
+    out.clock_by_stored_id = byId ? (byId.driver.name || '?') : null;
+    out.exact_name_matches = clocks.filter(c => parts.includes(normDrvName((c.driver || {}).name))).map(c => c.driver.name);
+    const tokens = new Set(parts.join(' ').split(' ').filter(w => w.length > 2));
+    out.similar_names_in_samsara = clocks
+      .map(c => (c.driver || {}).name || '')
+      .filter(n => normDrvName(n).split(' ').some(w => tokens.has(w)))
+      .slice(0, 8);
+  } catch (e) { out.clocks_error = String(e.message || e); }
+  return out;
+}
+
 // GPS snapshot with reverse-geo (same endpoint the desktop uses, plus reverseGeo).
 async function fetchGps(token) {
   let out = {}, after = '', pages = 0;
@@ -573,4 +613,4 @@ async function locateTruck(cfg, orgRow, truck) {
   return { city: city || '', time: g.time || null, speed, moved, last_moved_at: (finalRow && finalRow.last_moved_at) || null };
 }
 
-module.exports = { syncSamsara, syncHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };
+module.exports = { syncSamsara, syncHOS, debugHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };

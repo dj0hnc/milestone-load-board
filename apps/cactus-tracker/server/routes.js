@@ -11,7 +11,7 @@ const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
 const { todayCT, weekDatesCT, daysBetween, normNum, canonArea, canonicalTruckNumber } = require('./util');
 const { syncRoster, syncActivity, scanRipRap } = require('./sync-newmile');
-const { syncSamsara, backfillParking, locateTruck } = require('./sync-samsara');
+const { syncSamsara, backfillParking, locateTruck, debugHOS } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
 
 const VALID_STATUS = ['ok', 'shop', 'down', 'no_driver', 'vacation', 'deleased'];
@@ -246,6 +246,16 @@ function createRouter({ config, newmile, log }) {
     for (const f of EDITABLE) if (f in (req.body || {})) logChange(orgId, number, f, row[f], updated[f], by);
     snapshotTruckDay(updated);
     res.json({ ok: true, truck: updated });
+  });
+
+  // ¿Por qué este truck no trae HOS? Abrir /api/hos/debug?number=169 lo dice completo:
+  // driver del board vs driver asignado en Samsara vs nombres parecidos en los relojes.
+  router.get('/api/hos/debug', async (req, res) => {
+    const hit = truckForAssignment(req.query.number || '');
+    if (!hit) return res.status(404).json({ error: 'truck not found on the board' });
+    const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', hit.org_id, hit.number);
+    try { res.json(await debugHOS(config, row)); }
+    catch (e) { res.status(500).json({ error: String(e.message || e) }); }
   });
 
   // QUITAR DEL BOARD a mano (ruido: trucks viejos, sin chofer, de orgs que ya no corren).
