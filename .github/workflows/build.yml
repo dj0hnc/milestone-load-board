@@ -2,6 +2,10 @@ name: Build Windows + Mac
 
 on:
   workflow_dispatch:        # "Run workflow" button in the Actions tab
+    inputs:
+      version:
+        description: 'Version to tag + release, e.g. 2.6.56 (blank = just build, publish nothing)'
+        default: ''
   push:
     tags: ['v*']            # pushing a tag like v2.6.16 also creates/updates a Release
 
@@ -9,6 +13,15 @@ on:
 # (softprops). We do NOT use actions/upload-artifact anymore — that consumed the
 # Actions artifact-storage quota and broke releases once it filled up. Publishing
 # straight to the Release sidesteps that quota entirely.
+
+# RELEASING WITHOUT PUSHING A TAG: "Run workflow" with a version fills RELEASE_TAG, and
+# softprops CREATES that tag + Release on the built commit using the job's own GITHUB_TOKEN.
+# That makes a release possible from the Actions tab alone (no local git tag push, which some
+# tokens are not scoped for). Pushing a v* tag still works exactly as before: RELEASE_TAG is
+# empty and softprops falls back to the pushed tag.
+env:
+  RELEASE_TAG: ${{ github.event.inputs.version && (startsWith(github.event.inputs.version, 'v') && github.event.inputs.version || format('v{0}', github.event.inputs.version)) || '' }}
+
 jobs:
   windows:
     runs-on: windows-latest
@@ -29,9 +42,10 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npx electron-builder --win portable --x64 --publish never
       - name: Publish exe to the Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || env.RELEASE_TAG != ''
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           files: dist/*.exe
           body: 'Milestone Load Board / Milestone OS — Windows portable .exe + Mac universal .dmg. Internal use only (Miles Ahead Brands).'
 
@@ -54,8 +68,9 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npx electron-builder --mac --publish never
       - name: Publish dmg to the Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || env.RELEASE_TAG != ''
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           files: dist/*.dmg
           body: 'Milestone Load Board / Milestone OS — Windows portable .exe + Mac universal .dmg. Internal use only (Miles Ahead Brands).'
