@@ -468,26 +468,63 @@ async function cameraSnapshot(cfg, row) {
     }
     return out;
   };
-  for (let i = 0; i < 15; i++) {
-    await new Promise(r => setTimeout(r, i === 0 ? 3000 : 3000));
-    const r = await fetch('https://api.samsara.com/cameras/media/retrieval?retrievalId=' + encodeURIComponent(rid),
-      { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
-    if (!r.ok) continue;
-    const j = await r.json();
+  let pending = false;
+  for (let i = 0; i < 5; i++) { // ~12 s: si ya está, se entrega de una
+    await new Promise(r => setTimeout(r, 2500));
+    const j = await pollRetrieval(token, rid);
+    if (!j) continue;
     lastRaw = JSON.stringify(j).slice(0, 600);
     for (const m of deepMedia(j, [])) {
       if (m.status) statuses.add(String(m.status));
       if (!m.status || /available|complete|success|uploaded/i.test(String(m.status))) images.set(m.input, m.url);
     }
     if (images.size >= 2) break;
-    // si TODO viene ya en un estado final sin URL, no tiene caso seguir esperando
     const st = [...statuses].join(',');
-    if (images.size === 0 && st && !/pending|processing|uploading|requested|in_progress/i.test(st)) break;
+    pending = !!st && /pending|processing|uploading|requested|in_progress/i.test(st);
+    if (images.size === 0 && st && !pending) break; // estado final sin foto: cámara mal
   }
   return {
     images: [...images.entries()].map(([input, url]) => ({ input, url })),
-    at: used.at, live: used.live,
-    statuses: [...statuses], raw: images.size ? undefined : lastRaw // crudo solo si falló
+    at: used.at, live: used.live, statuses: [...statuses],
+    // sigue subiendo: el front sigue preguntando con este id (sin bloquear la página)
+    pending: images.size === 0 && pending, retrievalId: images.size === 0 && pending ? rid : undefined,
+    raw: images.size || pending ? undefined : lastRaw
+  };
+}
+
+async function pollRetrieval(token, rid) {
+  const r = await fetch('https://api.samsara.com/cameras/media/retrieval?retrievalId=' + encodeURIComponent(rid),
+    { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
+  return r.ok ? r.json() : null;
+}
+
+// Un solo vistazo al retrieval (el front lo llama cada 5 s mientras la foto sube).
+async function cameraCheck(cfg, row, rid) {
+  const org = get('SELECT * FROM orgs WHERE id = ?', row.org_id);
+  const token = org && tokenFor(cfg, org.samsara_org);
+  if (!token) throw new Error('no Samsara token for ' + row.org_id);
+  const j = await pollRetrieval(token, rid);
+  if (!j) return { images: [], pending: true };
+  const images = new Map(); const statuses = new Set();
+  const walk = (x, out) => {
+    if (Array.isArray(x)) { x.forEach(v => walk(v, out)); return out; }
+    if (x && typeof x === 'object') {
+      const url = (x.urlInfo && (x.urlInfo.url || x.urlInfo.downloadUrl)) || x.url || x.downloadUrl || x.mediaUrl;
+      if (url && typeof url === 'string' && /^https?:/i.test(url)) { out.push({ input: x.input || 'camera', url, status: x.status }); return out; }
+      Object.values(x).forEach(v => walk(v, out));
+    }
+    return out;
+  };
+  for (const m of walk(j, [])) {
+    if (m.status) statuses.add(String(m.status));
+    if (!m.status || /available|complete|success|uploaded/i.test(String(m.status))) images.set(m.input, m.url);
+  }
+  const st = [...statuses].join(',');
+  const stillPending = images.size === 0 && (!st || /pending|processing|uploading|requested|in_progress/i.test(st));
+  return {
+    images: [...images.entries()].map(([input, url]) => ({ input, url })),
+    statuses: [...statuses], pending: stillPending,
+    raw: images.size || stillPending ? undefined : JSON.stringify(j).slice(0, 600)
   };
 }
 
@@ -998,4 +1035,4 @@ async function locateTruck(cfg, orgRow, truck) {
   return { city: city || '', time: g.time || null, speed, moved, last_moved_at: (finalRow && finalRow.last_moved_at) || null };
 }
 
-module.exports = { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, refreshHOSTruck, cameraSnapshot, debugHOS, auditHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };
+module.exports = { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, refreshHOSTruck, cameraSnapshot, cameraCheck, debugHOS, auditHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };

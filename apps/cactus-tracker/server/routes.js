@@ -11,7 +11,7 @@ const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
 const { todayCT, weekDatesCT, daysBetween, normNum, canonArea, canonicalTruckNumber } = require('./util');
 const { syncRoster, syncActivity, scanRipRap, reconcileICs } = require('./sync-newmile');
-const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking, locateTruck, debugHOS, auditHOS, refreshHOSTruck, cameraSnapshot } = require('./sync-samsara');
+const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking, locateTruck, debugHOS, auditHOS, refreshHOSTruck, cameraSnapshot, cameraCheck } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
 
 const VALID_STATUS = ['ok', 'shop', 'down', 'no_driver', 'vacation', 'deleased'];
@@ -430,6 +430,14 @@ function createRouter({ config, newmile, log }) {
     const t = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number);
     if (!t) return res.status(404).json({ error: 'truck not found' });
     try { res.json({ ok: true, ...(await cameraSnapshot(config, t)) }); }
+    catch (e) { res.status(502).json({ error: String(e.message || e) }); }
+  });
+
+  // ¿ya subió la foto? El front pregunta cada 5 s con el id del retrieval (sin bloquear).
+  router.get('/api/truck/:org/:number/camera/:rid', async (req, res) => {
+    const t = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', normNum(req.params.org), normNum(req.params.number));
+    if (!t) return res.status(404).json({ error: 'truck not found' });
+    try { res.json({ ok: true, ...(await cameraCheck(config, t, req.params.rid)) }); }
     catch (e) { res.status(502).json({ error: String(e.message || e) }); }
   });
 

@@ -670,6 +670,9 @@ async function openCamera(org,num){
     const r=await fetch(`${API}/api/truck/${org}/${encodeURIComponent(num)}/camera`,{method:"POST",signal:ctrl.signal});
     clearTimeout(to);
     const j=await r.json().catch(()=>({}));
+    if(r.ok&&j.pending&&j.retrievalId){ // la cámara está subiendo: seguimos preguntando
+      return camWait(org,num,j.retrievalId,j);
+    }
     if(!r.ok){
       if(/CAMERA_OFFLINE/.test(j.error||"")){
         openModal(`<h3>📷 ${esc(dnum(t))}</h3>
@@ -680,7 +683,6 @@ async function openCamera(org,num){
       }
       throw new Error(j.error||("HTTP "+r.status));
     }
-    const L={dashcamRoadFacing:"🛣 Road (front)",dashcamDriverFacing:"👤 Cab (inside)"};
     if(!j.images||!j.images.length){
       const st=(j.statuses||[]).join(", ");
       openModal(`<h3>📷 ${esc(dnum(t))}</h3>
@@ -690,16 +692,48 @@ async function openCamera(org,num){
         <div class="actions"><button class="b-save" onclick="openCamera('${org}','${esc(num)}')">↻ Retake</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
       return;
     }
-    const when=j.live?"· live snapshot":`· camera off now (parked) — last recorded ${j.at?new Date(j.at).toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit",timeZone:"America/Chicago"}):""}`;
-    openModal(`<h3>📷 ${esc(dnum(t))} <small style="font-weight:600;color:var(--mut);">${when}</small></h3>`+
-      j.images.map(im=>`<div style="margin-bottom:10px;">
-        <div style="font-size:12px;font-weight:700;color:var(--stone);margin-bottom:4px;">${L[im.input]||esc(im.input)}</div>
-        <img src="${esc(im.url)}" style="width:100%;border-radius:12px;border:1.5px solid var(--line);" onerror="this.outerHTML='<p style=\\'color:var(--red);font-size:13px;\\'>image expired — hit Retake</p>'">
-      </div>`).join("")+
-      `<div class="actions"><button class="b-save" onclick="openCamera('${org}','${esc(num)}')">↻ Retake</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
+    camShow(org,num,j);
   }catch(e){
     openModal(`<h3>📷 Camera</h3><p style="font-size:14px;color:var(--red);">${esc(e.message)}</p><div class="actions"><button class="b-save" onclick="openCamera('${org}','${esc(num)}')">↻ Try again</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
   }
+}
+// La cámara sube la foto por celular y puede tardar MINUTOS (más si es de una hora
+// pasada). En vez de congelar la página, aquí seguimos preguntando cada 5 s hasta 3 min.
+async function camWait(org,num,rid,first){
+  const t=truckOf(org,num);
+  const show=(secs)=>openModal(`<h3>📷 ${esc(dnum(t))}</h3>
+    <p style="font-size:15px;">📡 <b>The camera is uploading the photo…</b></p>
+    <p style="font-size:13px;color:var(--mut);">It went out over the truck's cellular signal${first&&!first.live?" and this one is from an earlier moment, which takes longer":""}. Hanging on — <b>${secs}s</b>.</p>
+    <div class="actions"><button class="b-cancel" onclick="closeModal()">Close (it keeps uploading)</button></div>`);
+  const t0=Date.now();
+  show(0);
+  while(Date.now()-t0<180000){
+    await new Promise(r=>setTimeout(r,5000));
+    if(!document.querySelector(".modal-bg.show"))return; // la cerró: ya no molestamos
+    let j={};
+    try{
+      const r=await fetch(`${API}/api/truck/${org}/${encodeURIComponent(num)}/camera/${encodeURIComponent(rid)}`);
+      j=await r.json().catch(()=>({}));
+    }catch(e){}
+    if(j.images&&j.images.length)return camShow(org,num,{...j,at:first.at,live:first.live});
+    if(j.ok&&!j.pending)break; // la cámara ya dijo su última palabra y no hubo foto
+    show(Math.round((Date.now()-t0)/1000));
+  }
+  openModal(`<h3>📷 ${esc(dnum(t))}</h3>
+    <p style="font-size:14px;color:var(--amber,#8a5a10);"><b>Still uploading after 3 minutes.</b></p>
+    <p style="font-size:13px;color:var(--mut);">Weak signal where the truck is parked. The photo will finish on its own — hit Retake in a few minutes and it comes back instantly.</p>
+    <div class="actions"><button class="b-save" onclick="openCamera('${org}','${esc(num)}')">↻ Retake</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
+}
+function camShow(org,num,j){
+  const t=truckOf(org,num);
+  const L={dashcamRoadFacing:"🛣 Road (front)",dashcamDriverFacing:"👤 Cab (inside)"};
+  const when=j.live?"· live snapshot":`· camera off now (parked) — last recorded ${j.at?new Date(j.at).toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit",timeZone:"America/Chicago"}):""}`;
+  openModal(`<h3>📷 ${esc(dnum(t))} <small style="font-weight:600;color:var(--mut);">${when}</small></h3>`+
+    j.images.map(im=>`<div style="margin-bottom:10px;">
+      <div style="font-size:12px;font-weight:700;color:var(--stone);margin-bottom:4px;">${L[im.input]||esc(im.input)}</div>
+      <img src="${esc(im.url)}" style="width:100%;border-radius:12px;border:1.5px solid var(--line);" onerror="this.outerHTML='<p style=\\'color:var(--red);font-size:13px;\\'>image expired — hit Retake</p>'">
+    </div>`).join("")+
+    `<div class="actions"><button class="b-save" onclick="openCamera('${org}','${esc(num)}')">↻ Retake</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
 }
 function actHtml(t){
   // equidad: cargas de ESTA semana en cada cuadrito (wk N) — para repartir parejo
