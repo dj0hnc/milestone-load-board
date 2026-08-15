@@ -962,12 +962,16 @@ function render(){
 }
 
 const OFF_EMOJI={vacation:"🌴",shop:"🔧",down:"⛔",personal:"🏠",no_driver:"⚠",deleased:"🚫"};
-// ¿rodando o parado AHORITA? (lectura de Samsara de la última media hora)
+// ¿rodando o parado AHORITA? Un equipo APAGADO deja de mandar señal — eso ES estar
+// estacionado, así que lectura vieja = PARKED (no esconder). Solo calla sin señal alguna.
 function liveMoveHtml(t){
-  if(!t.moving_at||date!==board.today)return "";
-  if(Date.now()-Date.parse(t.moving_at)>20*60e3)return ""; // lectura vieja: no inventar
-  return t.moving?`<span class="live mv" title="rolling right now (Samsara)">▶ MOVING</span>`
-                 :`<span class="live pk" title="parked right now (Samsara)">■ PARKED</span>`;
+  if(date!==board.today)return "";
+  if(!t.moving_at&&!t.samsara_seen_at)return "";
+  if(!t.samsara_id&&t.is_sub)return "";
+  const at=t.moving_at||t.samsara_seen_at;
+  const fresh=Date.now()-Date.parse(at)<=20*60e3;
+  if(fresh&&t.moving)return `<span class="live mv" title="rolling right now (Samsara)">▶ MOVING</span>`;
+  return `<span class="live pk" title="${fresh?"parked right now (Samsara)":"engine off — parked (last signal "+tsMdy(at)+")"}">■ PARKED</span>`;
 }
 // en qué va la carga de NewMile ("driving to pickup", "at delivery"…) — solo si va en una
 function liveLoadHtml(t){

@@ -125,7 +125,7 @@ function createTracker(opts) {
   // PERSISTIDO en la DB. Así funciona igual en la PC de la oficina que en una nube que
   // duerme: si el host estaba dormido a las 4:30, el sync corre al primer despertar del
   // día (la visita que lo despertó lo dispara) en vez de perderse hasta mañana.
-  let lastActivityHourKey = '', timer = null, lastUpdCheck = 0, lastGps = 0, gpsBusy = false;
+  let lastActivityHourKey = '', timer = null, lastUpdCheck = 0, lastGps = 0, gpsBusy = false, lastFast = 0, fastBusy = false;
 
   async function tick() {
     // auto-update en cada tick = cada minuto (también domingos): código nuevo → pull + restart
@@ -144,6 +144,20 @@ function createTracker(opts) {
         .then(s => { if (s.gpsError) log('gps live error: ' + s.gpsError); })
         .catch(e => log('gps live error: ' + (e.message || e)))
         .finally(() => { gpsBusy = false; });
+    }
+    // CARRIL RÁPIDO cada 15 min (60 de noche): censo Samsara (flags, drivers asignados,
+    // trucks nuevos) + relojes HOS. Son 3-4 llamadas por org — barato, y todo se siente
+    // del momento en vez de "una vez al día".
+    const fastEvery = (hour >= 4 && hour <= 20) ? 15 * 60000 : 60 * 60000;
+    if (!fastBusy && Date.now() - lastFast > fastEvery) {
+      fastBusy = true; lastFast = Date.now();
+      (async () => {
+        try {
+          const s = await syncSamsara(config, { light: true, skipExtras: true }); // censo + GPS + acomodo
+          await syncHOS(config, s.vehiclesByOrg); // relojes con la lista ya en mano
+        } catch (e) { log('fast sync error: ' + (e.message || e)); }
+        finally { fastBusy = false; }
+      })();
     }
     if (weekday === 'Sun') return; // no dispatch Sundays
     const afterOr = (h, m) => hour > h || (hour === h && minute >= m);
