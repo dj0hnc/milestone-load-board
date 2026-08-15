@@ -405,11 +405,35 @@ let offline=false;
 // juntos todos los trokes de Elaine Raper, Dustin Smith, etc. sin importar dónde duerman.
 let groupMode=localStorage.getItem("ct-groupmode")||"owner";
 function setGroupMode(m){groupMode=m;localStorage.setItem("ct-groupmode",m);render();}
+// FAMILIAS DE ICs: "Salvador Ramirez - CKJ", "Tomas Ramirez - CKJ", "Jose Jesus
+// Ramirez - CKJ"… son la MISMA flotilla familiar. Si 2+ dueños distintos comparten el
+// apellido (todos "APELLIDO - CKJ"), se agrupan como "RAMIREZ - CKJ" en la vista By
+// owner. El dueño real de cada truck se sigue viendo dentro del cuadrito y el lápiz.
+let _famMap=null;
+function buildFamilies(){
+  _famMap=new Map();
+  const bySurname=new Map();
+  for(const t of (board.trucks||[])){
+    const o=(t.owner_name||"").trim();
+    const m=o.match(/^(.*\S)\s+(\S+)\s*-\s*CKJ$/i);
+    if(!m)continue;
+    const key=m[2].toUpperCase()+" - CKJ";
+    (bySurname.get(key)||bySurname.set(key,new Set()).get(key)).add(o);
+  }
+  for(const [key,owners] of bySurname){
+    if(owners.size>=2)for(const o of owners)_famMap.set(o,key);
+  }
+}
 function groupOf(t){
   // en modo DUEÑO, un truck sin owner todavía (NewMile no sincronizado) cae a su ZONA en
   // vez de a un blob "(NO OWNER)": así nunca se ve roto, y se reagrupa solo cuando NewMile
   // llene los dueños.
-  if(groupMode==="owner")return (t.owner_name&&t.owner_name.trim())||areaLbl(t.area||"(SIN YARD)");
+  if(groupMode==="owner"){
+    const o=(t.owner_name&&t.owner_name.trim())||"";
+    if(!o)return areaLbl(t.area||"(SIN YARD)");
+    if(!_famMap)buildFamilies();
+    return _famMap.get(o)||o;
+  }
   return areaLbl(t.area||"(SIN YARD)");
 }
 
@@ -779,6 +803,7 @@ function fmtTime(iso){if(!iso)return "—";const d=new Date(iso);return d.toLoca
 // ---------- render ----------
 function render(){
   if(!board){$("board").innerHTML="<p style='color:var(--mut);padding:20px'>Loading…</p>";return;}
+  _famMap=null; // familias se recalculan con cada board fresco
   const virtual=isVirtual();
   const divTrucks=(board.trucks||[]).filter(t=>!t.archived&&subOnlyOk(t)&&(virtual||t.division===division));
   $("btnReset").style.display=virtual?"none":""; // reset es por división concreta
