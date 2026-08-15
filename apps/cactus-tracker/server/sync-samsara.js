@@ -459,13 +459,20 @@ async function cameraSnapshot(cfg, row) {
   // cualquier forma de la respuesta (la clave de la URL cambia según versión del API).
   const images = new Map();
   let lastRaw = null, statuses = new Set();
-  const deepMedia = (x, out) => { // junta todo objeto que traiga input + alguna URL
+  // Junta todo objeto que parezca item de cámara. OJO: un item "pending" todavía NO trae
+  // URL — hay que recoger su status igual, si no el server cree que la cámara está muerta
+  // cuando en realidad la foto viene subiendo por celular.
+  const deepMedia = (x, out) => {
     if (Array.isArray(x)) { x.forEach(v => deepMedia(v, out)); return out; }
     if (x && typeof x === 'object') {
       const url = (x.urlInfo && (x.urlInfo.url || x.urlInfo.downloadUrl)) || x.url || x.downloadUrl || x.mediaUrl;
       if (url && typeof url === 'string' && /^https?:/i.test(url)) {
         out.push({ input: x.input || x.inputName || x.camera || 'camera', url, status: x.status });
         return out; // ya es un item: no recorrer adentro (evita contar la misma foto 2 veces)
+      }
+      if (typeof x.status === 'string' && (x.input || x.inputName || x.mediaType)) {
+        out.push({ input: x.input || x.inputName || 'camera', url: null, status: x.status });
+        return out;
       }
       Object.values(x).forEach(v => deepMedia(v, out));
     }
@@ -479,11 +486,12 @@ async function cameraSnapshot(cfg, row) {
     lastRaw = JSON.stringify(j).slice(0, 600);
     for (const m of deepMedia(j, [])) {
       if (m.status) statuses.add(String(m.status));
-      if (!m.status || /available|complete|success|uploaded/i.test(String(m.status))) images.set(m.input, m.url);
+      if (m.url && (!m.status || /available|complete|success|uploaded/i.test(String(m.status)))) images.set(m.input, m.url);
     }
     if (images.size >= 2) break;
     const st = [...statuses].join(',');
-    pending = !!st && /pending|processing|uploading|requested|in_progress/i.test(st);
+    // sin status conocido = el retrieval apenas arranca: también cuenta como "subiendo"
+    pending = !st || /pending|processing|uploading|requested|in_progress/i.test(st);
     if (images.size === 0 && st && !pending) break; // estado final sin foto: cámara mal
   }
   return {
@@ -514,13 +522,14 @@ async function cameraCheck(cfg, row, rid) {
     if (x && typeof x === 'object') {
       const url = (x.urlInfo && (x.urlInfo.url || x.urlInfo.downloadUrl)) || x.url || x.downloadUrl || x.mediaUrl;
       if (url && typeof url === 'string' && /^https?:/i.test(url)) { out.push({ input: x.input || 'camera', url, status: x.status }); return out; }
+      if (typeof x.status === 'string' && (x.input || x.inputName || x.mediaType)) { out.push({ input: x.input || x.inputName || 'camera', url: null, status: x.status }); return out; }
       Object.values(x).forEach(v => walk(v, out));
     }
     return out;
   };
   for (const m of walk(j, [])) {
     if (m.status) statuses.add(String(m.status));
-    if (!m.status || /available|complete|success|uploaded/i.test(String(m.status))) images.set(m.input, m.url);
+    if (m.url && (!m.status || /available|complete|success|uploaded/i.test(String(m.status)))) images.set(m.input, m.url);
   }
   const st = [...statuses].join(',');
   const stillPending = images.size === 0 && (!st || /pending|processing|uploading|requested|in_progress/i.test(st));
