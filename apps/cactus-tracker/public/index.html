@@ -879,17 +879,23 @@ function render(){
   // y los DELEASED hasta abajo. En modo DUEÑO, sub-orden por ÁREA (por organización Y por
   // área). SUBS / (NO OWNER) siempre al final del board.
   const rank=t=>t.status==="deleased"?3:(t.status==="no_driver"||!(t.driver||"").trim())?2:0;
+  // INACTIVOS AL FONDO: sin carga en el último mes (o sin carga jamás) se van hasta
+  // abajo de su grupo, y un grupo entero inactivo se va hasta abajo del tab. Siguen
+  // visibles y buscables — solo dejan de estorbar arriba.
+  const inact=t=>(t.days_since_last_load==null||t.days_since_last_load>=30)?1:0;
   const last=g=>g==="SUBS"||g==="(NO OWNER)"?1:0;
+  const allInact=g=>groups[g].every(inact)?1:0;
   const areaCmp=(x,y)=>areaLbl(x.area||"(SIN YARD)").localeCompare(areaLbl(y.area||"(SIN YARD)"));
-  for(const g of Object.keys(groups).sort((a,b)=>last(a)-last(b)||a.localeCompare(b))){
+  for(const g of Object.keys(groups).sort((a,b)=>allInact(a)-allInact(b)||last(a)-last(b)||a.localeCompare(b))){
     const list=groups[g];
-    list.sort((x,y)=>rank(x)-rank(y)||(groupMode==="owner"?areaCmp(x,y):0)||String(dnum(x)).localeCompare(String(dnum(y)),undefined,{numeric:true}));
+    list.sort((x,y)=>inact(x)-inact(y)||rank(x)-rank(y)||(groupMode==="owner"?areaCmp(x,y):0)||String(dnum(x)).localeCompare(String(dnum(y)),undefined,{numeric:true}));
     const key=groupKey(g);
     const closed=collapsed.has(key);
     const asig=list.filter(t=>t.state==="a").length;
     const act=list.filter(t=>t.state!=="d"&&!restsToday(t)&&!outOfService(t)).length;
     const full=act>0&&asig>=act;
-    html+=`<div class="group ${closed?"closed":""}"><h2 onclick="toggleGroup('${esc(key)}')"><span><span class="chev">${closed?"▸":"▾"}</span>${esc(areaLbl(g))}</span><small class="${full&&!closed?"full":""}">${closed?list.length+(list.length===1?" truck hidden":" trucks hidden"):(full?"✔ COMPLETE":asig+"/"+act+" assigned")}</small></h2><div class="grid">`;
+    const sleeping=allInact(g)===1;
+    html+=`<div class="group ${closed?"closed":""}"${sleeping?' style="opacity:.72;"':""}><h2 onclick="toggleGroup('${esc(key)}')"><span><span class="chev">${closed?"▸":"▾"}</span>${esc(areaLbl(g))}${sleeping?' <span style="font-size:11px;font-weight:600;color:var(--mut);text-transform:none;letter-spacing:0;">💤 no loads in a month</span>':""}</span><small class="${full&&!closed?"full":""}">${closed?list.length+(list.length===1?" truck hidden":" trucks hidden"):(full?"✔ COMPLETE":asig+"/"+act+" assigned")}</small></h2><div class="grid">`;
     if(!closed)for(const t of list)html+=chipHtml(t);
     html+="</div></div>";
   }
