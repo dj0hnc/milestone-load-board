@@ -223,6 +223,62 @@ async function syncHOS(cfg) {
   return summary;
 }
 
+// ---- HOS DIARIO: cuánto trabajó cada driver CADA día (/fleet/hos/daily-logs) ----
+// El historial que el board enseña por fecha. Claves defensivas: Samsara anida las
+// duraciones distinto según versión, así que se buscan por patrón en el objeto.
+async function fetchHosDailyLogs(token, startISO, endISO) {
+  let out = [], after = '', pages = 0;
+  do {
+    const url = 'https://api.samsara.com/fleet/hos/daily-logs?startDate=' + startISO + '&endDate=' + endISO +
+      (after ? '&after=' + encodeURIComponent(after) : '');
+    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
+    if (!r.ok) throw new Error('Samsara daily-logs HTTP ' + r.status);
+    const j = await r.json();
+    out = out.concat(j.data || []);
+    after = (j.pagination && j.pagination.hasNextPage) ? j.pagination.endCursor : '';
+    pages++;
+  } while (after && pages < 30);
+  return out;
+}
+function deepFindMs(obj, re, depth) {
+  if (!obj || typeof obj !== 'object' || (depth || 0) > 4) return null;
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v === 'number' && re.test(k)) return v;
+    if (v && typeof v === 'object') { const r = deepFindMs(v, re, (depth || 0) + 1); if (r != null) return r; }
+  }
+  return null;
+}
+async function syncHOSDaily(cfg, days) {
+  const orgs = all('SELECT * FROM orgs WHERE enabled = 1 AND samsara = 1 ORDER BY sort');
+  const today = todayCT();
+  const start = new Date(today + 'T12:00:00Z'); start.setUTCDate(start.getUTCDate() - (days || 8));
+  const startISO = start.toISOString().slice(0, 10);
+  const summary = { entries: 0, saved: 0, skippedOrgs: [] };
+  for (const org of orgs) {
+    const token = tokenFor(cfg, org.samsara_org);
+    if (!token) { summary.skippedOrgs.push(org.id + ' (sin token)'); continue; }
+    let logs;
+    try { logs = await fetchHosDailyLogs(token, startISO, today); } catch (e) { summary['error_' + org.id] = String(e.message || e); continue; }
+    summary.entries += logs.length;
+    if (logs[0] && !metaGet('hos_daily_sample')) metaSet('hos_daily_sample', JSON.stringify(logs[0]).slice(0, 900));
+    for (const e of logs) {
+      const drv = e.driver || {};
+      if (drv.id == null) continue;
+      const day = String(e.logDate || e.date || e.startTime || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+      const drive = deepFindMs(e, /^drive.*(durationMs|Ms)$/i);
+      const duty = deepFindMs(e, /onDuty.*(durationMs|Ms)$/i);
+      if (drive == null && duty == null) continue;
+      run(`INSERT INTO hos_days (driver_id, date, name, drive_ms, duty_ms) VALUES (?,?,?,?,?)
+           ON CONFLICT(driver_id, date) DO UPDATE SET name = excluded.name, drive_ms = excluded.drive_ms, duty_ms = excluded.duty_ms`,
+        String(drv.id), day, String(drv.name || '').slice(0, 60), drive, duty);
+      summary.saved++;
+    }
+  }
+  metaSet('last_sync_hos_daily', nowISO());
+  return summary;
+}
+
 // Diagnóstico HOS de UN truck: por qué sí/no le llegan relojes. Compara el driver de
 // NewMile contra los nombres reales de Samsara y enseña candidatos parecidos.
 async function debugHOS(cfg, row) {
@@ -268,6 +324,11 @@ async function debugHOS(cfg, row) {
     const ms = c => { const k = c.clocks || {}; return ['drive', 'shift', 'cycle'].map(x => k[x] || {}).flatMap(o => Object.values(o)).filter(v => typeof v === 'number'); };
     out.drivers_with_nonzero = clocks.filter(c => ms(c).some(v => v > 0)).length;
   } catch (e) { out.clocks_error = String(e.message || e); }
+  // historial diario guardado para ESTE driver + muestra cruda del endpoint daily-logs
+  out.daily_rows = row.samsara_driver_id
+    ? all('SELECT date, drive_ms, duty_ms FROM hos_days WHERE driver_id = ? ORDER BY date DESC LIMIT 8', String(row.samsara_driver_id))
+    : [];
+  out.daily_sample_raw = (metaGet('hos_daily_sample') || '').slice(0, 500) || null;
   return out;
 }
 
@@ -584,6 +645,8 @@ async function syncSamsara(cfg) {
 
   // HOS de pasada: el mismo SYNC NOW / sync diario deja las horas al día
   try { summary.hos = await syncHOS(cfg); } catch (e) { summary.hosError = String(e.message || e); }
+  // y el HISTORIAL diario (8 días) para ver día a día lo que trabajaron
+  try { summary.hosDaily = await syncHOSDaily(cfg, 8); } catch (e) { summary.hosDailyError = String(e.message || e); }
 
   metaSet('last_sync_samsara', nowISO());
   metaSet('last_sync_samsara_summary', JSON.stringify(summary));
@@ -650,4 +713,4 @@ async function locateTruck(cfg, orgRow, truck) {
   return { city: city || '', time: g.time || null, speed, moved, last_moved_at: (finalRow && finalRow.last_moved_at) || null };
 }
 
-module.exports = { syncSamsara, syncHOS, debugHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };
+module.exports = { syncSamsara, syncHOS, syncHOSDaily, debugHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };

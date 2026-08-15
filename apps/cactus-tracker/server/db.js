@@ -204,6 +204,16 @@ function migrate(d) {
   addCol(d, 'trucks', 'hos_cycle_tmrw_ms', 'INTEGER'); // horas que le REGRESAN mañana (ciclo rodante)
   addCol(d, 'trucks', 'hos_at', "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'hos_driver', "TEXT DEFAULT ''");
+  // HISTORIAL HOS día a día (Samsara daily logs): cuánto MANEJÓ/TRABAJÓ cada driver
+  // cada día — el board lo enseña por fecha y acumula la semana.
+  d.exec(`CREATE TABLE IF NOT EXISTS hos_days (
+    driver_id TEXT NOT NULL,
+    date TEXT NOT NULL,
+    name TEXT DEFAULT '',
+    drive_ms INTEGER,
+    duty_ms INTEGER,
+    PRIMARY KEY (driver_id, date)
+  )`);
 }
 
 function addCol(d, table, col, decl) {

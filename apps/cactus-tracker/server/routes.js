@@ -134,6 +134,13 @@ function createRouter({ config, newmile, log }) {
                          WHERE load_date >= ? AND load_date <= ? GROUP BY org_id, number`, wkFrom, wkTo)) {
       wkMap.set(r.org_id + '|' + r.number, r.n);
     }
+    // HOS trabajado: lo de ESTE día y el acumulado de la semana hasta este día (por driver)
+    const hosDayMap = new Map(), hosWkMap = new Map();
+    for (const r of all('SELECT driver_id, drive_ms, duty_ms FROM hos_days WHERE date = ?', date)) hosDayMap.set(r.driver_id, r);
+    for (const r of all(`SELECT driver_id, SUM(COALESCE(duty_ms, drive_ms)) AS n FROM hos_days
+                         WHERE date >= ? AND date <= ? GROUP BY driver_id`, wkFrom, date < wkTo ? date : wkTo)) {
+      hosWkMap.set(r.driver_id, r.n);
+    }
 
     const outTrucks = trucks.map(t => {
       const s = stMap.get(t.org_id + '|' + t.number);
@@ -151,6 +158,8 @@ function createRouter({ config, newmile, log }) {
         state_source: s ? s.source : ((carryMap.get(t.org_id + '|' + t.number) || {}).state === 'd' ? 'carry' : null),
         nm_confirmed: s ? (s.nm_confirmed || 0) : 0,
         nm_dest: s && s.nm_info ? (() => { try { return JSON.parse(s.nm_info); } catch (e) { return []; } })() : [],
+        hos_worked: t.samsara_driver_id ? (hosDayMap.get(String(t.samsara_driver_id)) || null) : null,
+        hos_worked_wk_ms: t.samsara_driver_id ? (hosWkMap.get(String(t.samsara_driver_id)) || null) : null,
         loads_week: wkMap.get(t.org_id + '|' + t.number) || 0,
         down_since: !s && (carryMap.get(t.org_id + '|' + t.number) || {}).state === 'd' ? carryMap.get(t.org_id + '|' + t.number).date : null,
         state_by: s ? s.marked_by : null,

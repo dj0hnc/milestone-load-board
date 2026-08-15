@@ -678,15 +678,19 @@ function hosFmtFull(ms){
   return Math.floor(s/3600)+"h "+Math.floor((s%3600)/60)+"m "+(s%60)+"s";
 }
 function hosHtml(t){
-  if(!hosFresh(t))return "";
-  // HOS es una foto de AHORITA: solo aplica viendo HOY. Viendo MAÑANA enseña únicamente
-  // lo que el driver RECUPERA (para planear). En historial/otros días: nada.
+  // HISTORIAL: viendo un día pasado, enseña lo que TRABAJÓ ese día + acumulado semanal
+  const wkd=t.hos_worked_wk_ms;
   if(date!==board.today){
-    if(date===isoShift(board.today,1)&&t.hos_cycle_tmrw_ms!=null&&t.hos_cycle_tmrw_ms>0){
+    const w=t.hos_worked&&(t.hos_worked.duty_ms!=null?t.hos_worked.duty_ms:t.hos_worked.drive_ms);
+    if(w!=null){
+      return `<div class="hos" title="hours worked that day (Samsara daily log) · week total through that day">⏱ worked <b>${hosFmt(w)}</b>${wkd?` · wk <b>${hosFmt(wkd)}</b>`:""}</div>`;
+    }
+    if(hosFresh(t)&&date===isoShift(board.today,1)&&t.hos_cycle_tmrw_ms!=null&&t.hos_cycle_tmrw_ms>0){
       return `<div class="hos" title="cycle hours this driver gets back tomorrow (rolling 8-day)">⏱ <b class="ok">+${hosFmt(t.hos_cycle_tmrw_ms)} cycle comes back</b></div>`;
     }
     return "";
   }
+  if(!hosFresh(t))return "";
   const d=hosH(t.hos_drive_ms),c=hosH(t.hos_cycle_ms),tm=hosH(t.hos_cycle_tmrw_ms);
   // si la semana anda seca pero MAÑANA le regresan horas (ciclo rodante), enséñalo:
   // "0m wk (+8h30m tmrw)" = hoy no, mañana sí — la respuesta del fin de semana
@@ -1237,11 +1241,17 @@ function openEdit(org,num){
       <b style="color:var(--stone);font-size:11px;text-transform:uppercase;letter-spacing:.5px;">⏱ Hours of service (Samsara) — right now</b>
       <div style="margin-top:3px;">Drive left today: <b>${hosFmtFull(t.hos_drive_ms)}</b> · Shift: <b>${hosFmtFull(t.hos_shift_ms)}</b></div>
       <div>Week (cycle) left: <b>${hosFmtFull(t.hos_cycle_ms)}</b>${t.hos_cycle_tmrw_ms!=null?` · Comes back tomorrow: <b>+${hosFmtFull(t.hos_cycle_tmrw_ms)}</b>`:""}</div>
+      ${t.hos_worked?`<div>Worked today: <b>${hosFmtFull(t.hos_worked.duty_ms!=null?t.hos_worked.duty_ms:t.hos_worked.drive_ms)}</b>${t.hos_worked_wk_ms?` · this week so far: <b>${hosFmtFull(t.hos_worked_wk_ms)}</b>`:""}</div>`:""}
       <div style="font-size:11px;color:var(--mut);margin-top:2px;">${esc(t.hos_driver||"")} · as of ${new Date(t.hos_at).toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"})}</div>
     </div>`:""}
     ${hosFresh(t)&&date===isoShift(board.today,1)&&t.hos_cycle_tmrw_ms!=null?`<div style="border:1.5px solid var(--line);background:#FAF9F6;border-radius:12px;padding:9px 12px;margin:4px 0 8px;font-size:13px;">
       <b style="color:var(--stone);font-size:11px;text-transform:uppercase;letter-spacing:.5px;">⏱ Planning ${mdy(date)}</b>
       <div style="margin-top:3px;">Cycle hours coming back: <b>+${hosFmtFull(t.hos_cycle_tmrw_ms)}</b> · left right now: <b>${hosFmtFull(t.hos_cycle_ms)}</b></div>
+    </div>`:""}
+    ${date<board.today&&t.hos_worked?`<div style="border:1.5px solid var(--line);background:#FAF9F6;border-radius:12px;padding:9px 12px;margin:4px 0 8px;font-size:13px;">
+      <b style="color:var(--stone);font-size:11px;text-transform:uppercase;letter-spacing:.5px;">⏱ ${mdy(date)} (Samsara daily log)</b>
+      <div style="margin-top:3px;">On duty: <b>${hosFmtFull(t.hos_worked.duty_ms)}</b> · Driving: <b>${hosFmtFull(t.hos_worked.drive_ms)}</b></div>
+      ${t.hos_worked_wk_ms?`<div>Week total through ${mdy(date)}: <b>${hosFmtFull(t.hos_worked_wk_ms)}</b></div>`:""}
     </div>`:""}
 
     <div class="sec-t">How is this truck right now?</div>
