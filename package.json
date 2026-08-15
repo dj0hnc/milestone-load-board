@@ -1,8 +1,8 @@
 {
   "name": "milestone-load-board",
   "productName": "Milestone Load Board",
-  "version": "2.6.56",
-  "displayVersion": "2.6.56",
+  "version": "2.6.57",
+  "displayVersion": "2.6.57",
   "description": "Milestone Supply - Texas dispatch load board with a built-in NewMile MCP client: in-app OAuth login, live pull, and confirmed push. Portable single-exe.",
   "author": "Milestone Supply - Texas",
   "license": "UNLICENSED",

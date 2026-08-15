@@ -841,7 +841,18 @@ class NewMileClient {
     // number (e.g. "9483") and let it resolve to the single trucker that has it ("VT9483"),
     // prefix/suffix and all. Only refuse when it's AMBIGUOUS (multiple matches) or none, so we
     // never silently assign the wrong truck. dedupe candidates by id (search can repeat).
-    let hit = rows.find(t => this._normNum(t.truck_number) === key);
+    // AMBIGUOUS EXACT match: two different trucks genuinely carry the same number (1387 is both an
+    // Alanis truck and a Cactus truck). Picking the first row here is a coin flip that puts loads on
+    // the wrong hauler, so refuse and report it — the board asks the dispatcher and sends truck_id,
+    // which never reaches this function. Only an id-less push (an exported plan) can land here.
+    const exact = rows.filter(t => this._normNum(t.truck_number) === key);
+    const exactIds = Array.from(new Set(exact.map(t => t.id)));
+    if (exactIds.length > 1) {
+      this.log('truck "' + key + '" is AMBIGUOUS — ' + exactIds.length + ' trucks carry it (' +
+        exact.map(t => (t.owner_name || 'id ' + t.id)).join(' / ') + '); not guessing, pick it on the board');
+      return null;
+    }
+    let hit = exact[0];
     if (!hit) {
       const contains = rows.filter(t => this._normNum(t.truck_number).indexOf(key) >= 0);
       const ids = Array.from(new Set(contains.map(t => t.id)));

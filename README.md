@@ -34,6 +34,12 @@ A built-in assistant docked in the board:
 - **Live rule checks** — flags ATX Bluewing, missing load limits, trucks with no driver
   (missing_driver risk), the same truck on multiple orders, unknown numbers, and EYK/Watercrest
   (order_default) — **before** you push.
+- **Repeated truck numbers** — when a number belongs to more than one truck (1387 is both an
+  Alanis truck and a Cactus truck), the board asks **which one** before the chip lands, the same
+  way the mobile app asks on push. It remembers the answer for the session, shows the owner on the
+  planner chip (tap it to change), and sends that truck's **NewMile id** on the push, so the
+  assignment can never drift to the other owner. Trucks dragged from the rail or chosen by
+  Auto-plan never ask — they already carry their id.
 - **KPIs / forecast** — projected fulfillment %, trucks/tons planned, orders still short, and
   how many rested trucks are still idle.
 

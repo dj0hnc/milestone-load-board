@@ -260,6 +260,16 @@ input{font-family:inherit}
 .opt.wide{flex-basis:100%;font-size:14px;padding:10px}
 .opt.special.on{background:var(--teal);border-color:var(--teal);color:var(--navy-3)}
 .opt.seqo.on{background:var(--teal);border-color:var(--teal);color:var(--navy-3)}
+/* 🚚 duplicate truck number picker — same number, two different trucks in NewMile */
+.dupc{display:flex;flex-direction:column;gap:7px;padding:0 16px 12px}
+.dupc .dupo{display:flex;align-items:center;gap:9px;text-align:left;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel-2);cursor:pointer;transition:.12s}
+.dupc .dupo:hover{border-color:var(--gold);background:var(--panel)}
+.dupc .dupo .dn{font-family:'Barlow Condensed';font-weight:800;font-size:18px;color:var(--gold-soft);min-width:62px}
+.dupc .dupo .dmeta{flex:1;min-width:0}
+.dupc .dupo .dow{font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dupc .dupo .dsub{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dupc .dupo .dtag{font-family:'Barlow Condensed';font-weight:800;font-size:11px;letter-spacing:.5px;padding:3px 7px;border-radius:6px;background:var(--navy-3);border:1px solid var(--line);color:var(--text-dim)}
+.dg.ddup{background:rgba(200,153,31,.16);border-color:rgba(200,153,31,.5);color:var(--gold-soft);cursor:pointer}
 .numin{width:100%;margin-top:6px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;color:var(--text);font-family:'Barlow Condensed';font-weight:700;font-size:16px;padding:9px 11px;text-align:center}
 .numin:focus{outline:none;border-color:var(--gold)}
 .mbtns{display:flex;gap:8px;padding:4px 16px 16px}
@@ -591,6 +601,17 @@ input{font-family:inherit}
     <div class="mbtns">
       <button class="cancel" onclick="document.getElementById('repScrim').classList.remove('show')">Close</button>
       <button class="ok" onclick="copyReport()">Copy report</button>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="dupScrim">
+  <div class="modal">
+    <h3 id="dupTitle">Which truck?</h3>
+    <div class="sub" id="dupSub"></div>
+    <div class="dupc" id="dupBody"></div>
+    <div class="mbtns">
+      <button class="cancel" id="dupCancel">Cancel</button>
     </div>
   </div>
 </div>
@@ -1520,10 +1541,12 @@ window.__getPendingSync=function(){
       present[t.num.trim().toUpperCase()]=1;
       // send the EXACT NewMile truck id the dispatcher picked (t.id = 't'+id) so duplicate numbers
       // (several "2025" across owners) link to the RIGHT truck instead of being re-resolved by number.
-      var tid=parseInt(String(t.id).replace(/^t/,''),10);
+      // nmTruckId only accepts a clean t<digits> id — a planner placeholder ("t12_8431") used to
+      // parseInt down to 12, i.e. a real but COMPLETELY unrelated truck.
+      var tid=nmTruckId(t);
       // aid pins a pre-loaded chip to its EXACT NewMile assignment row so seq-1/seq-2 are never
       // collapsed or duplicated; new chips (added on the board) have no aid → created fresh.
-      return { truck:t.num, truck_id:(isNaN(tid)?undefined:tid), aid:(a.aid!=null?a.aid:undefined), loads:(typeof a.ll==='number'?a.ll:null), sequence:a.seq||1, rate:(a.rate||'') };}).filter(Boolean);
+      return { truck:t.num, truck_id:tid, owner:(t.owner||''), dup:isDupNum(t.num), aid:(a.aid!=null?a.aid:undefined), loads:(typeof a.ll==='number'?a.ll:null), sequence:a.seq||1, rate:(a.rate||'') };}).filter(Boolean);
     return { order_id:parseInt((''+o.id).replace(/^o/,''),10), disp:o.disp, material:o.mat,
       assignments, removed:__removedFor(o,present), finalize:window.__finalizeQueue.has(oid) };
   }).filter(o=>o.assignments.length||o.removed.length);
@@ -2024,10 +2047,100 @@ function planGroupByNum(num){
   if(/^\d+$/.test(n)) return 'cac';
   return 'sub';
 }
+/* ===== 🚚 DUPLICATE TRUCK NUMBERS — ask which one, never guess =====
+   Two DIFFERENT trucks can carry the same number in NewMile (1387 is both an Alanis truck and a
+   Cactus truck). Trucks dragged/tapped from the rail already carry their NewMile id, so they are
+   never ambiguous. But everywhere the dispatcher TYPES a number — planner cell, order-sheet
+   import, paste — the board used to take the FIRST roster row that matched and push it silently,
+   which is a coin flip on the owner. Now it asks, the way the mobile app asks on push, and
+   remembers the answer for the rest of the session (re-pick from the ⓘ owner tag on the chip). */
+var __dupPick={};                 // dupKey -> truck id the dispatcher chose this session
+function dupKey(n){ return String(n==null?'':n).trim().toUpperCase().replace(/\s+/g,' '); }
+function dupCands(num){ var k=dupKey(num); return k?trucks.filter(function(x){return dupKey(x.num)===k;}):[]; }
+function isDupNum(num){ return dupCands(num).length>1; }
+/* STRICT — the truck a typed number means right now. null = not in the roster, OR repeated and
+   not yet answered. Everything that commits a truck to the board / to NewMile uses this. */
+function dupResolve(num){
+  var c=dupCands(num); if(!c.length) return null;
+  if(c.length===1) return c[0];
+  var id=__dupPick[dupKey(num)];
+  return (id&&c.filter(function(x){return x.id===id;})[0])||null;
+}
+/* BEST-EFFORT — for tallies/labels only (group counts, rule text). Never use it to push. */
+function dupResolveAny(num){ return dupResolve(num)||dupCands(num)[0]||null; }
+/* NewMile's real truck id. Planner-invented trucks get an id like "t12_8431" — parseInt on that
+   returns 12, i.e. somebody ELSE's truck. Only a clean t<digits> id is a real NewMile truck. */
+function nmTruckId(t){ var m=/^t(\d+)$/.exec(String((t&&t.id)||'')); return m?parseInt(m[1],10):undefined; }
+function dupOwnerShort(t){
+  var o=String((t&&t.owner)||'').replace(/\s*[-–]\s*/g,' ').trim();
+  if(!o) return (t&&t.group)||'?';
+  var w=o.split(/\s+/)[0].toUpperCase();
+  return w.length>9?w.slice(0,8)+'…':w;
+}
+/* The dispatcher picked a truck OBJECT (rail, planner search, auto-plan) — the draft only stores its
+   NUMBER, so remember which truck that number meant. They already chose; never ask them again. */
+function dupStamp(tk){ if(tk&&isDupNum(tk.num)) __dupPick[dupKey(tk.num)]=tk.id; return tk; }
+var __dupResolveCancel=null;
+function dupClose(){ document.getElementById('dupScrim').classList.remove('show'); }
+/* Ask the dispatcher which truck a repeated number is. Resolves to the truck, or null if they
+   backed out (the caller then leaves that number alone — we never guess for them). */
+function askDupTruck(num){
+  return new Promise(function(done){
+    var cands=dupCands(num);
+    if(cands.length<2){ done(cands[0]||null); return; }
+    var sc=document.getElementById('dupScrim');
+    document.getElementById('dupTitle').textContent=t('Which truck is ','¿Cuál troca es la ')+dupKey(num)+'?';
+    document.getElementById('dupSub').textContent=
+      cands.length+t(' trucks in NewMile carry this number. Pick the one you meant — the push links to that exact truck.',
+                     ' trocas en NewMile traen este número. Escoge la que quieres — el push se va a ESA troca exacta.');
+    document.getElementById('dupBody').innerHTML=cands.map(function(tk,i){
+      var sub=[tk.driver||t('no driver','sin chofer'), tk.terminal||'', tk.group||''].filter(Boolean).join(' · ');
+      var rot=tk.workedYest===true?t('⚡ ran yesterday','⚡ corrió ayer'):tk.workedYest===false?t('💤 rested','💤 descansó'):'';
+      return '<button class="dupo" data-i="'+i+'"><span class="dn">'+_rEsc(tk.num)+'</span>'+
+             '<span class="dmeta"><span class="dow">'+_rEsc(tk.owner||t('unknown owner','dueño desconocido'))+'</span>'+
+             '<span class="dsub">'+_rEsc(sub)+(rot?' · '+rot:'')+'</span></span>'+
+             '<span class="dtag">'+_rEsc(dupOwnerShort(tk))+'</span></button>';
+    }).join('');
+    function finish(tk){ __dupResolveCancel=null; dupClose(); done(tk||null); }
+    Array.prototype.forEach.call(document.getElementById('dupBody').querySelectorAll('.dupo'),function(b){
+      b.onclick=function(){ var tk=cands[parseInt(b.dataset.i,10)]; __dupPick[dupKey(num)]=tk.id; finish(tk); };
+    });
+    document.getElementById('dupCancel').textContent=t('Skip this truck','Saltar esta troca');
+    document.getElementById('dupCancel').onclick=function(){ finish(null); };
+    sc.onclick=function(e){ if(e.target===sc) finish(null); };   // tap outside = skip, never a guess
+    __dupResolveCancel=function(){ finish(null); };
+    sc.classList.add('show');
+  });
+}
+/* Pre-pass: ask about every repeated number in a batch BEFORE anything is written, one modal at a
+   time. Returns the set of numbers the dispatcher skipped (so callers can report them). */
+async function dupAskAll(nums){
+  var skipped=[], seen={};
+  for(var i=0;i<(nums||[]).length;i++){
+    var k=dupKey(nums[i]); if(!k||seen[k]) continue; seen[k]=1;
+    if(dupCands(k).length<2 || dupResolve(k)) continue;      // unique, or already answered
+    var tk=await askDupTruck(k);
+    if(!tk) skipped.push(k);
+  }
+  return skipped;
+}
+/* Re-pick from the planner chip's owner tag — the dispatcher changes their mind. */
+async function dupRepick(num){
+  if(!isDupNum(num)) return;
+  delete __dupPick[dupKey(num)];
+  var tk=await askDupTruck(num);
+  renderPlanner();
+  if(tk) toast(dupKey(num)+' → '+(tk.owner||dupOwnerShort(tk)));
+}
+window.dupRepick=dupRepick; window.isDupNum=isDupNum; window.dupResolve=dupResolve; window.dupCands=dupCands;
+
 function planResolveTruck(num){
   const key=(num||'').trim(); if(!key) return null;
-  let t=trucks.find(x=>x.num.toLowerCase()===key.toLowerCase());
-  if(t) return t.id;
+  // repeated number with no answer yet → refuse rather than assign the wrong owner's truck.
+  // commitPlanner asks first (dupAskAll), so this only bites a number the dispatcher skipped.
+  const cands=dupCands(key);
+  if(cands.length) return cands.length===1 ? cands[0].id : ((dupResolve(key)||{}).id||null);
+  // not in the roster at all → the planner's own placeholder truck (unchanged behaviour)
   const g=planGroupByNum(key);
   const fleet=g==='cac'?'cactus':(g==='ww'||g==='rho'||g==='pow')?'ckj':'sub';
   const term=g==='ww'?'Whitewright':g==='rho'?'Rhome':g==='pow'?'Powderly':null;
@@ -2173,8 +2286,10 @@ async function readOrderFromSheet(e,oid){
     }
     if(!tr.length){ toast((o.disp||t('order','orden'))+t(': no trucks in ',': sin trocas en ')+(r.file||t('the sheet','la hoja')),true); return; }
     var added=0, dup=0, unresolved=[];
+    // 🚚 the sheet only carries a NUMBER — ask which truck before importing any repeated one
+    var dupSkip=await dupAskAll(tr.map(function(p){return p.num;}));
     tr.forEach(function(p){
-      var t=trucks.find(function(x){return x.num.trim().toLowerCase()===String(p.num).trim().toLowerCase();});
+      var t=dupResolve(p.num);
       if(!t){ unresolved.push(p.num); return; }
       if(o.assigns.some(function(a){return a.truck===t.id;})){ dup++; return; }
       var seq=truckOrderCount(t.id)+1;
@@ -2185,7 +2300,7 @@ async function readOrderFromSheet(e,oid){
     if(o.finalized&&added)o.modified=true;
     if(added)markDraft(o.id);
     render();
-    var msg='📄 '+(o.disp||t('order','orden'))+': +'+added+t(' truck(s) from ',' troca(s) de ')+(r.file||t('the sheet','la hoja'))+(dup?' · '+dup+t(' already there',' ya estaban'):'')+(unresolved.length?' · '+unresolved.length+t(' not found (',' no encontradas (')+unresolved.slice(0,3).join(', ')+')':'');
+    var msg='📄 '+(o.disp||t('order','orden'))+': +'+added+t(' truck(s) from ',' troca(s) de ')+(r.file||t('the sheet','la hoja'))+(dup?' · '+dup+t(' already there',' ya estaban'):'')+(unresolved.length?' · '+unresolved.length+t(' not found (',' no encontradas (')+unresolved.slice(0,3).join(', ')+')':'')+(dupSkip.length?' · '+dupSkip.length+t(' repeated # not picked',' # repetido sin escoger'):'');
     toast(msg, !added);
     if(so&&so._warn&&so._warn.length){ console.warn('Excel match — VERIFY:\n'+so._warn.join('\n')); alert(t('⚠ Check material/pickup on ','⚠ Revisa material/pickup en ')+(o.disp||t('the order','la orden'))+':\n\n'+so._warn.join('\n')); }
   }catch(err){ console.error('readOrderFromSheet',err); toast('Read error: '+(err.message||err),true); }
@@ -2256,7 +2371,7 @@ function planRecalc(oid){
   const pairs=(planDraft[oid]||[]).filter(p=>(p.num||'').trim());
   const g={ww:0,rho:0,pow:0,cac:0,agg:0,sub:0}; let lds=0;
   pairs.forEach(p=>{
-    const t=trucks.find(x=>x.num.toLowerCase()===(p.num||'').trim().toLowerCase());
+    const t=dupResolveAny(p.num);
     const grp=t?planGroup(t):planGroupByNum(p.num); g[grp]=(g[grp]||0)+1;
     lds += (typeof p.lds==='number'?p.lds:0);
   });
@@ -2270,7 +2385,7 @@ function planRecalcTotals(){
   const oids=plOrderedOids();
   const G={ww:0,rho:0,pow:0,cac:0,agg:0,sub:0}; let trks=0,lds=0;
   oids.forEach(oid=>{(planDraft[oid]||[]).filter(p=>(p.num||'').trim()).forEach(p=>{
-    const t=trucks.find(x=>x.num.toLowerCase()===(p.num||'').trim().toLowerCase());
+    const t=dupResolveAny(p.num);
     const grp=t?planGroup(t):planGroupByNum(p.num); G[grp]=(G[grp]||0)+1; trks++; lds+=(typeof p.lds==='number'?p.lds:0);
   });});
   const tf=document.querySelector('#plBody tfoot'); if(tf){
@@ -2306,6 +2421,7 @@ function planPick(tid){
   if(!planDraft[oid])planDraft[oid]=[];
   // drop into the active cell if empty, else append a new pair
   let idx=planLastFocus.i;
+  dupStamp(t);   // picked from the search list — this exact truck, not "some truck numbered 1387"
   if(idx==null||!(planDraft[oid][idx])||(planDraft[oid][idx].num||'').trim()){
     planDraft[oid].push({num:t.num,lds:''}); idx=planDraft[oid].length-1;
   } else { planDraft[oid][idx]={num:t.num,lds:planDraft[oid][idx].lds||''}; }
@@ -2349,6 +2465,7 @@ function planDropTruck(oid,tid,multi){
   const ids=multi?[...selected]:[tid]; let added=0;
   ids.forEach(id=>{const t=T(id);if(!t)return;
     if(planDraft[oid].some(p=>(p.num||'').trim().toLowerCase()===t.num.toLowerCase()))return;
+    dupStamp(t);   // dragged/tapped from the rail — bind the number to THIS truck
     planDraft[oid].push({num:t.num,lds:(typeof lastLL==='number'&&lastLL>0)?lastLL:''});added++;});
   plFocus=oid; renderPlanner();
   toast(added?(added+' truck(s) \u2192 '+O(oid).disp):'Already in the plan for this order',!added);
@@ -2376,13 +2493,20 @@ function renderPlanDetail(){
   const nmNote=(o.nm||0)>0?('<span class="pd-nm">NewMile: '+o.nm+' on order</span>'):'';
   const _sm=planSeqMap()[plFocus]||{};
   const chips=pairs.map((p,i)=>{
-    const t=trucks.find(x=>x.num.toLowerCase()===(p.num||'').trim().toLowerCase());
+    const t=dupResolveAny(p.num);
     const g=(t?planGroup(t):planGroupByNum(p.num)).toUpperCase();
     const drv=t&&t.driver?t.driver:'';
     const sq=_sm[(p.num||'').trim().toUpperCase()]||0;
+    // repeated number → show WHICH truck it is (owner), tap the tag to re-pick
+    // NOTE: `t` is the resolved TRUCK in this scope (it shadows the i18n helper) — use window.t here
+    const dupTag=isDupNum(p.num)
+      ? '<span class="dg ddup" title="'+_rEsc(dupCands(p.num).length+window.t(' trucks share this number — now pushing: ',' trocas traen este número — se va a empujar: ')+((dupResolve(p.num)||{}).owner||window.t('NOT PICKED YET','SIN ESCOGER'))+window.t(' · tap to change',' · toca para cambiar'))+'" onclick="dupRepick(\''+_rEsc(dupKey(p.num).replace(/[\x27\\]/g,''))+'\')">'
+        +(dupResolve(p.num)?_rEsc(dupOwnerShort(t)):'⚠ ?')+'</span>'
+      : '';
     return '<div class="pd-chip" title="'+drv.replace(/"/g,'')+'">'
       +'<input class="dtrk" value="'+(p.num||'').replace(/"/g,'&quot;')+'" placeholder="trk#" list="plTruckList" oninput="planEdit(\''+plFocus+'\','+i+',\'num\',this.value)" onchange="renderPlanner()">'
       +'<span class="dg g-'+g.toLowerCase()+'">'+g+'</span>'
+      +dupTag
       +(sq>1?'<span class="dg dseq" title="Run #'+sq+' of the day for this truck — set by planner row order">'+sq+'º</span>':'')
       +'<input class="dlds" value="'+(p.lds!==''&&p.lds!=null?p.lds:'')+'" placeholder="ld" inputmode="numeric" oninput="planEdit(\''+plFocus+'\','+i+',\'lds\',this.value);updatePlanDetailTotals()" onchange="renderPlanner()">'
       +'<button class="ddel" title="Remove" onclick="planRemovePair(\''+plFocus+'\','+i+')">✕</button>'
@@ -2490,9 +2614,13 @@ function exportPlan(){
   setTimeout(()=>URL.revokeObjectURL(url),1500);
   toast(`Exported plan_${dateISO}.json · ${ordersOut.length} order(s) · ${totalTrucks} trucks → drop in Cowork plans/`);
 }
-function commitPlanner(){
+async function commitPlanner(){
   const oids=plOrderedOids();        // row order top→bottom decides per-truck sequences
   if(!oids.length){toast('No orders selected',true);return;}
+  // 🚚 repeated truck numbers: ask WHICH truck before a single chip lands on the board. Asking up
+  // front (instead of at push time) means the board, the report and NewMile all show the same truck.
+  const _typed=[]; oids.forEach(oid=>(planDraft[oid]||[]).forEach(p=>{ if((p.num||'').trim()) _typed.push(p.num); }));
+  const _dupSkip=await dupAskAll(_typed);
   const committing=new Set(oids);
   // base per-truck sequence = how many OTHER orders (the ones we are NOT rebuilding now) the truck
   // already runs today. We must NOT count the committed orders' current assigns — otherwise a truck
@@ -2521,7 +2649,8 @@ function commitPlanner(){
     if(o.finalized) o.modified=true; touched++;
   });
   render(); renderPlanner();
-  toast(totAssigns?`Planned ${totAssigns} truck assignment(s) across ${touched} order(s)`+(_blk.length?` · ${[...new Set(_blk)].length} 🚩 omitida(s)`:''):(_blk.length?'Ninguna — 🚩 bloqueadas':'Type a truck # and loads first'),!totAssigns);
+  const _dupNote=_dupSkip.length?t(' · ',' · ')+_dupSkip.length+t(' repeated # not picked (','  # repetido sin escoger (')+_dupSkip.join(', ')+')':'';
+  toast(totAssigns?`Planned ${totAssigns} truck assignment(s) across ${touched} order(s)`+(_blk.length?` · ${[...new Set(_blk)].length} 🚩 omitida(s)`:'')+_dupNote:(_blk.length?'Ninguna — 🚩 bloqueadas':(_dupSkip.length?t('Nothing planned — pick which truck the repeated number is','Nada planeado — escoge cuál troca es el número repetido'):'Type a truck # and loads first')),!totAssigns);
   if(_blk.length)window.tnAlertBlocked(_blk);
 }
 
@@ -2579,7 +2708,13 @@ window.__getPlan=function(){
     if(!pairs.length&&!removed.length) return;
     out.push({order_id:parseInt((''+o.id).replace(/^o/,''),10),disp:o.disp,material:o.mat,
       assignments:pairs.map(function(pp){var n=(pp.num||'').trim();
-        return {truck:n,loads:(typeof pp.lds==='number'&&pp.lds>0)?pp.lds:null,
+        // send the EXACT truck the dispatcher picked. Without an id, a repeated number (1387 on
+        // both an Alanis and a Cactus truck) gets re-resolved by NUMBER on the way out and lands
+        // on whichever row NewMile returns first — a coin flip. owner/dup ride along so the push
+        // preview can show WHICH 1387 is about to be written.
+        var tk=dupResolve(n);
+        return {truck:n,truck_id:nmTruckId(tk),owner:(tk&&tk.owner)||'',dup:isDupNum(n),
+          loads:(typeof pp.lds==='number'&&pp.lds>0)?pp.lds:null,
           sequence:(seqMap[oid]&&seqMap[oid][n.toUpperCase()])||1};}),
       removed:removed});
   });
@@ -2852,7 +2987,9 @@ setView('board');
 
   function $id(x){return document.getElementById(x);}
   function num(v){var n=parseFloat(v);return isNaN(n)?0:n;}
-  function resolve(n){ n=(n||'').trim().toLowerCase(); if(!n)return null; return trucks.find(function(t){return (t.num||'').trim().toLowerCase()===n;})||null; }
+  // display/rule lookup only — dupResolveAny falls back to the first truck sharing a repeated
+  // number so the panel can still show a fleet/driver; the PUSH never uses this.
+  function resolve(n){ return dupResolveAny(n); }
   function scopeOids(){ var s=[].concat(Array.from(selectedOrders)).filter(function(o){return O(o);}); if(s.length)return s; return orders.map(function(o){return o.id;}); }
   function usedNums(){ var set={}; Object.keys(planDraft).forEach(function(oid){ (planDraft[oid]||[]).forEach(function(p){ var k=(p.num||'').trim().toLowerCase(); if(k)set[k]=oid; }); }); return set; }
   function plannedLds(oid){ var s=0; (planDraft[oid]||[]).forEach(function(p){ if((p.num||'').trim()) s+=(typeof p.lds==='number'?p.lds:0); }); return s; }
@@ -3017,6 +3154,7 @@ setView('board');
           var t=pool.splice(pick.i,1)[0];
           if(pick.d!=null){ dhSum+=pick.d; dhN++; }
           var lds = forced ? (planOpts.ldsTarget>0?planOpts.ldsTarget:1) : Math.max(1, Math.min(perTruck, rem||perTruck));
+          dupStamp(t);   // auto-plan chose this exact truck — don't make the dispatcher re-pick it
           planDraft[oid].push({num:t.num, lds:lds});
           newSuggest[oid][t.num]=1;
           rem-=lds; assigned++; did++;
@@ -3052,6 +3190,13 @@ setView('board');
         var t=resolve(n);
         if(t && BLUEWING.test(t.owner||'')) issues.push({s:'err',t:'<b>'+n+'</b> is ATX Bluewing — excluded, remove it'});
         if(!t) issues.push({s:'warn',t:'<b>'+n+'</b> not in roster — verify the number before push'});
+        // repeated number: two different trucks carry it. Say which one is going, or demand a pick.
+        if(isDupNum(n)){
+          var _pk=dupResolve(n);
+          issues.push(_pk
+            ? {s:'info',t:'<b>'+n+'</b> is on '+dupCands(n).length+' trucks — pushing <b>'+(_pk.owner||'?')+'</b>'}
+            : {s:'err',t:'<b>'+n+'</b> is on '+dupCands(n).length+' different trucks — pick which one before pushing'});
+        }
         if(t && !t.driver) issues.push({s:'warn',t:'<b>'+n+'</b> has no driver — missing_driver risk'});
         if(t && t.lat!=null && o.pickupLat!=null){
           var dmi=enhHavMi(o.pickupLat,o.pickupLng,t.lat,t.lon);

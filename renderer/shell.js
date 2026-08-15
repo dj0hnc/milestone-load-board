@@ -665,7 +665,11 @@ async function refreshDay(force){
     const all=await window.newmile.refreshAll(date);   // Y/T/Tm orders + roster + rotation + live assignments
     const worked=workedSet(all.tickets||[]);
     const trucksMapped=dedupeTrucks(all.trucks||[]).map(t=>mapTruck(t,worked));
-    const numToId={}; trucksMapped.forEach(t=>{ numToId[t.num.trim().toLowerCase()]=t.id; });
+    // number -> board truck id, PLUS an id-keyed lane ('#t123'). Several trucks can share a number
+    // (1387 exists under two owners) and a number-only map keeps whichever row came last, so a live
+    // assignment landed on the wrong chip and wiped out the truck the dispatcher actually picked.
+    // mapAssigns prefers the assignment's own truck_id and only falls back to the number.
+    const numToId={}; trucksMapped.forEach(t=>{ numToId[t.num.trim().toLowerCase()]=t.id; numToId['#'+t.id]=t.id; });
     const asg=all.assignments||{};
     const onotes=all.orderNotes||{};
     const payload={
@@ -746,7 +750,10 @@ function statusOf(s){ if(s==='paused') return 'paused'; if(s==='pending') return
 function mapAssigns(rows, numToId, unit){
   const out=[];
   (rows||[]).forEach(r=>{
-    const tid=numToId[(r.truck_number||'').trim().toLowerCase()];
+    // bind by NewMile truck id first — the only thing that tells two same-numbered trucks apart.
+    // Number lookup stays as the fallback for rows that don't carry an id.
+    const rawTid=(r.truck_id!=null?r.truck_id:((r.truck&&r.truck.id!=null)?r.truck.id:null));
+    const tid=(rawTid!=null?numToId['#t'+rawTid]:null)||numToId[(r.truck_number||'').trim().toLowerCase()];
     if(!tid) return;
     // driver ON THIS assignment (an org can run several drivers) + whether NewMile still needs one
     const driver=(r.driver_name||'').trim();
@@ -909,7 +916,12 @@ function openPush(){
     let rows=o.assignments.map(a=>{
       const bw=/ATX Bluewing/i.test(a.truck);
       const lds=(typeof a.loads==='number'&&a.loads>0)?(a.loads+' load'+(a.loads==1?'':'s')):'∞ open';
-      return `<div class="arow"><span>${esc(a.truck)} · ${lds} ${a.sequence>1?'<span class="seq">seq '+a.sequence+'</span>':''}</span>`+
+      // repeated truck number → spell out WHICH truck is being written, so the last look before the
+      // write shows the owner and not just "1387". No id = nothing picked; the push would guess.
+      const dupTag=a.dup?(a.truck_id!=null
+        ? `<span class="badge b-rate" title="Repeated number — this is the truck being pushed">${esc(a.owner||('id '+a.truck_id))}</span>`
+        : `<span class="badge b-skip" title="This number is on more than one truck and none was picked">⚠ which truck?</span>`):'';
+      return `<div class="arow"><span>${esc(a.truck)} ${dupTag} · ${lds} ${a.sequence>1?'<span class="seq">seq '+a.sequence+'</span>':''}</span>`+
              `<span>${bw?'<span class="badge b-skip">excluded</span>':(def?'<span class="badge b-def">order_default</span>':'<span class="badge b-rate">contracted</span>')}</span></div>`;
     }).join('');
     rows+=(o.removed||[]).map(rm=>
