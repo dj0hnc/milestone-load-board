@@ -440,12 +440,15 @@ async function cameraSnapshot(cfg, row) {
   const minusMin = (iso, m) => new Date(Date.parse(iso) - m * 60000).toISOString().replace(/\.\d+Z$/, 'Z');
   const nowISO2 = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
   const wd = get('SELECT ended_at FROM work_days WHERE org_id = ? AND number = ? AND ended_at IS NOT NULL ORDER BY date DESC LIMIT 1', row.org_id, row.number);
+  // primero AHORITA; si no grababa, momentos recientes (trabajó hoy aunque el último
+  // movimiento guardado esté viejo) y hasta el final su último movimiento conocido
   const candidates = [{ at: nowISO2, live: true }];
+  for (const m of [5, 20, 60, 180]) candidates.push({ at: minusMin(nowISO2, m), live: false });
   for (const ts of [row.last_moved_at, wd && wd.ended_at, row.samsara_seen_at].filter(Boolean)) {
     candidates.push({ at: minusMin(ts, 2), live: false }); // 2 min antes de apagar: aún grababa
   }
   let rid = null, used = null;
-  for (const c of candidates.slice(0, 4)) {
+  for (const c of candidates.slice(0, 7)) {
     const res = await tryCreate(c.at);
     if (res.rid) { rid = res.rid; used = c; break; }
     // notRecording → prueba el siguiente candidato

@@ -186,6 +186,10 @@ function createTracker(opts) {
         try { log('hos daily → ' + JSON.stringify(await syncHOSDaily(config, 1))); } catch (e) { log('hos daily error: ' + (e.message || e)); }
         // y la JORNADA de hoy (prendió/apagó) — "terminó" aparece en cuanto apague
         try { log('work times → ' + JSON.stringify(await syncWorkTimes(config, 1))); } catch (e) { log('work times error: ' + (e.message || e)); }
+        // POSICIÓN FRESCA cada 2 h: sin esto el GPS (y "moving/parked", y la foto de la
+        // cámara del "último movimiento") se quedaban congelados desde las 4 AM.
+        try { log('gps refresh → ' + JSON.stringify(await syncSamsara(config, { light: true, skipExtras: true }))); }
+        catch (e) { log('gps refresh error: ' + (e.message || e)); }
         snapshotAllToday(); // el estado del día queda guardado conforme avanza (historial)
       }
     } catch (e) {
