@@ -11,7 +11,7 @@ const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
 const { todayCT, weekDatesCT, daysBetween, normNum, canonArea, canonicalTruckNumber } = require('./util');
 const { syncRoster, syncActivity, scanRipRap } = require('./sync-newmile');
-const { syncSamsara, backfillParking, locateTruck, debugHOS } = require('./sync-samsara');
+const { syncSamsara, backfillParking, locateTruck, debugHOS, refreshHOSTruck } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
 
 const VALID_STATUS = ['ok', 'shop', 'down', 'no_driver', 'vacation', 'deleased'];
@@ -357,7 +357,10 @@ function createRouter({ config, newmile, log }) {
     const orgRow = get('SELECT * FROM orgs WHERE id = ?', t.org_id);
     try {
       const loc = await locateTruck(config, orgRow, t);
-      res.json({ ok: true, ...loc, truck: get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number) });
+      // el mismo ↻ también deja las HORAS DE SERVICIO de ese driver al segundo
+      let hos = null;
+      try { hos = await refreshHOSTruck(config, t); } catch (e) { /* best effort */ }
+      res.json({ ok: true, ...loc, hos, truck: get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number) });
     } catch (e) {
       res.status(502).json({ error: String(e.message || e) });
     }

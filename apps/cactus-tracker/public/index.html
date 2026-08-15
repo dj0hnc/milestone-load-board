@@ -614,6 +614,8 @@ async function locateNow(org,num){
       if(t){
         t.parked_city=j.truck.parked_city;t.parked_at=j.truck.parked_at;
         if(j.last_moved_at)t.last_moved_at=j.last_moved_at;
+        // el ↻ también trae las HOS frescas de ese driver — píntalas ya
+        for(const k of ["hos_drive_ms","hos_shift_ms","hos_cycle_ms","hos_cycle_tmrw_ms","hos_at","hos_driver","samsara_driver_id"])t[k]=j.truck[k];
         // el GPS manda: si el server lo movió de zona/terminal, el cuadrito se muda ya
         if(j.moved){
           t.area=j.truck.area;t.division=j.truck.division;t.suggested_area=j.truck.suggested_area||"";
@@ -701,6 +703,9 @@ function hosHtml(t){
 }
 function dnum(t){return t.display_number||t.number;} // el número COMO EN NEWMILE
 function isVirtual(){return ORG==="ALL"||ORG==="SUBS";}
+// SUBS solo viven en su tab: fuera de las terminales KT y de Cactus N/S (ruido visual —
+// ni Samsara tienen). Los CKJ ICs NO son subs de a de veras: se quedan en su tab ICS.
+function subOnlyOk(t){return ORG==="SUBS"||!t.is_sub||(t.org_id==="KT"&&/^CKJ/i.test(t.number));}
 function tabLbl(t){
   const tab=(board.tabs||[]).find(x=>x.org_id===t.org_id&&x.id===t.division);
   return tab?tab.label:(t.org_id+(t.division?" "+t.division:" ⚑ UNASSIGNED"));
@@ -712,7 +717,7 @@ function fmtTime(iso){if(!iso)return "—";const d=new Date(iso);return d.toLoca
 function render(){
   if(!board){$("board").innerHTML="<p style='color:var(--mut);padding:20px'>Loading…</p>";return;}
   const virtual=isVirtual();
-  const divTrucks=(board.trucks||[]).filter(t=>!t.archived&&(virtual||t.division===division));
+  const divTrucks=(board.trucks||[]).filter(t=>!t.archived&&subOnlyOk(t)&&(virtual||t.division===division));
   $("btnReset").style.display=virtual?"none":""; // reset es por división concreta
 
   // FALTAN
@@ -854,7 +859,7 @@ function renderBanners(){
   // BLINDAJE: marcados a mano que NO aparecen asignados en NewMile (solo cuando este día
   // ya se cotejó). Estos son los que se te pueden ir — a meterlos a NewMile o despintarlos.
   if(nm.connected&&board.nm_checked&&!board.historical){
-    const ghost=(board.trucks||[]).filter(t=>!t.archived&&!t.is_new&&t.state==="a"&&t.state_source!=="auto"&&!t.nm_confirmed&&(isVirtual()||t.division===division));
+    const ghost=(board.trucks||[]).filter(t=>!t.archived&&!t.is_new&&t.state==="a"&&t.state_source!=="auto"&&!t.nm_confirmed&&subOnlyOk(t)&&(isVirtual()||t.division===division));
     if(ghost.length){
       html+=`<div class="banner baja"><b>⚠ PLANNED HERE, NOT IN NEWMILE · ${ghost.length}</b> — you marked these but they are NOT assigned in NewMile for this day:<br>`+
         ghost.map(t=>`<span class="chip-mini" onclick="jumpTo('${t.org_id}','${esc(t.number)}')">${esc(dnum(t))}</span>`).join("")+`</div>`;

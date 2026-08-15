@@ -223,6 +223,47 @@ async function syncHOS(cfg) {
   return summary;
 }
 
+// HOS EN VIVO de UN truck (botón ↻ del cuadrito): consulta los relojes de SU driver
+// al momento — mismo tap que refresca el GPS deja las horas al segundo.
+async function refreshHOSTruck(cfg, row) {
+  const org = get('SELECT * FROM orgs WHERE id = ?', row.org_id);
+  if (!org || !org.samsara) return null;
+  const token = tokenFor(cfg, org.samsara_org);
+  if (!token) return null;
+  let drvId = row.samsara_driver_id;
+  // sin driver-id guardado: pregúntale al vehículo quién trae asignado ahorita
+  if (!drvId && row.samsara_id) {
+    try {
+      const r = await fetch('https://api.samsara.com/fleet/vehicles/' + encodeURIComponent(row.samsara_id),
+        { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
+      const j = r.ok ? await r.json() : null;
+      const sd = j && j.data && j.data.staticAssignedDriver;
+      if (sd && sd.id != null) {
+        drvId = String(sd.id);
+        run(`UPDATE trucks SET samsara_driver_id = ? WHERE org_id = ? AND number = ?`, drvId, row.org_id, row.number);
+      }
+    } catch (e) { /* best effort */ }
+  }
+  if (!drvId) return null;
+  const r = await fetch('https://api.samsara.com/fleet/hos/clocks?driverIds=' + encodeURIComponent(drvId),
+    { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
+  if (!r.ok) throw new Error('Samsara hos HTTP ' + r.status);
+  const j = await r.json();
+  const c = (j.data || [])[0];
+  if (!c) return null;
+  const ck = c.clocks || {};
+  const pick = (o, ...keys) => { for (const k of keys) if (o && o[k] != null) return Number(o[k]); return null; };
+  const drive = pick(ck.drive, 'driveRemainingDurationMs', 'remainingDurationMs', 'driveRemainingMs');
+  const shift = pick(ck.shift, 'shiftRemainingDurationMs', 'remainingDurationMs', 'shiftRemainingMs');
+  const cycle = pick(ck.cycle, 'cycleRemainingDurationMs', 'remainingDurationMs', 'cycleRemainingMs');
+  const tmrw = pick(ck.cycle, 'cycleTomorrowDurationMs');
+  if (drive == null && shift == null && cycle == null) return null;
+  run(`UPDATE trucks SET hos_drive_ms = ?, hos_shift_ms = ?, hos_cycle_ms = ?, hos_cycle_tmrw_ms = ?, hos_at = ?, hos_driver = ?
+       WHERE org_id = ? AND number = ?`,
+    drive, shift, cycle, tmrw, nowISO(), String((c.driver || {}).name || '').slice(0, 60), row.org_id, row.number);
+  return { drive, shift, cycle, tmrw };
+}
+
 // ---- HOS DIARIO: cuánto trabajó cada driver CADA día (/fleet/hos/daily-logs) ----
 // El historial que el board enseña por fecha. Claves defensivas: Samsara anida las
 // duraciones distinto según versión, así que se buscan por patrón en el objeto.
@@ -713,4 +754,4 @@ async function locateTruck(cfg, orgRow, truck) {
   return { city: city || '', time: g.time || null, speed, moved, last_moved_at: (finalRow && finalRow.last_moved_at) || null };
 }
 
-module.exports = { syncSamsara, syncHOS, syncHOSDaily, debugHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };
+module.exports = { syncSamsara, syncHOS, syncHOSDaily, refreshHOSTruck, debugHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };
