@@ -139,7 +139,17 @@ async function reconcileICs(client, opts) {
     const fid = t.fleet_id != null ? t.fleet_id : (t.fleet && t.fleet.id);
     if (!fid && t.owner_id != null && owners.has(t.owner_id) && !seenIds.has(t.id)) { mine.push(t); seenIds.add(t.id); }
   }
-  const out = { nm_scanned: nmTrucks.length, nm_ckj_trucks: mine.length, created: [], restored: [], already: 0, kennemer_fleet: 0, skipped: [] };
+  const out = { nm_scanned: nmTrucks.length, nm_ckj_trucks: mine.length, created: [], restored: [], already: 0, kennemer_fleet: 0, retagged: [], skipped: [] };
+  // IC vs SUB: un IC es un owner-operator con número PELÓN ("452", "314"). Una compañía
+  // sub (Arango, DUMP-ER) trae su nombre en el número ("269 - Arango", "2011 - DUMP-Er").
+  // Se decide por DUEÑO: si alguno de sus trokes trae letras, TODOS son subhauler — así
+  // el "2018" pelón de DUMP-ER no se queda solo del lado equivocado.
+  const companyOwners = new Set();
+  for (const t of mine) {
+    const raw = String(t.truck_number || '').trim();
+    if (!raw || /^KT[-\s]/i.test(raw)) continue;
+    if (/[A-Za-z]/.test(raw) && t.owner_id != null) companyOwners.add(t.owner_id);
+  }
   for (const t of mine) {
     const raw = String(t.truck_number || '').trim();
     const ownerName = String(t.owner_name || (t.owner && t.owner.name) || '').trim();
@@ -153,6 +163,10 @@ async function reconcileICs(client, opts) {
     const driver = String(t.driver_name || t.driver || '').trim();
     const trailer = shortTrailer(t.truck_type || '');
     const nmId = t.id != null ? t.id : null;
+    // compañía sub (Arango, DUMP-ER) vs IC de verdad (owner-operator con número pelón)
+    const isSubCo = t.owner_id != null && companyOwners.has(t.owner_id);
+    const tags = isSubCo ? 'SUBHAULER' : 'CKJ IC';
+    const div = isSubCo ? null : 'ICS'; // los subs viven en su propio tab, no en ICS
     let row = get(`SELECT * FROM trucks WHERE org_id = 'KT' AND (number = ? OR nm_truck_id = ?)`, key, nmId);
     // NewMile a veces trae el MISMO camión dos veces: "2018" y "2018 - DUMP-Er". Si ya
     // existe uno del MISMO DUEÑO con los mismos dígitos, es el mismo truck: no duplicar.
@@ -179,6 +193,12 @@ async function reconcileICs(client, opts) {
         if (ownerName && ownerName !== row.owner_name) { sets.push('owner_name = ?'); vals.push(ownerName); }
         if (driver && driver !== row.driver) { sets.push('driver = ?'); vals.push(driver); }
         if (trailer && trailer !== row.trailer_type && !row.trailer_override) { sets.push('trailer_type = ?'); vals.push(trailer); }
+        // re-clasifica lo que quedó del lado equivocado (Arango/DUMP-ER marcados IC)
+        if ((row.tags || '') !== tags) {
+          sets.push('tags = ?'); vals.push(tags);
+          if (isSubCo && row.division === 'ICS') { sets.push('division = NULL'); }
+          out.retagged.push((row.display_number || row.number) + ' → ' + (isSubCo ? 'SUB' : 'IC') + ' (' + ownerName + ')');
+        }
         if (sets.length) { sets.push('updated_at = ?'); vals.push(nowISO()); run(`UPDATE trucks SET ${sets.join(', ')} WHERE org_id = 'KT' AND number = ?`, ...vals, row.number); }
       }
       continue;
@@ -186,10 +206,10 @@ async function reconcileICs(client, opts) {
     if (!dry) {
       run(`INSERT INTO trucks (org_id, number, display_number, division, area, driver, trailer_type,
              nm_truck_id, owner_id, owner_name, tags, is_sub, is_new, updated_at)
-           VALUES ('KT',?,?,'ICS','(SIN YARD)',?,?,?,?,?,'CKJ IC',1,0,?)`,
-        key, display, driver, trailer, nmId, t.owner_id != null ? t.owner_id : null, ownerName, nowISO());
+           VALUES ('KT',?,?,?,'(SIN YARD)',?,?,?,?,?,?,1,0,?)`,
+        key, display, div, driver, trailer, nmId, t.owner_id != null ? t.owner_id : null, ownerName, tags, nowISO());
     }
-    out.created.push(display + ' · ' + ownerName + (driver ? ' · ' + driver : ''));
+    out.created.push(display + ' · ' + ownerName + (driver ? ' · ' + driver : '') + (isSubCo ? ' [SUB]' : ' [IC]'));
   }
   return out;
 }
