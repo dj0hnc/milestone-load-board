@@ -106,7 +106,7 @@ h1 span{color:var(--gold);}
 /* A DÓNDE VA: la orden NewMile del día, directo en el cuadrito (cliente → destino) */
 .chip .dest{font-size:11px;font-weight:700;color:#2456a6;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
 /* HOS: horas de servicio que le quedan al driver (hoy y de la semana) */
-.chip .hos{font-size:10.5px;font-weight:600;color:var(--mut);margin-top:2px;white-space:nowrap;}
+.chip .hos{font-size:10.5px;font-weight:600;color:var(--mut);margin-top:2px;line-height:1.35;}
 .chip .hos b.ok{color:var(--green);} .chip .hos b.low{color:#b8853a;} .chip .hos b.out{color:var(--red);}
 .chip .park.mut{color:#9aa1b2;font-weight:600;}
 .btn-loc{position:absolute;bottom:6px;right:6px;width:24px;height:24px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:12px;cursor:pointer;line-height:1;}
@@ -207,6 +207,10 @@ h1 span{color:var(--sand);}
 .btn-edit{top:8px;right:40px;}
 .btn-loc{bottom:8px;right:8px;}
 .btn-cam{bottom:8px;right:40px;}
+/* los botones de esquina (📷 ⟳) flotan sobre el cuadrito: cuando el texto se envuelve se
+   encimaban. Se le reserva el carril de abajo-derecha para que NUNCA se toquen. */
+.chip.has-btns{padding-bottom:34px;}
+.chip .act,.chip .park,.chip .dest,.chip .hos,.chip .drv,.chip .note{overflow-wrap:anywhere;}
 
 /* Segmented controls — pill, tactile */
 .seg,.grpseg{border-color:var(--line);border-radius:12px;box-shadow:var(--sh-card);}
@@ -662,7 +666,7 @@ async function openCamera(org,num){
   const t=truckOf(org,num);if(!t)return;
   openModal(`<h3>📷 ${esc(dnum(t))} — cameras</h3><p style="color:var(--mut);font-size:14px;">📡 Asking the truck for fresh snapshots… takes 10-20 seconds, hang on.</p>`);
   try{
-    const ctrl=new AbortController();const to=setTimeout(()=>ctrl.abort(),50000);
+    const ctrl=new AbortController();const to=setTimeout(()=>ctrl.abort(),75000);
     const r=await fetch(`${API}/api/truck/${org}/${encodeURIComponent(num)}/camera`,{method:"POST",signal:ctrl.signal});
     clearTimeout(to);
     const j=await r.json().catch(()=>({}));
@@ -678,9 +682,11 @@ async function openCamera(org,num){
     }
     const L={dashcamRoadFacing:"🛣 Road (front)",dashcamDriverFacing:"👤 Cab (inside)"};
     if(!j.images||!j.images.length){
+      const st=(j.statuses||[]).join(", ");
       openModal(`<h3>📷 ${esc(dnum(t))}</h3>
-        <p style="font-size:14px;color:var(--red);"><b>No image came back.</b> The camera is likely disconnected — or this truck has no dashcam.</p>
-        <p style="font-size:13px;color:var(--mut);">If it should have one: tell the driver to check the camera and its cable, then hit Retake.</p>
+        <p style="font-size:14px;color:var(--red);"><b>No image came back${st?" — camera says: "+esc(st):""}.</b></p>
+        <p style="font-size:13px;color:var(--mut);">${/pending|process|upload/i.test(st)?"The camera is still uploading (poor signal out there). Hit Retake in a minute.":"Likely disconnected, powered off, or no dashcam on this truck. Tell the driver to check the camera and its cable, then hit Retake."}</p>
+        ${j.raw?`<details style="margin-top:8px;"><summary style="font-size:12px;color:var(--mut);cursor:pointer;">technical detail</summary><pre style="font-size:10px;white-space:pre-wrap;word-break:break-all;color:var(--mut);">${esc(j.raw)}</pre></details>`:""}
         <div class="actions"><button class="b-save" onclick="openCamera('${org}','${esc(num)}')">↻ Retake</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
       return;
     }
@@ -925,7 +931,7 @@ function chipHtml(t){
   const offEmoji=offEntry?(OFF_EMOJI[offEntry.reason]||"⛔"):(off?(OFF_EMOJI[t.status]||"⛔"):"");
   const flag=t.samsara_flag||t.detected_flag;
   const drvChg=t.driver_changed_recent;
-  return `<div class="chip ${cls} ${rest?"rest":""} ${t.star?"starred":""}" id="chip-${cssId(t.org_id+"-"+t.number)}" onclick="tapChip('${t.org_id}','${esc(t.number)}')">
+  return `<div class="chip ${cls} ${rest?"rest":""} ${t.star?"starred":""} ${hasGPS(t)?"has-btns":""}" id="chip-${cssId(t.org_id+"-"+t.number)}" onclick="tapChip('${t.org_id}','${esc(t.number)}')">
     ${t.rip_rap?'<div class="ripflag"></div>':""}
     ${t.state==="a"?`<div class="check ${(t.state_source==="auto"||t.nm_confirmed)?"auto":""}" title="${t.state_source==="auto"?"auto-covered: hauled or assigned in NewMile":(t.nm_confirmed?"planned by you — CONFIRMED in NewMile":"assigned (not yet verified vs NewMile)")}">${(t.state_source==="auto"||t.nm_confirmed)?"⚡":"✓"}</div>`:""}
     ${cls==="s-off"?`<div class="offmark" title="not available">${offEmoji}</div>`:""}

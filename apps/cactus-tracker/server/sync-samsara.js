@@ -452,22 +452,43 @@ async function cameraSnapshot(cfg, row) {
   }
   if (!rid) throw new Error('CAMERA_OFFLINE'); // ni un momento grabado reciente: cámara mal
 
+  // La cámara sube la foto por celular: puede tardar. Se espera hasta ~45 s y se acepta
+  // cualquier forma de la respuesta (la clave de la URL cambia según versión del API).
   const images = new Map();
-  for (let i = 0; i < 9; i++) {
-    await new Promise(r => setTimeout(r, i === 0 ? 3500 : 2500));
+  let lastRaw = null, statuses = new Set();
+  const deepMedia = (x, out) => { // junta todo objeto que traiga input + alguna URL
+    if (Array.isArray(x)) { x.forEach(v => deepMedia(v, out)); return out; }
+    if (x && typeof x === 'object') {
+      const url = (x.urlInfo && (x.urlInfo.url || x.urlInfo.downloadUrl)) || x.url || x.downloadUrl || x.mediaUrl;
+      if (url && typeof url === 'string' && /^https?:/i.test(url)) {
+        out.push({ input: x.input || x.inputName || x.camera || 'camera', url, status: x.status });
+        return out; // ya es un item: no recorrer adentro (evita contar la misma foto 2 veces)
+      }
+      Object.values(x).forEach(v => deepMedia(v, out));
+    }
+    return out;
+  };
+  for (let i = 0; i < 15; i++) {
+    await new Promise(r => setTimeout(r, i === 0 ? 3000 : 3000));
     const r = await fetch('https://api.samsara.com/cameras/media/retrieval?retrievalId=' + encodeURIComponent(rid),
       { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
     if (!r.ok) continue;
     const j = await r.json();
-    let media = (j.data && (j.data.media || j.data)) || [];
-    if (!Array.isArray(media)) media = [];
-    for (const m of media) {
-      const url = (m.urlInfo && m.urlInfo.url) || m.url || m.downloadUrl;
-      if (m.input && url && (!m.status || /available/i.test(String(m.status)))) images.set(m.input, url);
+    lastRaw = JSON.stringify(j).slice(0, 600);
+    for (const m of deepMedia(j, [])) {
+      if (m.status) statuses.add(String(m.status));
+      if (!m.status || /available|complete|success|uploaded/i.test(String(m.status))) images.set(m.input, m.url);
     }
     if (images.size >= 2) break;
+    // si TODO viene ya en un estado final sin URL, no tiene caso seguir esperando
+    const st = [...statuses].join(',');
+    if (images.size === 0 && st && !/pending|processing|uploading|requested|in_progress/i.test(st)) break;
   }
-  return { images: [...images.entries()].map(([input, url]) => ({ input, url })), at: used.at, live: used.live };
+  return {
+    images: [...images.entries()].map(([input, url]) => ({ input, url })),
+    at: used.at, live: used.live,
+    statuses: [...statuses], raw: images.size ? undefined : lastRaw // crudo solo si falló
+  };
 }
 
 // ---- JORNADA: a qué hora PRENDIÓ y APAGÓ cada truck (engine states, eventos ligeros) ----
