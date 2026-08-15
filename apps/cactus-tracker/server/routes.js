@@ -264,6 +264,39 @@ function createRouter({ config, newmile, log }) {
     res.json({ ok: true, truck: updated });
   });
 
+  // BUSCADOR TOTAL: /api/find?q=ramirez busca en TODA la flota (archivados incluidos)
+  // por número, display, driver o dueño — dice dónde vive cada uno y por qué no se ve.
+  router.get('/api/find', (req, res) => {
+    const q = '%' + String(req.query.q || '').trim() + '%';
+    if (q === '%%') return res.status(400).json({ error: 'use ?q=texto' });
+    const rows = all(
+      `SELECT org_id, number, display_number, division, area, driver, owner_name, is_sub, is_new, archived, status, last_load_date
+       FROM trucks
+       WHERE number LIKE ? OR display_number LIKE ? OR driver LIKE ? OR owner_name LIKE ?
+       ORDER BY archived, org_id, number LIMIT 80`, q, q, q, q);
+    res.json({
+      found: rows.length,
+      trucks: rows.map(t => ({
+        truck: t.display_number || t.number, org: t.org_id, division: t.division, area: t.area,
+        driver: t.driver || '', owner: t.owner_name || '', sub: !!t.is_sub,
+        status: t.status, last_load: t.last_load_date || null,
+        visible: t.archived ? 'NO — ARCHIVED (restore below)' : 'yes',
+        restore: t.archived ? `/cactus-tracker/api/truck/${t.org_id}/${encodeURIComponent(t.number)}/restore?yes=1` : undefined
+      }))
+    });
+  });
+
+  // Restaurar un archivado desde el navegador del cel (GET a propósito, con ?yes=1)
+  router.get('/api/truck/:org/:number/restore', (req, res) => {
+    if (req.query.yes !== '1') return res.status(400).json({ error: 'add ?yes=1 to confirm' });
+    const orgId = normNum(req.params.org), number = normNum(req.params.number);
+    const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number);
+    if (!row) return res.status(404).json({ error: 'truck not found' });
+    run(`UPDATE trucks SET archived = 0, maybe_removed = 0 WHERE org_id = ? AND number = ?`, orgId, number);
+    logChange(orgId, number, 'restored', '', 'restored to board via /restore', 'web');
+    res.json({ ok: true, truck: row.display_number || row.number, back_on_board: true });
+  });
+
   // BARRIDO de toda la flota: /api/hos/audit revisa cada truck contra Samsara, amarra
   // los ids que pueda (asignación del vehículo o nombre único) y lista los que no con
   // su razón exacta. Correr después de cambios de drivers o cuando falten relojes.
