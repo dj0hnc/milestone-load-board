@@ -320,6 +320,64 @@ async function syncHOSDaily(cfg, days) {
   return summary;
 }
 
+// ---- JORNADA: a qué hora PRENDIÓ y APAGÓ cada truck (engine states, eventos ligeros) ----
+async function fetchEngineHistory(token, startISO, endISO) {
+  let out = [], after = '', pages = 0;
+  do {
+    const url = 'https://api.samsara.com/fleet/vehicles/stats/history?types=engineStates'
+      + '&startTime=' + encodeURIComponent(startISO) + '&endTime=' + encodeURIComponent(endISO)
+      + (after ? '&after=' + encodeURIComponent(after) : '');
+    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
+    if (!r.ok) throw new Error('Samsara engine history HTTP ' + r.status);
+    const j = await r.json();
+    out = out.concat(j.data || []);
+    after = (j.pagination && j.pagination.hasNextPage) ? j.pagination.endCursor : '';
+    pages++;
+  } while (after && pages < 40);
+  return out;
+}
+const ctDateOf = t => { try { return new Date(t).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }); } catch (e) { return ''; } };
+
+// started_at = primer "On" del día CT · ended_at = último "Off" (solo si quedó apagado;
+// si el último evento es On/Idle sigue afuera → ended_at NULL). Hoy se recalcula en cada
+// sync, así que "terminó" aparece solo cuando de verdad apagó.
+async function syncWorkTimes(cfg, days) {
+  const orgs = all('SELECT * FROM orgs WHERE enabled = 1 AND samsara = 1 ORDER BY sort');
+  const today = todayCT();
+  const summary = { days: 0, saved: 0, skippedOrgs: [] };
+  for (const org of orgs) {
+    const token = tokenFor(cfg, org.samsara_org);
+    if (!token) { summary.skippedOrgs.push(org.id + ' (sin token)'); continue; }
+    for (let d = 0; d < (days || 1); d++) {
+      const day = shiftISO(today, -d);
+      try {
+        // ventana UTC que cubre el día CT completo (CDT/CST); los eventos se
+        // clasifican por SU fecha CT real, así que el margen extra no contamina
+        const endISO = d === 0 ? nowISO() : shiftISO(day, 1) + 'T07:00:00Z';
+        const vehicles = await fetchEngineHistory(token, day + 'T05:00:00Z', endISO);
+        for (const v of vehicles) {
+          const res = resolveSamsaraTruck(org.id, v.name || '');
+          if (!res.row) continue;
+          const evs = (v.engineStates || []).filter(e => e && e.time && ctDateOf(e.time) === day)
+            .sort((a, b) => a.time < b.time ? -1 : 1);
+          if (!evs.length) continue;
+          const firstOn = evs.find(e => /on|idle/i.test(String(e.value)));
+          if (!firstOn) continue;
+          const lastEv = evs[evs.length - 1];
+          const ended = /off/i.test(String(lastEv.value)) ? lastEv.time : null; // sigue afuera si no apagó
+          run(`INSERT INTO work_days (org_id, number, date, started_at, ended_at) VALUES (?,?,?,?,?)
+               ON CONFLICT(org_id, number, date) DO UPDATE SET started_at = excluded.started_at, ended_at = excluded.ended_at`,
+            org.id, res.row.number, day, firstOn.time, ended);
+          summary.saved++;
+        }
+        summary.days++;
+      } catch (e) { summary['error_' + org.id + '_' + day] = String(e.message || e); }
+    }
+  }
+  metaSet('last_sync_worktimes', nowISO());
+  return summary;
+}
+
 // Diagnóstico HOS de UN truck: por qué sí/no le llegan relojes. Compara el driver de
 // NewMile contra los nombres reales de Samsara y enseña candidatos parecidos.
 async function debugHOS(cfg, row) {
@@ -688,6 +746,8 @@ async function syncSamsara(cfg) {
   try { summary.hos = await syncHOS(cfg); } catch (e) { summary.hosError = String(e.message || e); }
   // y el HISTORIAL diario (8 días) para ver día a día lo que trabajaron
   try { summary.hosDaily = await syncHOSDaily(cfg, 8); } catch (e) { summary.hosDailyError = String(e.message || e); }
+  // y la JORNADA (prendió/apagó) de hoy y ayer
+  try { summary.workTimes = await syncWorkTimes(cfg, 2); } catch (e) { summary.workTimesError = String(e.message || e); }
 
   metaSet('last_sync_samsara', nowISO());
   metaSet('last_sync_samsara_summary', JSON.stringify(summary));
@@ -754,4 +814,4 @@ async function locateTruck(cfg, orgRow, truck) {
   return { city: city || '', time: g.time || null, speed, moved, last_moved_at: (finalRow && finalRow.last_moved_at) || null };
 }
 
-module.exports = { syncSamsara, syncHOS, syncHOSDaily, refreshHOSTruck, debugHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };
+module.exports = { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, refreshHOSTruck, debugHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };

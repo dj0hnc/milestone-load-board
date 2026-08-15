@@ -23,7 +23,7 @@ const seed = require('./seed');
 const { createRouter } = require('./routes');
 const { NewMileClient } = require('./newmile-client');
 const { syncRoster, syncActivity, scanRipRap } = require('./sync-newmile');
-const { syncSamsara, syncHOS, syncHOSDaily, backfillParking } = require('./sync-samsara');
+const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking } = require('./sync-samsara');
 const { snapshotAllToday } = require('./history');
 const { ctParts } = require('./util');
 
@@ -184,6 +184,8 @@ function createTracker(opts) {
         try { log('hos sync → ' + JSON.stringify(await syncHOS(config))); } catch (e) { log('hos error: ' + (e.message || e)); }
         // y lo TRABAJADO hoy (daily log de hoy) para el historial día a día
         try { log('hos daily → ' + JSON.stringify(await syncHOSDaily(config, 1))); } catch (e) { log('hos daily error: ' + (e.message || e)); }
+        // y la JORNADA de hoy (prendió/apagó) — "terminó" aparece en cuanto apague
+        try { log('work times → ' + JSON.stringify(await syncWorkTimes(config, 1))); } catch (e) { log('work times error: ' + (e.message || e)); }
         snapshotAllToday(); // el estado del día queda guardado conforme avanza (historial)
       }
     } catch (e) {

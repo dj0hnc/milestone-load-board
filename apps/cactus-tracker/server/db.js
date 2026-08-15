@@ -214,6 +214,16 @@ function migrate(d) {
     duty_ms INTEGER,
     PRIMARY KEY (driver_id, date)
   )`);
+  // JORNADA por día (Samsara engine states): a qué hora PRENDIÓ el truck y a qué hora
+  // APAGÓ por última vez — "empezó a trabajar / terminó". ended_at NULL = sigue afuera.
+  d.exec(`CREATE TABLE IF NOT EXISTS work_days (
+    org_id TEXT NOT NULL,
+    number TEXT NOT NULL,
+    date TEXT NOT NULL,
+    started_at TEXT,
+    ended_at TEXT,
+    PRIMARY KEY (org_id, number, date)
+  )`);
 }
 
 function addCol(d, table, col, decl) {

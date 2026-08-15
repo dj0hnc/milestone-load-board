@@ -1237,6 +1237,12 @@ function openEdit(org,num){
       </div>
     </div>
     ${t.parked_city?`<div class="emod-park">🅿 ${esc(t.parked_city)}${t.parked_at?" · "+new Date(t.parked_at).toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"}):""}${t.last_moved_at?" · last moved "+tsMdy(t.last_moved_at):""}</div>`:""}
+    ${(()=>{ // JORNADA del día visto: prendió → apagó (engine states de Samsara)
+      const w=t.work_day; if(!w||!w.started_at)return "";
+      const tm=x=>new Date(x).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",timeZone:"America/Chicago"});
+      const done=w.ended_at?`⏹ done ${tm(w.ended_at)}`:(date===board.today?`<span style="color:var(--green);font-weight:700;">still out ⏳</span>`:"⏹ ?");
+      return `<div class="emod-park" style="color:var(--dirt);">🕐 ${date===board.today?"Today":mdy(date)}: started ${tm(w.started_at)} → ${done}</div>`;
+    })()}
     ${t.state==="a"&&t.nm_dest&&t.nm_dest.length?`<div style="border:1.5px solid #2456a6;background:var(--blue-bg);border-radius:12px;padding:9px 12px;margin:4px 0 8px;font-size:13px;">
       <b style="color:#2456a6;">⚡ ${mdy(date)} — where it's going:</b>
       ${t.nm_dest.map(d=>`<div style="margin-top:3px;">🚚 <b>${esc(d.c||d.n)}</b>${d.m?" · "+esc(d.m):""}${d.d?" → "+esc(d.d):""}</div>`).join("")}
