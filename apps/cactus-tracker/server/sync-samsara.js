@@ -229,6 +229,69 @@ async function syncHOS(cfg, vehiclesByOrg) {
   return summary;
 }
 
+// ---- BARRIDO AUDITOR: revisa TODOS los trucks, repara lo reparable, lista lo demás ----
+// Categorías: ok · fixed (id amarrado aquí mismo) · no_samsara_link (ni vehículo) ·
+// no_driver_assigned (vehículo sin driver en Samsara y nombre no empata) ·
+// driver_no_clocks (driver amarrado pero sin ELD) · ambiguous_name (2+ candidatos).
+async function auditHOS(cfg) {
+  const orgs = all('SELECT * FROM orgs WHERE enabled = 1 AND samsara = 1 ORDER BY sort');
+  const out = { checked: 0, ok: 0, fixed: [], no_samsara_link: [], no_driver_assigned: [], driver_no_clocks: [], ambiguous_name: [], no_token: [] };
+  for (const org of orgs) {
+    const token = tokenFor(cfg, org.samsara_org);
+    if (!token) { out.no_token.push(org.id); continue; }
+    const clocks = await fetchHosClocks(token);
+    const vehicles = await fetchVehicles(token);
+    const vehById = new Map(vehicles.filter(v => v.id != null).map(v => [String(v.id), v]));
+    const clockById = new Map(clocks.filter(c => c.driver && c.driver.id != null).map(c => [String(c.driver.id), c]));
+    const nameIdx = clocks.map(c => [normDrvName((c.driver || {}).name), c]).filter(([k]) => k);
+    const nameMatch = (parts) => {
+      const hits = new Map();
+      for (const p of parts) for (const [k, c] of nameIdx) {
+        let hit = k === p;
+        if (!hit) {
+          const a = k.split(' '), b = p.split(' ');
+          const [s, bg] = a.length <= b.length ? [a, b] : [b, a];
+          hit = s.length >= 2 && s.every(w => bg.includes(w));
+        }
+        if (hit) hits.set(String((c.driver || {}).id), c);
+      }
+      return [...hits.values()];
+    };
+    const trucks = all(`SELECT * FROM trucks WHERE org_id = ? AND archived = 0 AND (is_sub = 0 OR number LIKE 'CKJ%')`, org.id);
+    for (const t of trucks) {
+      out.checked++;
+      const label = (t.display_number || t.number) + (t.driver ? ' · ' + t.driver : '');
+      if (!t.samsara_id) { out.no_samsara_link.push(label); continue; }
+      let drvId = t.samsara_driver_id;
+      const veh = vehById.get(String(t.samsara_id));
+      const vSd = veh && veh.staticAssignedDriver && veh.staticAssignedDriver.id != null ? String(veh.staticAssignedDriver.id) : null;
+      if (vSd) drvId = vSd; // la asignación oficial del vehículo SIEMPRE manda
+      if (drvId && clockById.has(String(drvId))) {
+        if (String(drvId) !== String(t.samsara_driver_id || '')) {
+          run(`UPDATE trucks SET samsara_driver_id = ? WHERE org_id = ? AND number = ?`, String(drvId), t.org_id, t.number);
+          out.fixed.push(label + ' → vehicle assignment');
+        }
+        out.ok++; continue;
+      }
+      // sin id con relojes → intenta por NOMBRE (exacto o subconjunto, único)
+      const parts = String(t.driver || '').split('/').map(normDrvName).filter(k => k && k !== 'NO DRIVER' && k !== 'DRIVER SIN');
+      const hits = parts.length ? nameMatch(parts).filter(c => clockById.has(String(c.driver.id))) : [];
+      if (hits.length === 1) {
+        const nid = String(hits[0].driver.id);
+        run(`UPDATE trucks SET samsara_driver_id = ? WHERE org_id = ? AND number = ?`, nid, t.org_id, t.number);
+        out.fixed.push(label + ' → by name: ' + hits[0].driver.name);
+        out.ok++; continue;
+      }
+      if (hits.length > 1) { out.ambiguous_name.push(label + ' ≈ ' + hits.map(c => c.driver.name).join(' / ')); continue; }
+      if (drvId) { out.driver_no_clocks.push(label); continue; }
+      out.no_driver_assigned.push(label);
+    }
+  }
+  // con los ids reparados, aplica los relojes de una vez
+  try { out.applied = await syncHOS(cfg); } catch (e) { out.applyError = String(e.message || e); }
+  return out;
+}
+
 // HOS EN VIVO de UN truck (botón ↻ del cuadrito): consulta los relojes de SU driver
 // al momento — mismo tap que refresca el GPS deja las horas al segundo.
 async function refreshHOSTruck(cfg, row) {
@@ -897,4 +960,4 @@ async function locateTruck(cfg, orgRow, truck) {
   return { city: city || '', time: g.time || null, speed, moved, last_moved_at: (finalRow && finalRow.last_moved_at) || null };
 }
 
-module.exports = { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, refreshHOSTruck, cameraSnapshot, debugHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };
+module.exports = { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, refreshHOSTruck, cameraSnapshot, debugHOS, auditHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };

@@ -11,7 +11,7 @@ const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
 const { todayCT, weekDatesCT, daysBetween, normNum, canonArea, canonicalTruckNumber } = require('./util');
 const { syncRoster, syncActivity, scanRipRap } = require('./sync-newmile');
-const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking, locateTruck, debugHOS, refreshHOSTruck, cameraSnapshot } = require('./sync-samsara');
+const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking, locateTruck, debugHOS, auditHOS, refreshHOSTruck, cameraSnapshot } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
 
 const VALID_STATUS = ['ok', 'shop', 'down', 'no_driver', 'vacation', 'deleased'];
@@ -262,6 +262,14 @@ function createRouter({ config, newmile, log }) {
     for (const f of EDITABLE) if (f in (req.body || {})) logChange(orgId, number, f, row[f], updated[f], by);
     snapshotTruckDay(updated);
     res.json({ ok: true, truck: updated });
+  });
+
+  // BARRIDO de toda la flota: /api/hos/audit revisa cada truck contra Samsara, amarra
+  // los ids que pueda (asignación del vehículo o nombre único) y lista los que no con
+  // su razón exacta. Correr después de cambios de drivers o cuando falten relojes.
+  router.get('/api/hos/audit', async (req, res) => {
+    try { res.json(await auditHOS(config)); }
+    catch (e) { res.status(500).json({ error: String(e.message || e) }); }
   });
 
   // ¿Por qué este truck no trae HOS? Abrir /api/hos/debug?number=169 lo dice completo:
