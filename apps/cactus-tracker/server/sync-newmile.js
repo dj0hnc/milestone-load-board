@@ -86,6 +86,13 @@ function matchLoadRow(r, orgs, subNames) {
   // el display también cuenta ("LT245" guardado como display del sub "245")
   const hd = get('SELECT org_id, number FROM trucks WHERE display_number = ?', cand);
   if (hd) return { orgId: hd.org_id, num: hd.number, autoCreate: false };
+  // ALIAS CKJ: los tickets de Arango llegan con SU PROPIO fleet y como "AT269", pero el
+  // truck vive como ARANGO269 ("269 - Arango"). Sin esto se crearían subs duplicados.
+  const ali = ckjAliasKey(r.truck_number);
+  if (ali !== cand) {
+    const ha = get('SELECT org_id, number FROM trucks WHERE number = ?', ali);
+    if (ha) return { orgId: ha.org_id, num: ha.number, autoCreate: false };
+  }
   const pm = /^([A-Z]{1,4})-?(\d{1,4})$/.exec(cand);
   if (pm) {
     // sub ya en el roster con el número INCOMPLETO (Livingston "245" vs NewMile "LT245"):
