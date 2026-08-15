@@ -153,13 +153,26 @@ const normDrvName = s => String(s || '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' 
 
 async function syncHOS(cfg) {
   const orgs = all('SELECT * FROM orgs WHERE enabled = 1 AND samsara = 1 ORDER BY sort');
-  const summary = { drivers: 0, matched: 0, skippedOrgs: [] };
+  const summary = { drivers: 0, matched: 0, assignedIds: 0, skippedOrgs: [] };
   for (const org of orgs) {
     const token = tokenFor(cfg, org.samsara_org);
     if (!token) { summary.skippedOrgs.push(org.id + ' (sin token)'); continue; }
     let clocks;
     try { clocks = await fetchHosClocks(token); } catch (e) { summary['error_' + org.id] = String(e.message || e); continue; }
     summary.drivers += clocks.length;
+    // Vehículo→driver desde el propio Samsara: la asignación oficial gana siempre.
+    // (así "Andrew David Whipkey" de NewMile no importa: el vehículo dice quién es)
+    try {
+      for (const v of await fetchVehicles(token)) {
+        const sd = v.staticAssignedDriver && v.staticAssignedDriver.id != null ? String(v.staticAssignedDriver.id) : null;
+        if (!sd) continue;
+        const res = resolveSamsaraTruck(org.id, v.name || '');
+        if (res.row && res.row.samsara_driver_id !== sd) {
+          run(`UPDATE trucks SET samsara_driver_id = ? WHERE org_id = ? AND number = ?`, sd, org.id, res.row.number);
+          summary.assignedIds++;
+        }
+      }
+    } catch (e) { summary['vehError_' + org.id] = String(e.message || e); }
     const trucks = all('SELECT org_id, number, driver, samsara_driver_id FROM trucks WHERE org_id = ? AND archived = 0', org.id);
     const byDrvId = new Map(trucks.filter(t => t.samsara_driver_id).map(t => [String(t.samsara_driver_id), t]));
     // por nombre solo si es ÚNICO en la flota (dos "JUAN PEREZ" = ambiguo, no adivinar);
@@ -172,15 +185,30 @@ async function syncHOS(cfg) {
         byName.set(k, byName.has(k) ? null : t);
       }
     }
+    // SUBCONJUNTO: "ANDREW WHIPKEY" empata con "ANDREW DAVID WHIPKEY" (≥2 tokens y uno
+    // contiene al otro) — pero solo si el candidato es ÚNICO, si no, no se adivina
+    const nameKeys = [...byName.keys()];
+    const subsetMatch = (k) => {
+      if (!k) return null;
+      if (byName.has(k)) return byName.get(k); // EXACTO gana (null si era ambiguo)
+      const ks = k.split(' ');
+      const hits = nameKeys.filter(nk => {
+        if (nk === k) return true;
+        const ns = nk.split(' ');
+        const [small, big] = ks.length <= ns.length ? [ks, ns] : [ns, ks];
+        return small.length >= 2 && small.every(w => big.includes(w));
+      });
+      return hits.length === 1 ? byName.get(hits[0]) : null;
+    };
     const now = nowISO();
     for (const c of clocks) {
       const drv = c.driver || {}, ck = c.clocks || {};
       const pick = (o, ...keys) => { for (const k of keys) if (o && o[k] != null) return Number(o[k]); return null; };
-      const drive = pick(ck.drive, 'driveRemainingDurationMs', 'remainingDurationMs');
-      const shift = pick(ck.shift, 'shiftRemainingDurationMs', 'remainingDurationMs');
-      const cycle = pick(ck.cycle, 'cycleRemainingDurationMs', 'remainingDurationMs');
+      const drive = pick(ck.drive, 'driveRemainingDurationMs', 'remainingDurationMs', 'driveRemainingMs');
+      const shift = pick(ck.shift, 'shiftRemainingDurationMs', 'remainingDurationMs', 'shiftRemainingMs');
+      const cycle = pick(ck.cycle, 'cycleRemainingDurationMs', 'remainingDurationMs', 'cycleRemainingMs');
       if (drive == null && shift == null && cycle == null) continue;
-      const t = byDrvId.get(String(drv.id)) || byName.get(normDrvName(drv.name));
+      const t = byDrvId.get(String(drv.id)) || subsetMatch(normDrvName(drv.name));
       if (!t) continue;
       run(`UPDATE trucks SET hos_drive_ms = ?, hos_shift_ms = ?, hos_cycle_ms = ?, hos_at = ?, hos_driver = ?,
              samsara_driver_id = COALESCE(samsara_driver_id, ?)
