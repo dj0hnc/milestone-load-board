@@ -359,6 +359,12 @@ class NewMileClient {
     return rows;
   }
 
+  // Cargas de una orden — para saber en qué va la carga EN CURSO de cada truck.
+  async loadsForOrder(orderId) {
+    const r = await this.callTool('list_resources', { resource_type: 'load', filters: { order_id: orderId, page_size: 100 } });
+    return (r && (r.loads || r.results || r.rows)) || [];
+  }
+
   async orderAssignments(orderId) {
     const r = await this.callTool('list_resources', {
       resource_type: 'order_assignment',

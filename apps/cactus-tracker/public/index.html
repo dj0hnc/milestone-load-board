@@ -193,6 +193,11 @@ h1 span{color:var(--sand);}
 .chip .top{padding-right:72px;flex-wrap:wrap;row-gap:5px;align-items:center;}
 .chip .num{display:inline-flex;align-items:center;gap:3px;font-weight:700;font-size:24px;letter-spacing:0;flex-shrink:0;}
 .chip .trl{border-radius:7px;font-weight:600;background:#F1EEE8;color:var(--stone);flex-shrink:0;}
+/* ESTADO EN VIVO arriba a la derecha: rodando/parado + en qué va la carga */
+.chip .live{font-size:9.5px;font-weight:800;letter-spacing:.3px;padding:2px 6px;border-radius:6px;white-space:nowrap;flex-shrink:0;}
+.chip .live.mv{background:#E6F4EA;color:#1e7a3c;}
+.chip .live.pk{background:#EFEFEC;color:var(--stone);}
+.chip .live.ld{background:#E9F0F2;color:#2456a6;}
 .grid{gap:12px;}
 
 /* Inline STAR toggle (next to the number) — no more corner overlap */
@@ -956,6 +961,21 @@ function render(){
 }
 
 const OFF_EMOJI={vacation:"🌴",shop:"🔧",down:"⛔",personal:"🏠",no_driver:"⚠",deleased:"🚫"};
+// ¿rodando o parado AHORITA? (lectura de Samsara de la última media hora)
+function liveMoveHtml(t){
+  if(!t.moving_at||date!==board.today)return "";
+  if(Date.now()-Date.parse(t.moving_at)>45*60e3)return ""; // lectura vieja: no inventar
+  return t.moving?`<span class="live mv" title="rolling right now (Samsara)">▶ MOVING</span>`
+                 :`<span class="live pk" title="parked right now (Samsara)">■ PARKED</span>`;
+}
+// en qué va la carga de NewMile ("driving to pickup", "at delivery"…) — solo si va en una
+function liveLoadHtml(t){
+  const s=t.nm_load_status||"";
+  if(!s||date!==board.today)return "";
+  const p=s.replace(/^load_/,"").replace(/_/g," ").toUpperCase();
+  const ic=/pick/i.test(s)?"⇤":/deliver|drop/i.test(s)?"⇥":"•";
+  return `<span class="live ld" title="NewMile load status">${ic} ${esc(p)}</span>`;
+}
 function chipHtml(t){
   const rest=restsToday(t);
   const offEntry=offOf(t);
@@ -971,7 +991,7 @@ function chipHtml(t){
     ${cls==="s-off"?`<div class="offmark" title="not available">${offEmoji}</div>`:""}
     <button class="btn-edit" onclick="event.stopPropagation();openEdit('${t.org_id}','${esc(t.number)}')" title="Edit">✎</button>
     <button class="btn-down" onclick="tapDown(event,'${t.org_id}','${esc(t.number)}')" title="Mark down">✕</button>
-    <div class="top"><span class="num"><button class="star-btn ${t.star?"on":""}" onclick="toggleStar(event,'${t.org_id}','${esc(t.number)}')" title="${t.star?"Star driver — tap to remove":"Mark as star driver"}">${t.star?"★":"☆"}</button>${esc(dnum(t))}${isVirtual()?`<span class="orgtag ${t.org_id==="KT"?(t.is_sub?"ic":"kt"):(t.is_sub?"sub":"")}">${t.org_id==="KT"?(t.is_sub?"IC":"KT"):(t.is_sub?"SUB":"CACTUS")}</span>`:""}</span>${t.trailer_type?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(t.trailer_type)}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}</div>
+    <div class="top"><span class="num"><button class="star-btn ${t.star?"on":""}" onclick="toggleStar(event,'${t.org_id}','${esc(t.number)}')" title="${t.star?"Star driver — tap to remove":"Mark as star driver"}">${t.star?"★":"☆"}</button>${esc(dnum(t))}${isVirtual()?`<span class="orgtag ${t.org_id==="KT"?(t.is_sub?"ic":"kt"):(t.is_sub?"sub":"")}">${t.org_id==="KT"?(t.is_sub?"IC":"KT"):(t.is_sub?"SUB":"CACTUS")}</span>`:""}</span>${t.trailer_type?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(t.trailer_type)}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}${liveMoveHtml(t)}${liveLoadHtml(t)}</div>
     <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ NO DRIVER"}</div>
     ${t.state==="a"&&t.nm_dest&&t.nm_dest.length?`<div class="dest" title="${esc(t.nm_dest.map(d=>[d.n,d.c,d.m,d.d].filter(Boolean).join(" · ")).join("  +  "))}">🚚 ${t.nm_dest.map(d=>esc([d.c||d.n,d.d||d.m].filter(Boolean).join(" → "))).join(" + ")}</div>`:""}
     ${hosHtml(t)}

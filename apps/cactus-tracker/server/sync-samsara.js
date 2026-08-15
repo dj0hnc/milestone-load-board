@@ -936,6 +936,9 @@ async function syncSamsara(cfg, opts) {
         // movimiento REAL: rodando ahorita, o se desplazó >500 m desde la última lectura
         const moved = (g.speed != null && g.speed >= 3) ||
           (row.last_lat != null && g.lat != null && distKm(row.last_lat, row.last_lon, g.lat, g.lon) > 0.5);
+        // RODANDO vs PARADO ahorita: la velocidad del propio equipo manda
+        run(`UPDATE trucks SET moving = ?, moving_at = ? WHERE org_id = ? AND number = ?`,
+          (g.speed != null && g.speed >= 3) ? 1 : 0, g.time || nowISO(), org.id, row.number);
         if (g.lat != null) {
           run(`UPDATE trucks SET last_lat = ?, last_lon = ?${moved ? ', last_moved_at = ?' : ''} WHERE org_id = ? AND number = ?`,
             g.lat, g.lon, ...(moved ? [g.time || nowISO()] : []), org.id, row.number);
@@ -1001,6 +1004,8 @@ async function locateTruck(cfg, orgRow, truck) {
       city, g.time || nowISO(), nowISO(), truck.org_id, truck.number);
   }
   const speed = g.speedMilesPerHour != null ? g.speedMilesPerHour : null;
+  run(`UPDATE trucks SET moving = ?, moving_at = ? WHERE org_id = ? AND number = ?`,
+    (speed != null && speed >= 3) ? 1 : 0, g.time || nowISO(), truck.org_id, truck.number);
   // movimiento real: rodando ahorita, o se desplazó >500 m desde la última lectura
   const movedNow = (speed != null && speed >= 3) ||
     (truck.last_lat != null && g.latitude != null && distKm(truck.last_lat, truck.last_lon, g.latitude, g.longitude) > 0.5);

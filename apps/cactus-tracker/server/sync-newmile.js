@@ -468,6 +468,22 @@ async function syncActivity(client, days) {
         }
       }
       metaSet('nm_gaps_' + dateISO, JSON.stringify(gaps.sort((a, b) => b.gap - a.gap).slice(0, 40)));
+      // ESTADO DE LA CARGA EN CURSO (solo HOY): "driving to pickup", "at delivery"…
+      // Se guarda por truck para pintarlo en el cuadrito. Las terminadas no cuentan.
+      const liveStatus = new Map();
+      if (dateISO === today && client.loadsForOrder) {
+        const withAssign = rows.filter(r => (r.assignments || []).length).slice(0, 60);
+        const lists = await Promise.all(withAssign.map(async (r) => {
+          try { return await client.loadsForOrder(r.order.id); } catch (e) { return []; }
+        }));
+        for (const loads of lists) for (const ld of loads) {
+          const st = String(ld.status || '');
+          if (!st || /complete|cancel|void/i.test(st)) continue;
+          const raw = ld.truck_number || '';
+          if (raw) liveStatus.set(normNum(raw).replace(/\s+/g, ''), st);
+        }
+        summary[label + 'LiveLoads'] = liveStatus.size;
+      }
       summary[label + 'Assignments'] = assignCount;
       if (gaps.length) summary[label + 'OrderGaps'] = gaps.length;
       for (const n of nums) {
@@ -489,19 +505,20 @@ async function syncActivity(client, days) {
         if (!hit) continue;
         matched.add(hit.org_id + '|' + hit.number);
         const dest = JSON.stringify((destByNum.get(n) || []).slice(0, 3));
+        const lst = liveStatus.get(n) || '';
         // asignado en NewMile = claramente ACTIVO → fuera de "¿de baja?" y des-archivado
         // (falsas alarmas; el dispatcher no debe revisar trucks que están rodando)
         run(`UPDATE trucks SET maybe_removed = 0, archived = 0 WHERE org_id = ? AND number = ? AND (maybe_removed = 1 OR archived = 1)`, hit.org_id, hit.number);
         const st = get('SELECT * FROM dispatch_state WHERE date = ? AND org_id = ? AND number = ?', dateISO, hit.org_id, hit.number);
         if (!st) {
-          run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_at, nm_confirmed, nm_info) VALUES (?,?,?,'a','auto',?,1,?)`,
-            dateISO, hit.org_id, hit.number, nowISO(), dest);
+          run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_at, nm_confirmed, nm_info, nm_load_status) VALUES (?,?,?,'a','auto',?,1,?,?)`,
+            dateISO, hit.org_id, hit.number, nowISO(), dest, lst);
           summary[label + 'Covered'] = (summary[label + 'Covered'] || 0) + 1;
         } else {
           // el truck YA estaba marcado (a mano o auto) → queda CONFIRMADO contra NewMile:
           // el ✓ del dispatcher se vuelve ⚡. La marca manual nunca se pisa, solo se verifica.
-          run(`UPDATE dispatch_state SET nm_confirmed = 1, nm_info = ? WHERE date = ? AND org_id = ? AND number = ?`,
-            dest, dateISO, hit.org_id, hit.number);
+          run(`UPDATE dispatch_state SET nm_confirmed = 1, nm_info = ?, nm_load_status = ? WHERE date = ? AND org_id = ? AND number = ?`,
+            dest, lst, dateISO, hit.org_id, hit.number);
         }
       }
       // los que estaban confirmados pero YA NO aparecen en NewMile pierden el ⚡ (p. ej.

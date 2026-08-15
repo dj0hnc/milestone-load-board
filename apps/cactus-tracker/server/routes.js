@@ -162,6 +162,7 @@ function createRouter({ config, newmile, log }) {
         state: s ? s.state : ((carryMap.get(t.org_id + '|' + t.number) || {}).state === 'd' ? 'd' : 'p'),
         state_source: s ? s.source : ((carryMap.get(t.org_id + '|' + t.number) || {}).state === 'd' ? 'carry' : null),
         nm_confirmed: s ? (s.nm_confirmed || 0) : 0,
+        nm_load_status: s ? (s.nm_load_status || '') : '',
         nm_dest: s && s.nm_info ? (() => { try { return JSON.parse(s.nm_info); } catch (e) { return []; } })() : [],
         hos_worked: t.samsara_driver_id ? (hosDayMap.get(String(t.samsara_driver_id)) || null) : null,
         hos_worked_wk_ms: t.samsara_driver_id ? (hosWkMap.get(String(t.samsara_driver_id)) || null) : null,
