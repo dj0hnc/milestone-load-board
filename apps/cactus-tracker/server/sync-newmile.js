@@ -110,6 +110,67 @@ function matchLoadRow(r, orgs, subNames) {
 }
 
 // ---------- roster ----------
+// ---- RECONCILIADOR DE ICs: NewMile manda, el board obedece ----
+// Compara TODA la flota CKJ de NewMile (fleet 6 + trokes sin fleet de esos mismos dueños)
+// contra el board: crea los ICs que falten bajo CKJ ICS, revive los archivados que siguen
+// activos en NewMile, y reporta lo que quedó. Los "KT-" de Kennemer no se tocan aquí.
+async function reconcileICs(client, opts) {
+  const dry = !!(opts && opts.dry);
+  const kt = get(`SELECT * FROM orgs WHERE id = 'KT'`);
+  if (!kt) return { error: 'KT org not configured' };
+  const fleetId = kt.nm_fleet_id;
+  const nmTrucks = await client.listTrucksAll();
+  // fleet 6 + completitud por dueño (Arango y otros llegan con fleet_id vacío)
+  const inFleet = nmTrucks.filter(t => (t.fleet_id != null ? t.fleet_id : (t.fleet && t.fleet.id)) === fleetId);
+  const owners = new Set(inFleet.map(t => t.owner_id).filter(x => x != null));
+  const mine = inFleet.slice();
+  for (const t of nmTrucks) {
+    const fid = t.fleet_id != null ? t.fleet_id : (t.fleet && t.fleet.id);
+    if (!fid && t.owner_id != null && owners.has(t.owner_id) && !mine.includes(t)) mine.push(t);
+  }
+  const out = { nm_ckj_trucks: mine.length, created: [], restored: [], already: 0, kennemer_fleet: 0, skipped: [] };
+  for (const t of mine) {
+    const raw = String(t.truck_number || '').trim();
+    const ownerName = String(t.owner_name || (t.owner && t.owner.name) || '').trim();
+    if (!raw) { out.skipped.push('(sin número) ' + ownerName); continue; }
+    if (/^KT[-\s]/i.test(raw) || /kennemer/i.test(ownerName)) { out.kennemer_fleet++; continue; }
+    // clave del IC: dígitos si el nombre es pelón ("452" → CKJ452); si trae letras
+    // (Arango y compañía) se usa el nombre compactado en MAYÚSCULAS como llave estable
+    const bare = normNum(raw).replace(/\s+/g, '');
+    const key = /^\d{1,4}$/.test(bare) ? 'CKJ' + bare : bare.replace(/[^A-Z0-9]/g, '');
+    const display = /^\d{1,4}$/.test(bare) ? bare : raw;
+    const driver = String(t.driver_name || t.driver || '').trim();
+    const trailer = shortTrailer(t.truck_type || '');
+    const nmId = t.id != null ? t.id : null;
+    const row = get(`SELECT * FROM trucks WHERE org_id = 'KT' AND (number = ? OR nm_truck_id = ?)`, key, nmId);
+    if (row) {
+      if (row.archived) {
+        if (!dry) run(`UPDATE trucks SET archived = 0, maybe_removed = 0, updated_at = ? WHERE org_id = 'KT' AND number = ?`, nowISO(), row.number);
+        out.restored.push((row.display_number || row.number) + ' · ' + ownerName);
+      } else out.already++;
+      // completa datos que falten (dueño, id de NewMile, driver, tipo)
+      if (!dry) {
+        const sets = [], vals = [];
+        if (nmId != null && nmId !== row.nm_truck_id) { sets.push('nm_truck_id = ?'); vals.push(nmId); }
+        if (t.owner_id != null && t.owner_id !== row.owner_id) { sets.push('owner_id = ?'); vals.push(t.owner_id); }
+        if (ownerName && ownerName !== row.owner_name) { sets.push('owner_name = ?'); vals.push(ownerName); }
+        if (driver && driver !== row.driver) { sets.push('driver = ?'); vals.push(driver); }
+        if (trailer && trailer !== row.trailer_type && !row.trailer_override) { sets.push('trailer_type = ?'); vals.push(trailer); }
+        if (sets.length) { sets.push('updated_at = ?'); vals.push(nowISO()); run(`UPDATE trucks SET ${sets.join(', ')} WHERE org_id = 'KT' AND number = ?`, ...vals, row.number); }
+      }
+      continue;
+    }
+    if (!dry) {
+      run(`INSERT INTO trucks (org_id, number, display_number, division, area, driver, trailer_type,
+             nm_truck_id, owner_id, owner_name, tags, is_sub, is_new, updated_at)
+           VALUES ('KT',?,?,'ICS','(SIN YARD)',?,?,?,?,?,'CKJ IC',1,0,?)`,
+        key, display, driver, trailer, nmId, t.owner_id != null ? t.owner_id : null, ownerName, nowISO());
+    }
+    out.created.push(display + ' · ' + ownerName + (driver ? ' · ' + driver : ''));
+  }
+  return out;
+}
+
 async function syncRoster(client) {
   const orgs = enabledOrgs();
   const nmTrucks = await client.listTrucksAll();
@@ -522,4 +583,4 @@ async function scanRipRap(client, days) {
   return summary;
 }
 
-module.exports = { syncRoster, syncActivity, scanRipRap, matchLoadRow };
+module.exports = { syncRoster, syncActivity, scanRipRap, matchLoadRow, reconcileICs };

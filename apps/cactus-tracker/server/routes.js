@@ -10,7 +10,7 @@ const express = require('express');
 const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
 const { todayCT, weekDatesCT, daysBetween, normNum, canonArea, canonicalTruckNumber } = require('./util');
-const { syncRoster, syncActivity, scanRipRap } = require('./sync-newmile');
+const { syncRoster, syncActivity, scanRipRap, reconcileICs } = require('./sync-newmile');
 const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking, locateTruck, debugHOS, auditHOS, refreshHOSTruck, cameraSnapshot } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
 
@@ -262,6 +262,15 @@ function createRouter({ config, newmile, log }) {
     for (const f of EDITABLE) if (f in (req.body || {})) logChange(orgId, number, f, row[f], updated[f], by);
     snapshotTruckDay(updated);
     res.json({ ok: true, truck: updated });
+  });
+
+  // RECONCILIAR ICs: /api/ics/reconcile?dry=1 enseña qué falta; sin dry los crea/revive.
+  router.get('/api/ics/reconcile', async (req, res) => {
+    if (!newmile) return res.status(503).json({ error: 'NewMile not configured' });
+    try {
+      if (!newmile.connected && !(await newmile.resume())) return res.status(401).json({ error: 'NOT_CONNECTED' });
+      res.json(await reconcileICs(newmile, { dry: req.query.dry === '1' }));
+    } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
   });
 
   // BUSCADOR TOTAL: /api/find?q=ramirez busca en TODA la flota (archivados incluidos)
