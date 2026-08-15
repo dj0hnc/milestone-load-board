@@ -207,13 +207,14 @@ async function syncHOS(cfg) {
       const drive = pick(ck.drive, 'driveRemainingDurationMs', 'remainingDurationMs', 'driveRemainingMs');
       const shift = pick(ck.shift, 'shiftRemainingDurationMs', 'remainingDurationMs', 'shiftRemainingMs');
       const cycle = pick(ck.cycle, 'cycleRemainingDurationMs', 'remainingDurationMs', 'cycleRemainingMs');
+      const tmrw = pick(ck.cycle, 'cycleTomorrowDurationMs'); // lo que RECUPERA mañana
       if (drive == null && shift == null && cycle == null) continue;
       const t = byDrvId.get(String(drv.id)) || subsetMatch(normDrvName(drv.name));
       if (!t) continue;
-      run(`UPDATE trucks SET hos_drive_ms = ?, hos_shift_ms = ?, hos_cycle_ms = ?, hos_at = ?, hos_driver = ?,
+      run(`UPDATE trucks SET hos_drive_ms = ?, hos_shift_ms = ?, hos_cycle_ms = ?, hos_cycle_tmrw_ms = ?, hos_at = ?, hos_driver = ?,
              samsara_driver_id = COALESCE(samsara_driver_id, ?)
            WHERE org_id = ? AND number = ?`,
-        drive, shift, cycle, now, String(drv.name || '').slice(0, 60),
+        drive, shift, cycle, tmrw, now, String(drv.name || '').slice(0, 60),
         drv.id != null ? String(drv.id) : null, t.org_id, t.number);
       summary.matched++;
     }

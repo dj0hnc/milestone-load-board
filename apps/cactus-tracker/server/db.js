@@ -201,6 +201,7 @@ function migrate(d) {
   addCol(d, 'trucks', 'hos_drive_ms', 'INTEGER');
   addCol(d, 'trucks', 'hos_shift_ms', 'INTEGER');
   addCol(d, 'trucks', 'hos_cycle_ms', 'INTEGER');
+  addCol(d, 'trucks', 'hos_cycle_tmrw_ms', 'INTEGER'); // horas que le REGRESAN mañana (ciclo rodante)
   addCol(d, 'trucks', 'hos_at', "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'hos_driver', "TEXT DEFAULT ''");
 }
