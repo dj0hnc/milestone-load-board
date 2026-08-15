@@ -214,6 +214,14 @@ function migrate(d) {
   addCol(d, 'trucks', 'moving', 'INTEGER DEFAULT 0');
   addCol(d, 'trucks', 'moving_at', "TEXT DEFAULT ''");
   addCol(d, 'dispatch_state', 'nm_load_status', "TEXT DEFAULT ''");
+  // memoria de "ya lo revisé": un accept/dismiss del review no debe rebotar en el
+  // siguiente sync mientras la condición siga idéntica (mismo texto, misma área,
+  // mismas cargas). Solo algo NUEVO vuelve a proponer.
+  addCol(d, 'trucks', 'samsara_flag_dismissed', "TEXT DEFAULT ''");
+  addCol(d, 'trucks', 'detected_flag_dismissed', "TEXT DEFAULT ''");
+  addCol(d, 'trucks', 'suggested_area_dismissed', "TEXT DEFAULT ''");
+  addCol(d, 'trucks', 'rip_dismissed_last', "TEXT DEFAULT ''"); // última carga rip vista al descartar
+  addCol(d, 'trucks', 'baja_dismissed_at', "TEXT DEFAULT ''"); // "keep" reciente: no re-avisar 21 días
   // HISTORIAL HOS día a día (Samsara daily logs): cuánto MANEJÓ/TRABAJÓ cada driver
   // cada día — el board lo enseña por fecha y acumula la semana.
   d.exec(`CREATE TABLE IF NOT EXISTS hos_days (

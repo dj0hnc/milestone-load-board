@@ -299,6 +299,9 @@ async function syncRoster(client) {
       if (trailer && trailer !== row.trailer_type && !row.trailer_override) { sets.push('trailer_type = ?'); vals.push(trailer); }
       if (display && display !== row.display_number) { sets.push('display_number = ?'); vals.push(display); }
       if (nmId != null && nmId !== row.nm_truck_id) { sets.push('nm_truck_id = ?'); vals.push(nmId); }
+      // mismo patrón que samsara_flag: lo ya revisado no rebota; texto nuevo sí propone
+      if (flag && flag === (row.detected_flag_dismissed || '')) flag = row.detected_flag || '';
+      else if (!flag && row.detected_flag_dismissed) sets.push("detected_flag_dismissed = ''");
       if (flag && flag !== row.detected_flag) { sets.push('detected_flag = ?'); vals.push(flag); summary.detectedFlags++; }
       if (row.maybe_removed) { sets.push('maybe_removed = 0'); } // it's back in the fleet
       if (sets.length) {
@@ -312,13 +315,15 @@ async function syncRoster(client) {
     // Guard: a truncated/failed pull must never flag half the fleet — if NewMile
     // returned less than half of my active roster for this org, skip the check.
     const active = all(
-      `SELECT number FROM trucks WHERE org_id = ? AND is_sub = 0 AND archived = 0 AND maybe_removed = 0`,
+      `SELECT number, baja_dismissed_at FROM trucks WHERE org_id = ? AND is_sub = 0 AND archived = 0 AND maybe_removed = 0`,
       org.id);
     if (active.length >= 4 && seen.size < active.length / 2) {
       summary.removalCheckSkipped = (summary.removalCheckSkipped || []).concat(
         `${org.id}: pull trajo ${seen.size} de ${active.length} activos`);
     } else {
+      const bajaCut = shiftISO(todayCT(), -21); // "keep" reciente: le creo 21 días antes de volver a preguntar
       for (const r of active.filter(r => !seen.has(r.number))) {
+        if (r.baja_dismissed_at && String(r.baja_dismissed_at).slice(0, 10) >= bajaCut) continue;
         run(`UPDATE trucks SET maybe_removed = 1, updated_at = ? WHERE org_id = ? AND number = ?`, nowISO(), org.id, r.number);
         summary.flaggedRemoved++;
       }
@@ -630,6 +635,9 @@ async function scanRipRap(client, days) {
     const ev = JSON.stringify({ loads: e.loads, first: e.first, last: e.last, materials: [...e.materials] });
     if (row.rip_rap) {
       summary.already_marked++;
+      run(`UPDATE trucks SET rip_evidence = ? WHERE org_id = ? AND number = ?`, ev, orgId, num);
+    } else if (row.rip_dismissed_last && e.last <= row.rip_dismissed_last) {
+      // ya lo descarté y no hay cargas rip NUEVAS desde entonces: evidencia fresca, sin badge
       run(`UPDATE trucks SET rip_evidence = ? WHERE org_id = ? AND number = ?`, ev, orgId, num);
     } else {
       run(`UPDATE trucks SET rip_suggested = 1, rip_evidence = ?, updated_at = ? WHERE org_id = ? AND number = ?`,

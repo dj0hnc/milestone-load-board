@@ -852,7 +852,8 @@ function placeTruck(org, t, areas, summary) {
       // durmió en OTRA zona conocida → se mueve solo, sin preguntar
       sets.push('area = ?', "suggested_area = ''"); vals.push(target);
       summary.movedArea = (summary.movedArea || 0) + 1;
-    } else if (t.suggested_area !== target) {
+    } else if (t.suggested_area !== target && target !== (t.suggested_area_dismissed || '')) {
+      // área nueva de verdad — la que ya descarté no se repropone aunque siga durmiendo ahí
       sets.push('suggested_area = ?'); vals.push(target); summary.suggested = (summary.suggested || 0) + 1;
     }
   }
@@ -910,6 +911,10 @@ async function syncSamsara(cfg, opts) {
       // driver asignado al vehículo en Samsara → mapea los relojes de HOS a ESTE truck
       const sdrv = v.staticAssignedDriver && v.staticAssignedDriver.id != null ? String(v.staticAssignedDriver.id) : null;
       if (sdrv && sdrv !== row.samsara_driver_id) { sets.push('samsara_driver_id = ?'); vals.push(sdrv); }
+      // ya revisado (accept/dismiss) y el nombre sigue igual: no reproponer. Si el
+      // nombre se limpió, la memoria se suelta para detectar la próxima ocurrencia.
+      if (flag && flag === (row.samsara_flag_dismissed || '')) flag = row.samsara_flag || '';
+      else if (!flag && row.samsara_flag_dismissed) sets.push("samsara_flag_dismissed = ''");
       if (flag !== (row.samsara_flag || '')) { sets.push('samsara_flag = ?'); vals.push(flag); if (flag) summary.flags++; }
 
       // terminal → suggestion ONLY while the truck has no division (⚑ NUEVO).

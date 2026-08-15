@@ -383,7 +383,11 @@ function createRouter({ config, newmile, log }) {
       logChange(orgId, number, 'rip_rap', row.rip_rap, 1, by);
       snapshotTruckDay(get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number));
     } else {
-      run(`UPDATE trucks SET rip_suggested = 0 WHERE org_id = ? AND number = ?`, orgId, number);
+      // recuerda hasta qué carga vi: el scan solo vuelve a proponer si hay cargas rip NUEVAS
+      let last = '';
+      try { last = JSON.parse(row.rip_evidence || '{}').last || ''; } catch (e) { /* evidencia vieja ilegible */ }
+      run(`UPDATE trucks SET rip_suggested = 0, rip_dismissed_last = ? WHERE org_id = ? AND number = ?`,
+        last || nowISO().slice(0, 10), orgId, number);
     }
     res.json({ ok: true });
   });
@@ -396,12 +400,14 @@ function createRouter({ config, newmile, log }) {
     if (!row) return res.status(404).json({ error: 'truck not found' });
     if (action === 'accept' && row.suggested_area) {
       const dest = canonArea(row.suggested_area);
-      run(`UPDATE trucks SET area = ?, suggested_area = '', updated_at = ? WHERE org_id = ? AND number = ?`,
+      run(`UPDATE trucks SET area = ?, suggested_area = '', suggested_area_dismissed = '', updated_at = ? WHERE org_id = ? AND number = ?`,
         dest, nowISO(), orgId, number);
       logChange(orgId, number, 'area', row.area, dest, by);
       snapshotTruckDay(get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number));
     } else {
-      run(`UPDATE trucks SET suggested_area = '' WHERE org_id = ? AND number = ?`, orgId, number);
+      // recuerda EL VALOR descartado: el GPS no vuelve a proponer esa misma área
+      run(`UPDATE trucks SET suggested_area = '', suggested_area_dismissed = ? WHERE org_id = ? AND number = ?`,
+        row.suggested_area || '', orgId, number);
     }
     res.json({ ok: true });
   });
@@ -483,8 +489,9 @@ function createRouter({ config, newmile, log }) {
     const orgId = normNum(req.params.org), number = normNum(req.params.number);
     const action = (req.body || {}).action;
     if (!['archive', 'keep'].includes(action)) return res.status(400).json({ error: "action: 'archive' | 'keep'" });
-    const r = run(`UPDATE trucks SET maybe_removed = 0, archived = ?, updated_at = ? WHERE org_id = ? AND number = ?`,
-      action === 'archive' ? 1 : 0, nowISO(), orgId, number);
+    // "keep" = yo sé que sigue activo: el sweep del roster no re-avisa por 21 días
+    const r = run(`UPDATE trucks SET maybe_removed = 0, archived = ?, baja_dismissed_at = ?, updated_at = ? WHERE org_id = ? AND number = ?`,
+      action === 'archive' ? 1 : 0, action === 'keep' ? nowISO() : '', nowISO(), orgId, number);
     if (!r.changes) return res.status(404).json({ error: 'truck not found' });
     res.json({ ok: true });
   });
@@ -503,10 +510,11 @@ function createRouter({ config, newmile, log }) {
       if (/DELEAS/i.test(flag)) status = 'deleased';
       else if (/SHOP/i.test(flag)) status = 'shop';
       else if (/DOWN/i.test(flag)) status = 'down';
-      run(`UPDATE trucks SET status = ?, status_note = ?, ${col} = '', updated_at = ? WHERE org_id = ? AND number = ?`,
-        status, flag, nowISO(), orgId, number);
+      // el nombre en Samsara/NewMile sigue diciendo lo mismo: recordar el texto para no reproponerlo
+      run(`UPDATE trucks SET status = ?, status_note = ?, ${col} = '', ${col}_dismissed = ?, updated_at = ? WHERE org_id = ? AND number = ?`,
+        status, flag, flag, nowISO(), orgId, number);
     } else {
-      run(`UPDATE trucks SET ${col} = '', updated_at = ? WHERE org_id = ? AND number = ?`, nowISO(), orgId, number);
+      run(`UPDATE trucks SET ${col} = '', ${col}_dismissed = ?, updated_at = ? WHERE org_id = ? AND number = ?`, flag, nowISO(), orgId, number);
     }
     res.json({ ok: true });
   });
