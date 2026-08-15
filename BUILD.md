@@ -1,5 +1,20 @@
 # Rebuilding the portable .exe
 
+## Cutting a release (the normal way — no local build, no local git)
+
+1. Bump `version` **and** `displayVersion` in `package.json` on `master`.
+2. Actions tab → **Build Windows + Mac** → **Run workflow** → set **version** to the same
+   number (e.g. `2.6.56`) → Run.
+
+The workflow builds both installers, then creates the `v<version>` tag and its Release and
+uploads the `.exe` + `.dmg` to it. Pushing a `v*` tag from a terminal still works and does
+the same thing; the Run-workflow path exists because not every token is scoped to push tag
+refs. Running with a **blank** version just builds and publishes nothing (a smoke test).
+
+The rest of this file is for building locally on a Windows box.
+
+---
+
 The app builds with standard Electron tooling, but this machine needed three things to get a
 clean single-file portable build. They're baked into `build.cmd`.
 
