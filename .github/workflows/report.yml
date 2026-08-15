@@ -72,12 +72,22 @@ jobs:
           key: mab-state-${{ github.run_id }}
           restore-keys: |
             mab-state-
+      # PDF renderer for the weekly sf report: puppeteer-core into its own prefix (a plain
+      # `npm i --no-save` here would drag in the app's full dependency tree, electron included)
+      # + the runner's preinstalled Chrome. Never downloads a browser. If this step or the
+      # render fails, the sf email still goes out with the CSVs only.
+      - name: PDF renderer dep
+        run: npm i --prefix /tmp/pdfdep --no-audit --no-fund puppeteer-core@24 || echo "puppeteer-core install failed — sf email will skip the PDF"
       - name: Generate + send report
         env:
           MAB_NM_CONFIG: ${{ secrets.MAB_NM_CONFIG }}
           MAB_NM_TOKEN: ${{ secrets.MAB_NM_TOKEN }}
           RESEND_KEY: ${{ secrets.RESEND_KEY }}
           REPORT_TO: ${{ secrets.REPORT_TO }}
+          # optional separate list for the weekly Service Failure + GP report (falls back to REPORT_TO)
+          REPORT_TO_SF: ${{ secrets.REPORT_TO_SF }}
+          NODE_PATH: /tmp/pdfdep/node_modules
+          CHROME_PATH: /usr/bin/google-chrome
           # off-app precedence lives in report-cli resolveOffSubs(): manual input > office server > variable
           MAB_OFFSUBS_INPUT: ${{ github.event.inputs.offsubs }}
           MAB_OFFSUBS: ${{ vars.MAB_OFFSUBS || '0' }}

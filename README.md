@@ -86,10 +86,15 @@ GitHub Actions sends the reports by itself — no PC needed (see `.github/workfl
 - **morning** (7:30am CT) — no-show report.
 - **night** (8pm CT) — fleet assignment for tomorrow.
 - **sf** (Mondays) — **Service Failures + GP dollars of lost loads** for last week Mon-Sat.
-  Joins NewMile's `service_failures`, `orders` (Undelivered Qty / Est. Loads Lost / rates) and
-  `po_margin` (realized margin per PO) reports: lost GP per failed order = undelivered qty ×
-  that PO+material's per-unit realized margin for the same week. Emails a branded summary and
-  attaches two CSVs (per-order lost GP + the raw failure log). Rerun any week manually:
+  GP comes from the LOGGED FAILURES (loads counted in the failure notes; Financial/No Show
+  failures with no count = 1; order-level vs truck-level counts deduped), priced at each
+  order's actual avg load size × the PO+material's realized per-unit margin that week
+  (`service_failures` + `orders` + `po_margin` reports). Reported as a range: GP Lost
+  (direct floor) and GP At Risk (every failure ≥1 displaced load). The email attaches the
+  full Design-style PDF (rendered with the runner's Chrome via puppeteer-core; skipped
+  gracefully if unavailable) plus two CSVs (per-order GP + the raw failure log with
+  per-row load counts). Recipients: secret `REPORT_TO_SF` if set (its own list, e.g.
+  leadership), else the shared `REPORT_TO`. Rerun any week manually:
   Actions → MAB Reports → kind `sf` (uses last week), or locally
   `node report-engine/report-cli.js sf --local --from=2026-08-03 --to=2026-08-08`.
 
