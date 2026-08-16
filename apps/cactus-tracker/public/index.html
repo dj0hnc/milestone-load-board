@@ -709,7 +709,7 @@ async function camWait(org,num,rid,first){
   const t=truckOf(org,num);
   const show=(secs)=>openModal(`<h3>📷 ${esc(dnum(t))}</h3>
     <p style="font-size:15px;">📡 <b>The camera is uploading the photo…</b></p>
-    <p style="font-size:13px;color:var(--mut);">It went out over the truck's cellular signal${first&&!first.live?" and this one is from an earlier moment, which takes longer":""}. Hanging on — <b>${secs}s</b>.</p>
+    <p style="font-size:13px;color:var(--mut);">${first&&first.resumed?"Picking up the upload you already started — no restart. ":""}It goes out over the truck's cellular signal${first&&!first.live?" and this one is from an earlier moment, which takes longer":""}. Hanging on — <b>${secs}s</b>.</p>
     <div class="actions"><button class="b-cancel" onclick="closeModal()">Close (it keeps uploading)</button></div>`);
   const t0=Date.now();
   show(0);
@@ -727,7 +727,7 @@ async function camWait(org,num,rid,first){
   }
   openModal(`<h3>📷 ${esc(dnum(t))}</h3>
     <p style="font-size:14px;color:var(--amber,#8a5a10);"><b>Still uploading after 3 minutes.</b></p>
-    <p style="font-size:13px;color:var(--mut);">Weak signal where the truck is parked. The photo will finish on its own — hit Retake in a few minutes and it comes back instantly.</p>
+    <p style="font-size:13px;color:var(--mut);">Weak cellular signal on the truck. The upload keeps going on its own — hit Retake whenever and it <b>picks up this same photo</b> (it does NOT start over). If it's ready, it shows instantly.</p>
     <div class="actions"><button class="b-save" onclick="openCamera('${org}','${esc(num)}')">↻ Retake</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
 }
 function camShow(org,num,j){

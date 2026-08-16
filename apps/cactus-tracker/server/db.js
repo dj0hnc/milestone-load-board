@@ -222,6 +222,10 @@ function migrate(d) {
   addCol(d, 'trucks', 'suggested_area_dismissed', "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'rip_dismissed_last', "TEXT DEFAULT ''"); // última carga rip vista al descartar
   addCol(d, 'trucks', 'baja_dismissed_at', "TEXT DEFAULT ''"); // "keep" reciente: no re-avisar 21 días
+  // subida de cámara EN CURSO: Retake la retoma en vez de reiniciar el reloj de la subida
+  addCol(d, 'trucks', 'camera_rid', "TEXT DEFAULT ''");
+  addCol(d, 'trucks', 'camera_rid_at', "TEXT DEFAULT ''");
+  addCol(d, 'trucks', 'camera_rid_meta', "TEXT DEFAULT ''"); // {at,live} del momento capturado
   // HISTORIAL HOS día a día (Samsara daily logs): cuánto MANEJÓ/TRABAJÓ cada driver
   // cada día — el board lo enseña por fecha y acumula la semana.
   d.exec(`CREATE TABLE IF NOT EXISTS hos_days (

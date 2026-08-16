@@ -414,12 +414,68 @@ async function syncHOSDaily(cfg, days) {
 // Pide una captura fresca y espera a que la cámara la suba (~10-20 s). Si no regresa
 // nada, la cámara está desconectada / el truck no trae dashcam — el mismo botón sirve
 // de prueba de vida para mandar al chofer a revisar el cable.
+// Junta todo objeto que parezca item de cámara en la respuesta de un retrieval.
+// OJO: un item "pending" todavía NO trae URL — su status se recoge igual, si no el
+// server cree que la cámara está muerta cuando la foto viene subiendo por celular.
+function walkMedia(x, out) {
+  if (Array.isArray(x)) { x.forEach(v => walkMedia(v, out)); return out; }
+  if (x && typeof x === 'object') {
+    const url = (x.urlInfo && (x.urlInfo.url || x.urlInfo.downloadUrl)) || x.url || x.downloadUrl || x.mediaUrl;
+    if (url && typeof url === 'string' && /^https?:/i.test(url)) {
+      out.push({ input: x.input || x.inputName || x.camera || 'camera', url, status: x.status });
+      return out; // ya es un item: no recorrer adentro (evita contar la misma foto 2 veces)
+    }
+    if (typeof x.status === 'string' && (x.input || x.inputName || x.mediaType)) {
+      out.push({ input: x.input || x.inputName || 'camera', url: null, status: x.status });
+      return out;
+    }
+    Object.values(x).forEach(v => walkMedia(v, out));
+  }
+  return out;
+}
+
+// Lee un retrieval completo: fotos listas, statuses y si sigue subiendo.
+function collectMedia(j) {
+  if (!j) return { images: [], statuses: [], pending: true };
+  const images = new Map(); const statuses = new Set();
+  for (const m of walkMedia(j, [])) {
+    if (m.status) statuses.add(String(m.status));
+    if (m.url && (!m.status || /available|complete|success|uploaded/i.test(String(m.status)))) images.set(m.input, m.url);
+  }
+  const st = [...statuses].join(',');
+  const pending = images.size === 0 && (!st || /pending|processing|uploading|requested|in_progress/i.test(st));
+  return {
+    images: [...images.entries()].map(([input, url]) => ({ input, url })),
+    statuses: [...statuses], pending,
+    raw: images.size || pending ? undefined : JSON.stringify(j).slice(0, 600)
+  };
+}
+
 async function cameraSnapshot(cfg, row) {
   const org = get('SELECT * FROM orgs WHERE id = ?', row.org_id);
   if (!org || !org.samsara) throw new Error('this truck has no Samsara');
   const token = tokenFor(cfg, org.samsara_org);
   if (!token) throw new Error('no Samsara token for ' + org.id);
   if (!row.samsara_id) throw new Error('truck has no Samsara id yet — run Sync now first');
+
+  // ¿Hay una subida EN CURSO de hace poco? RETOMARLA en vez de pedir otra captura.
+  // La foto puede tardar 5-15 min en subir por celular; si cada Retake creara un
+  // retrieval nuevo (con timestamp nuevo), el reloj se reiniciaría cada vez y un
+  // truck rodando jamás convergería. Retake = "¿ya llegó la que pedí?"
+  if (row.camera_rid && row.camera_rid_at && Date.now() - Date.parse(row.camera_rid_at) < 30 * 60000) {
+    let meta = {}; try { meta = JSON.parse(row.camera_rid_meta || '{}'); } catch (e) { /* meta vieja */ }
+    try {
+      const prev = collectMedia(await pollRetrieval(token, row.camera_rid));
+      if (prev.images.length) { // ¡terminó! entregar — y el PRÓXIMO Retake ya toma una fresca
+        run(`UPDATE trucks SET camera_rid = '' WHERE org_id = ? AND number = ?`, row.org_id, row.number);
+        return { ...prev, at: meta.at || row.camera_rid_at, live: !!meta.live, resumed: true };
+      }
+      if (prev.pending) { // sigue subiendo: mismo id, el front sigue esperando SIN reiniciar
+        return { ...prev, at: meta.at || row.camera_rid_at, live: !!meta.live, pending: true, retrievalId: row.camera_rid, resumed: true };
+      }
+      // estado final sin foto: se pide una captura nueva abajo
+    } catch (e) { /* el poll falló: se pide una captura nueva abajo */ }
+  }
 
   // La cámara solo graba con el truck ENCENDIDO. Si "ahorita" no está grabando (parado
   // de noche), caemos al último momento en que SÍ grabó: último movimiento / última señal.
@@ -455,36 +511,22 @@ async function cameraSnapshot(cfg, row) {
   }
   if (!rid) throw new Error('CAMERA_OFFLINE'); // ni un momento grabado reciente: cámara mal
 
+  // Se apunta el retrieval en el truck: un Retake (o reabrir el modal) lo RETOMA en
+  // vez de reiniciar la subida desde cero.
+  run(`UPDATE trucks SET camera_rid = ?, camera_rid_at = ?, camera_rid_meta = ? WHERE org_id = ? AND number = ?`,
+    rid, nowISO(), JSON.stringify({ at: used.at, live: !!used.live }), row.org_id, row.number);
+
   // La cámara sube la foto por celular: puede tardar. Se espera hasta ~45 s y se acepta
   // cualquier forma de la respuesta (la clave de la URL cambia según versión del API).
   const images = new Map();
   let lastRaw = null, statuses = new Set();
-  // Junta todo objeto que parezca item de cámara. OJO: un item "pending" todavía NO trae
-  // URL — hay que recoger su status igual, si no el server cree que la cámara está muerta
-  // cuando en realidad la foto viene subiendo por celular.
-  const deepMedia = (x, out) => {
-    if (Array.isArray(x)) { x.forEach(v => deepMedia(v, out)); return out; }
-    if (x && typeof x === 'object') {
-      const url = (x.urlInfo && (x.urlInfo.url || x.urlInfo.downloadUrl)) || x.url || x.downloadUrl || x.mediaUrl;
-      if (url && typeof url === 'string' && /^https?:/i.test(url)) {
-        out.push({ input: x.input || x.inputName || x.camera || 'camera', url, status: x.status });
-        return out; // ya es un item: no recorrer adentro (evita contar la misma foto 2 veces)
-      }
-      if (typeof x.status === 'string' && (x.input || x.inputName || x.mediaType)) {
-        out.push({ input: x.input || x.inputName || 'camera', url: null, status: x.status });
-        return out;
-      }
-      Object.values(x).forEach(v => deepMedia(v, out));
-    }
-    return out;
-  };
   let pending = false;
   for (let i = 0; i < 5; i++) { // ~12 s: si ya está, se entrega de una
     await new Promise(r => setTimeout(r, 2500));
     const j = await pollRetrieval(token, rid);
     if (!j) continue;
     lastRaw = JSON.stringify(j).slice(0, 600);
-    for (const m of deepMedia(j, [])) {
+    for (const m of walkMedia(j, [])) {
       if (m.status) statuses.add(String(m.status));
       if (m.url && (!m.status || /available|complete|success|uploaded/i.test(String(m.status)))) images.set(m.input, m.url);
     }
@@ -494,6 +536,8 @@ async function cameraSnapshot(cfg, row) {
     pending = !st || /pending|processing|uploading|requested|in_progress/i.test(st);
     if (images.size === 0 && st && !pending) break; // estado final sin foto: cámara mal
   }
+  // entregado o estado final: este retrieval ya dio lo que iba a dar
+  if (images.size || !pending) run(`UPDATE trucks SET camera_rid = '' WHERE org_id = ? AND number = ?`, row.org_id, row.number);
   return {
     images: [...images.entries()].map(([input, url]) => ({ input, url })),
     at: used.at, live: used.live, statuses: [...statuses],
@@ -514,30 +558,12 @@ async function cameraCheck(cfg, row, rid) {
   const org = get('SELECT * FROM orgs WHERE id = ?', row.org_id);
   const token = org && tokenFor(cfg, org.samsara_org);
   if (!token) throw new Error('no Samsara token for ' + row.org_id);
-  const j = await pollRetrieval(token, rid);
-  if (!j) return { images: [], pending: true };
-  const images = new Map(); const statuses = new Set();
-  const walk = (x, out) => {
-    if (Array.isArray(x)) { x.forEach(v => walk(v, out)); return out; }
-    if (x && typeof x === 'object') {
-      const url = (x.urlInfo && (x.urlInfo.url || x.urlInfo.downloadUrl)) || x.url || x.downloadUrl || x.mediaUrl;
-      if (url && typeof url === 'string' && /^https?:/i.test(url)) { out.push({ input: x.input || 'camera', url, status: x.status }); return out; }
-      if (typeof x.status === 'string' && (x.input || x.inputName || x.mediaType)) { out.push({ input: x.input || x.inputName || 'camera', url: null, status: x.status }); return out; }
-      Object.values(x).forEach(v => walk(v, out));
-    }
-    return out;
-  };
-  for (const m of walk(j, [])) {
-    if (m.status) statuses.add(String(m.status));
-    if (m.url && (!m.status || /available|complete|success|uploaded/i.test(String(m.status)))) images.set(m.input, m.url);
+  const out = collectMedia(await pollRetrieval(token, rid));
+  // terminó (foto o estado final): soltar el apunte para que el próximo Retake sea fresco
+  if ((out.images.length || !out.pending) && row.camera_rid === rid) {
+    run(`UPDATE trucks SET camera_rid = '' WHERE org_id = ? AND number = ?`, row.org_id, row.number);
   }
-  const st = [...statuses].join(',');
-  const stillPending = images.size === 0 && (!st || /pending|processing|uploading|requested|in_progress/i.test(st));
-  return {
-    images: [...images.entries()].map(([input, url]) => ({ input, url })),
-    statuses: [...statuses], pending: stillPending,
-    raw: images.size || stillPending ? undefined : JSON.stringify(j).slice(0, 600)
-  };
+  return out;
 }
 
 // ---- JORNADA: a qué hora PRENDIÓ y APAGÓ cada truck (engine states, eventos ligeros) ----
