@@ -15,7 +15,7 @@ const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking, loca
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
 
 const VALID_STATUS = ['ok', 'shop', 'down', 'no_driver', 'vacation', 'deleased'];
-const EDITABLE = ['note', 'status', 'status_note', 'return_date', 'rest_days', 'area', 'division', 'rip_rap', 'star', 'phone', 'tags', 'driver', 'trailer_type'];
+const EDITABLE = ['note', 'status', 'status_note', 'return_date', 'rest_days', 'area', 'division', 'rip_rap', 'star', 'phone', 'tags', 'driver', 'trailer_type', 'trailer_type2'];
 
 function createRouter({ config, newmile, log }) {
   const router = express.Router();

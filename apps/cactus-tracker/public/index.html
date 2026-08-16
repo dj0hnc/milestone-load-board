@@ -576,6 +576,8 @@ function mdy(iso){return iso?iso.slice(5).replace("-","/").replace(/^0/,""):"";}
 function outOfService(t){return ["shop","down","vacation","deleased"].includes(t.status)||!!offOf(t);}
 function countsForFaltan(t){return t.state==="p"&&!restsToday(t)&&!outOfService(t)&&!t.archived;}
 function trlClass(tt,rip){if(rip)return"rip";if((tt||"").startsWith("SD"))return"sd";if(tt==="BD")return"bd";return"";}
+// las DOS trailas del perfil juntas ("AL-ED + RB-ED") — para chip, búsqueda y listas
+function trlTxt(t){return [t.trailer_type,t.trailer_type2].filter(Boolean).join(" + ");}
 // status: cómo está HOY (para planear); type: qué trae (equipo)
 function isOffNow(t){return t.state==="d"||outOfService(t)||restsToday(t);}
 function matchStatus(t){
@@ -590,16 +592,18 @@ function matchStatus(t){
   return true;
 }
 function matchTypeSel(t){
-  const tt=t.trailer_type||"";
+  // con dos trailas en el perfil, el filtro pega si CUALQUIERA de las dos es del tipo
+  const tts=[t.trailer_type||"",t.trailer_type2||""].filter(Boolean);
+  const m=re=>tts.some(x=>re.test(x));
   switch(typeFilter){
     case "": return true;
-    case "ALED": return /^AL-ED/i.test(tt)||/Aluminum End/i.test(tt);
-    case "STED": return /^ST-ED/i.test(tt)||/Steel End/i.test(tt);
-    case "RBED": return /^RB-ED/i.test(tt)||/Round Body/i.test(tt);
-    case "ED": return /ED|End Dump/i.test(tt)&&!/SD|Super/i.test(tt);
-    case "SD": return /SD|Super/i.test(tt);
-    case "BD": return /^BD$|Belly/i.test(tt);
-    case "ALTT": return /AL-?TT|Tractor/i.test(tt);
+    case "ALED": return m(/^AL-ED/i)||m(/Aluminum End/i);
+    case "STED": return m(/^ST-ED/i)||m(/Steel End/i);
+    case "RBED": return m(/^RB-ED/i)||m(/Round Body/i);
+    case "ED": return tts.some(x=>/ED|End Dump/i.test(x)&&!/SD|Super/i.test(x));
+    case "SD": return m(/SD|Super/i);
+    case "BD": return tts.some(x=>/^BD$|Belly/i.test(x));
+    case "ALTT": return m(/AL-?TT|Tractor/i);
     case "3X8": return (t.tags||"").includes("3X8");
     case "SUB": return !!t.is_sub;
   }
@@ -623,7 +627,7 @@ function setStatus(v){statusFilter=v;render();}
 // la búsqueda encuentra por número, driver, área, nota, tipo, tags o teléfono
 function matchSearch(t,q){
   if(!q)return true;
-  return [t.number,t.display_number,t.driver,t.area,t.note,t.trailer_type,t.tags,t.phone,t.status_note]
+  return [t.number,t.display_number,t.driver,t.area,t.note,t.trailer_type,t.trailer_type2,t.tags,t.phone,t.status_note]
     .some(v=>(v||"").toLowerCase().includes(q));
 }
 function hasGPS(t){return !(t.org_id==="CACTUS"&&t.is_sub);} // subs de Cactus: sin Samsara
@@ -996,7 +1000,7 @@ function chipHtml(t){
     ${cls==="s-off"?`<div class="offmark" title="not available">${offEmoji}</div>`:""}
     <button class="btn-edit" onclick="event.stopPropagation();openEdit('${t.org_id}','${esc(t.number)}')" title="Edit">✎</button>
     <button class="btn-down" onclick="tapDown(event,'${t.org_id}','${esc(t.number)}')" title="Mark down">✕</button>
-    <div class="top"><span class="num"><button class="star-btn ${t.star?"on":""}" onclick="toggleStar(event,'${t.org_id}','${esc(t.number)}')" title="${t.star?"Star driver — tap to remove":"Mark as star driver"}">${t.star?"★":"☆"}</button>${esc(dnum(t))}${isVirtual()?`<span class="orgtag ${t.org_id==="KT"?(t.is_sub?"ic":"kt"):(t.is_sub?"sub":"")}">${t.org_id==="KT"?(t.is_sub?"IC":"KT"):(t.is_sub?"SUB":"CACTUS")}</span>`:""}</span>${t.trailer_type?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(t.trailer_type)}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}${liveMoveHtml(t)}${liveLoadHtml(t)}</div>
+    <div class="top"><span class="num"><button class="star-btn ${t.star?"on":""}" onclick="toggleStar(event,'${t.org_id}','${esc(t.number)}')" title="${t.star?"Star driver — tap to remove":"Mark as star driver"}">${t.star?"★":"☆"}</button>${esc(dnum(t))}${isVirtual()?`<span class="orgtag ${t.org_id==="KT"?(t.is_sub?"ic":"kt"):(t.is_sub?"sub":"")}">${t.org_id==="KT"?(t.is_sub?"IC":"KT"):(t.is_sub?"SUB":"CACTUS")}</span>`:""}</span>${trlTxt(t)?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(trlTxt(t))}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}${liveMoveHtml(t)}${liveLoadHtml(t)}</div>
     <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ NO DRIVER"}</div>
     ${t.state==="a"&&t.nm_dest&&t.nm_dest.length?`<div class="dest" title="${esc(t.nm_dest.map(d=>[d.n,d.c,d.m,d.d].filter(Boolean).join(" · ")).join("  +  "))}">🚚 ${t.nm_dest.map(d=>esc([d.c||d.n,d.d||d.m].filter(Boolean).join(" → "))).join(" + ")}</div>`:""}
     ${hosHtml(t)}
@@ -1120,7 +1124,7 @@ function openReview(cat){
     return;
   }
   const cfg={
-    new:{title:"⚑ NEW trucks — assign division + area",list:rv.nuevos,info:t=>`${esc(t.driver||"no driver")}${t.trailer_type?" · "+esc(t.trailer_type):""}${t.suggested_division?" · suggested: <b>"+esc(t.suggested_division)+"</b>":""}`,fn:"openConfirmNew"},
+    new:{title:"⚑ NEW trucks — assign division + area",list:rv.nuevos,info:t=>`${esc(t.driver||"no driver")}${trlTxt(t)?" · "+esc(trlTxt(t)):""}${t.suggested_division?" · suggested: <b>"+esc(t.suggested_division)+"</b>":""}`,fn:"openConfirmNew"},
     removed:{title:"❓ Removed? — no longer in the NewMile fleet",list:rv.bajas,info:t=>`${esc(t.driver||"")} · ${esc(tabLbl(t))}`,fn:"openResolveRemoved"},
     rip:{title:"🪨 Hauled RIP RAP — mark as RIP?",list:rv.rip,info:t=>{const ev=ripEv(t);return ev?`${ev.loads} load${ev.loads>1?"s":""} · last ${ev.last}`:"";},fn:"openRipSuggest"},
     area:{title:"📍 Parked in another zone — move area?",list:rv.areas,info:t=>`${esc(areaLbl(t.area||"(SIN YARD)"))} → <b>${esc(t.suggested_area)}</b>`,fn:"openAreaSuggest"},
@@ -1317,7 +1321,7 @@ function renderPick(q){
     ${avail.slice(0,120).map(t=>{const k=t.org_id+"|"+t.number;const on=_picked.has(k);
       return `<div onclick="togglePick('${t.org_id}','${esc(t.number)}','${esc(q||"")}')" style="display:flex;align-items:center;gap:9px;padding:8px 10px;border:1.5px solid ${on?"var(--green)":"var(--line)"};background:${on?"var(--green-bg)":"#fff"};border-radius:11px;margin-bottom:6px;cursor:pointer;">
         <b style="font-size:17px;min-width:64px;">${on?"✓ ":""}${esc(dnum(t))}</b>
-        <span style="flex:1;font-size:12.5px;color:var(--stone);">${esc(t.driver)||"⚠ no driver"}${t.owner_name?" · "+esc(t.owner_name):""}<br>${esc(areaLbl(t.area||"(SIN YARD)"))}${t.trailer_type?" · "+esc(t.trailer_type):""}</span>
+        <span style="flex:1;font-size:12.5px;color:var(--stone);">${esc(t.driver)||"⚠ no driver"}${t.owner_name?" · "+esc(t.owner_name):""}<br>${esc(areaLbl(t.area||"(SIN YARD)"))}${trlTxt(t)?" · "+esc(trlTxt(t)):""}</span>
         <span style="font-size:12px;font-weight:800;color:${(t.loads_week||0)===0?"#8a5a10":"var(--mut)"};">wk ${t.loads_week||0}</span>
       </div>`;}).join("")||`<p style="color:var(--mut);font-size:13px;">no open trucks match</p>`}
     </div>
@@ -1370,7 +1374,7 @@ function renderSendTruck(org,num){
   os.sort((a,b)=>((gapOf(b)||0)-(gapOf(a)||0))||(a.name>b.name?1:-1));
   const onIt=os.filter(o=>(o.assigned||[]).some(a=>a.org===t.org_id&&a.number===t.number));
   openModal(`<h3>🚀 ${esc(dnum(t))} — where to?</h3>
-    <div style="font-size:12.5px;color:var(--stone);margin-bottom:8px;">${esc(t.driver)||"⚠ no driver"}${t.trailer_type?" · "+esc(t.trailer_type):""} · ${esc(areaLbl(t.area||"(SIN YARD)"))} · wk ${t.loads_week||0} loads</div>
+    <div style="font-size:12.5px;color:var(--stone);margin-bottom:8px;">${esc(t.driver)||"⚠ no driver"}${trlTxt(t)?" · "+esc(trlTxt(t)):""} · ${esc(areaLbl(t.area||"(SIN YARD)"))} · wk ${t.loads_week||0} loads</div>
     ${onIt.length?`<div style="font-size:12.5px;color:#2456a6;font-weight:700;margin-bottom:8px;">already on: ${onIt.map(o=>esc(o.customer||o.name)).join(", ")}</div>`:""}
     ${os.length?"":`<p style="color:var(--mut);font-size:14px;">No NewMile orders for this day yet.</p>`}
     <div style="max-height:52vh;overflow:auto;">
@@ -1427,7 +1431,7 @@ function openEdit(org,num){
       <button class="star-big ${t.star?"on":""}" onclick="modalStar(this,'${t.org_id}','${esc(t.number)}')" title="Star driver">★</button>
       <div>
         <div class="enum">${esc(dnum(t))}</div>
-        <div class="esub">${esc(t.driver)||"⚠ no driver"}${t.owner_name?" · "+esc(t.owner_name):""}${t.trailer_type?" · "+esc(t.trailer_type):""}</div>
+        <div class="esub">${esc(t.driver)||"⚠ no driver"}${t.owner_name?" · "+esc(t.owner_name):""}${trlTxt(t)?" · "+esc(trlTxt(t)):""}</div>
       </div>
     </div>
     ${t.parked_city?`<div class="emod-park">🅿 ${esc(t.parked_city)}${t.parked_at?" · "+new Date(t.parked_at).toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"}):""}${t.last_moved_at?" · last moved "+tsMdy(t.last_moved_at):""}</div>`:""}
@@ -1506,6 +1510,7 @@ function openEdit(org,num){
         <div class="row2">
           <div><label>Trailer / truck type</label>
             <input type="text" id="eTrailer" list="trailerTypes" value="${esc(t.trailer_type)}" placeholder="AL-ED, SD Steel, BD…">
+            <input type="text" id="eTrailer2" list="trailerTypes" value="${esc(t.trailer_type2||"")}" placeholder="2nd trailer (optional)" style="margin-top:6px;">
             <datalist id="trailerTypes">${TRAILER_TYPES.map(x=>`<option value="${x}">`).join("")}</datalist>
           </div>
           <div><label>Tags (3X8, SUBHAULER…)</label><input type="text" id="eTags" value="${esc(t.tags)}"></div>
@@ -1562,6 +1567,7 @@ function saveEdit(org,num){
   };
   // solo mandar el tipo/driver si los cambiaste (el tipo manual se blinda contra el sync)
   if($("eTrailer").value!==t.trailer_type)body.trailer_type=$("eTrailer").value;
+  if($("eTrailer2").value!==(t.trailer_type2||""))body.trailer_type2=$("eTrailer2").value;
   if($("eDriver").value!==t.driver)body.driver=$("eDriver").value;
   Object.assign(t,body,{rip_rap:body.rip_rap});
   queuePush({path:`/api/truck/${t.org_id}/${encodeURIComponent(num)}`,body});
@@ -1660,7 +1666,7 @@ function openConfirmNew(org,num){
   const divs=(board.divisions||[]).filter(d=>d.org_id===t.org_id||!d.org_id).map(d=>`<option value="${d.id}" ${(t.suggested_division||"")===d.id?"selected":""}>${esc(d.label)}</option>`).join("");
   openModal(`
     <h3>⚑ NEW — Truck ${esc(dnum(t))}</h3>
-    <p style="font-size:14px;color:var(--mut);">${esc(t.driver||"no driver")}${t.trailer_type?" · "+esc(t.trailer_type):""}${t.suggested_division?" · Samsara suggests: <b>"+esc(t.suggested_division)+"</b>":""}</p>
+    <p style="font-size:14px;color:var(--mut);">${esc(t.driver||"no driver")}${trlTxt(t)?" · "+esc(trlTxt(t)):""}${t.suggested_division?" · Samsara suggests: <b>"+esc(t.suggested_division)+"</b>":""}</p>
     <label>Division</label><select id="cnDiv">${divs}</select>
     <label>Area / yard</label><input type="text" id="cnArea" placeholder="PARIS, TYLER, CORSICANA…" value="${esc(t.area==="(SIN YARD)"?"":t.area)}">
     <div class="actions">
