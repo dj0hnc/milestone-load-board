@@ -937,6 +937,9 @@ async function syncSamsara(cfg, opts) {
       // el nombre tal cual en Samsara: se enseña en el lápiz para cotejar de un vistazo
       const svname = String(v.name || '').trim();
       if (svname && svname !== row.samsara_name) { sets.push('samsara_name = ?'); vals.push(svname); }
+      // de cuál fleet de Samsara salió (el org del token que lo encontró)
+      const sfleet = org.samsara_org || org.id;
+      if (sfleet !== row.samsara_fleet) { sets.push('samsara_fleet = ?'); vals.push(sfleet); }
       // driver asignado al vehículo en Samsara → mapea los relojes de HOS a ESTE truck
       const sdrv = v.staticAssignedDriver && v.staticAssignedDriver.id != null ? String(v.staticAssignedDriver.id) : null;
       if (sdrv && sdrv !== row.samsara_driver_id) { sets.push('samsara_driver_id = ?'); vals.push(sdrv); }
