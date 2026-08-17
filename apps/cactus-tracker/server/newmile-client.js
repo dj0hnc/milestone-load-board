@@ -331,6 +331,12 @@ class NewMileClient {
     return rows;
   }
 
+  // Búsqueda puntual por número/nombre — para dar de alta un truck nuevo al momento.
+  async findTrucks(q) {
+    const r = await this.callTool('list_resources', { resource_type: 'truck', filters: { search: String(q), page_size: 20 } });
+    return (r && (r.trucks || r.results || r.rows)) || [];
+  }
+
   // Trucks de UNA flota, filtrado en el servidor (2 páginas para CKJ en vez de 15).
   async listTrucksByFleet(fleetId) {
     let rows = [], page = 1, totalPages = 1;

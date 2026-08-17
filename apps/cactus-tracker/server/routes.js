@@ -9,7 +9,7 @@
 const express = require('express');
 const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
-const { todayCT, weekDatesCT, daysBetween, normNum, canonArea, canonicalTruckNumber } = require('./util');
+const { todayCT, weekDatesCT, daysBetween, normNum, canonArea, canonicalTruckNumber, shortTrailer } = require('./util');
 const { syncRoster, syncActivity, scanRipRap, reconcileICs } = require('./sync-newmile');
 const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking, locateTruck, debugHOS, auditHOS, refreshHOSTruck, cameraSnapshot, cameraCheck } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
@@ -294,6 +294,42 @@ function createRouter({ config, newmile, log }) {
         restore: t.archived ? `/cactus-tracker/api/truck/${t.org_id}/${encodeURIComponent(t.number)}/restore?yes=1` : undefined
       }))
     });
+  });
+
+  // ➕ ALTA MANUAL: agregar un truck nuevo al board AL MOMENTO (o revivir uno archivado).
+  // Busca en NewMile por número para traer chofer/traila/dueño de una; sin sesión de
+  // NewMile lo crea pelón y el roster de las 4:30 le completa los datos después.
+  router.post('/api/truck/create', async (req, res) => {
+    const { org, number, division, by } = req.body || {};
+    const orgId = normNum(org), num = normNum(number);
+    if (!orgId || !num) return res.status(400).json({ error: 'org and number required' });
+    if (!get('SELECT id FROM orgs WHERE id = ?', orgId)) return res.status(404).json({ error: 'unknown org: ' + orgId });
+    const div = division ? normNum(division) : null;
+    if (div && !get('SELECT 1 AS x FROM divisions WHERE org_id = ? AND id = ?', orgId, div)) {
+      return res.status(400).json({ error: 'unknown division ' + div + ' for ' + orgId });
+    }
+    const existing = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, num);
+    if (existing) {
+      run(`UPDATE trucks SET archived = 0, maybe_removed = 0, is_new = 0${div ? ', division = ?' : ''}, updated_at = ? WHERE org_id = ? AND number = ?`,
+        ...(div ? [div] : []), nowISO(), orgId, num);
+      logChange(orgId, num, 'restored', '', 'added back via ➕' + (existing.archived ? ' (was archived)' : ''), by || 'web');
+      return res.json({ ok: true, restored: true, truck: existing.display_number || num, was_archived: !!existing.archived });
+    }
+    let nm = null;
+    try {
+      if (newmile && (newmile.connected || await newmile.resume())) {
+        const hits = await newmile.findTrucks(num);
+        nm = (hits || []).find(t => normNum(String(t.truck_number || '')) === num) || null;
+      }
+    } catch (e) { /* NewMile sin sesión: alta pelona */ }
+    const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+    run(`INSERT INTO trucks (org_id, number, display_number, division, driver, trailer_type, owner_name, nm_truck_id, is_new, status, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,0,'ok',?)`,
+      orgId, num, nm ? clean(nm.truck_number) : '', div, nm ? clean(nm.driver_name) : '',
+      nm ? shortTrailer(nm.truck_type || '') : '', nm ? clean(nm.owner_name) : '',
+      nm && nm.id != null ? nm.id : null, nowISO());
+    logChange(orgId, num, 'created', '', 'added via ➕' + (nm ? ` (NewMile: ${clean(nm.driver_name) || 'no driver'} · ${clean(nm.fleet_name)})` : ' (not found in NewMile yet)'), by || 'web');
+    res.json({ ok: true, created: true, truck: num, newmile: nm ? { driver: clean(nm.driver_name), type: nm.truck_type || '', owner: clean(nm.owner_name), fleet: clean(nm.fleet_name) } : null });
   });
 
   // Restaurar un archivado desde el navegador del cel (GET a propósito, con ?yes=1)

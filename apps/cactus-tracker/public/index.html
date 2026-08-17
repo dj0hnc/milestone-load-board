@@ -964,8 +964,41 @@ function render(){
     if(!closed)for(const t of list)html+=chipHtml(t);
     html+="</div></div>";
   }
-  $("board").innerHTML=html||"<p style='color:var(--mut);padding:20px'>No results.</p>";
+  // buscaste un número que NO existe → ofrecer darlo de alta aquí mismo (truck nuevo
+  // recién dado de alta en NewMile, o uno que la limpieza archivó)
+  let empty="<p style='color:var(--mut);padding:20px'>No results.</p>";
+  if(q&&tokens.length===1&&/^[a-z0-9-]{2,10}$/i.test(q)){
+    const qq=q.toUpperCase();
+    empty=`<div style="padding:26px 16px;text-align:center;">
+      <p style="color:var(--mut);margin-bottom:12px;">No truck matches “${esc(qq)}”.</p>
+      <button class="b-save" style="padding:12px 22px;font-size:15px;" onclick="openAddTruck('${esc(qq)}')">➕ ADD TRUCK ${esc(qq)} TO THE BOARD</button>
+      <div style="font-size:12px;color:var(--mut);margin-top:8px;">driver &amp; trailer come from NewMile automatically — or it comes back if it was archived</div>
+    </div>`;
+  }
+  $("board").innerHTML=html||empty;
   buildHeader(); renderStatusbar(); renderNet();
+}
+function openAddTruck(num){
+  const divs=(board.divisions||[]);
+  const cur=divs.find(d=>d.id===division)||divs[0];
+  const opts=divs.map(d=>`<option value="${d.org_id}|${d.id}" ${cur&&d.org_id===cur.org_id&&d.id===cur.id?"selected":""}>${esc(d.org_id)} — ${esc(d.label)}</option>`).join("");
+  openModal(`<h3>➕ Add truck ${esc(num)}</h3>
+    <p style="font-size:13px;color:var(--mut);">If it exists in NewMile, driver / trailer / owner fill in by themselves. If it was archived here, it just comes back to the board.</p>
+    <label>Fleet / division</label><select id="atDiv" style="width:100%;">${opts}</select>
+    <div class="actions"><button class="b-cancel" onclick="closeModal()">Cancel</button>
+    <button class="b-save" onclick="addTruckGo('${esc(num)}')">Add truck</button></div>`);
+}
+async function addTruckGo(num){
+  ensureWho();
+  const [org,div]=$("atDiv").value.split("|");
+  try{
+    const r=await fetch(`${API}/api/truck/create`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({org,number:num,division:div,by:WHO})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok){alert("Could not add: "+(j.error||r.status));return;}
+    closeModal();clearSearch();await fetchBoard();
+    alert(j.restored?`${num} was already here${j.was_archived?" (archived)":""} — it's back on the board.`:
+      `${num} added${j.newmile?` — ${j.newmile.driver||"no driver"} · ${j.newmile.type||""} (from NewMile)`:" (not in NewMile yet — bare entry)"}.`);
+  }catch(e){alert("Could not add: no connection");}
 }
 
 const OFF_EMOJI={vacation:"🌴",shop:"🔧",down:"⛔",personal:"🏠",no_driver:"⚠",deleased:"🚫"};
