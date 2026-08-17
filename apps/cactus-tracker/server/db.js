@@ -228,6 +228,8 @@ function migrate(d) {
   addCol(d, 'trucks', 'samsara_name', "TEXT DEFAULT ''");
   // de cuál fleet/org de Samsara salió el vehículo (CACTUS o KT/CKJ)
   addCol(d, 'trucks', 'samsara_fleet', "TEXT DEFAULT ''");
+  // username del chofer para entrar al Driver App (viene de /fleet/drivers)
+  addCol(d, 'trucks', 'samsara_username', "TEXT DEFAULT ''");
   // subida de cámara EN CURSO: Retake la retoma en vez de reiniciar el reloj de la subida
   addCol(d, 'trucks', 'camera_rid', "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'camera_rid_at', "TEXT DEFAULT ''");

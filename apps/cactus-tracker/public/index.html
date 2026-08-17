@@ -578,6 +578,9 @@ function countsForFaltan(t){return t.state==="p"&&!restsToday(t)&&!outOfService(
 function trlClass(tt,rip){if(rip)return"rip";if((tt||"").startsWith("SD"))return"sd";if(tt==="BD")return"bd";return"";}
 // las DOS trailas del perfil juntas ("AL-ED + RB-ED") — para chip, búsqueda y listas
 function trlTxt(t){return [t.trailer_type,t.trailer_type2].filter(Boolean).join(" + ");}
+// Fleet ID que teclean los CHOFERES en el Driver App (uno por compañía, no está en la
+// API — Juan los dicta y quedan fijos aquí; la llave es el fleet/org de Samsara)
+const SAMSARA_LOGIN_FLEET={};
 // status: cómo está HOY (para planear); type: qué trae (equipo)
 function isOffNow(t){return t.state==="d"||outOfService(t)||restsToday(t);}
 function matchStatus(t){
@@ -1519,7 +1522,8 @@ function openEdit(org,num){
         <div class="restdays" id="eRest">${DAYS.map(d=>`<label class="${rest.includes(d)?"on":""}" onclick="this.classList.toggle('on')"><input type="checkbox" value="${d}">${d}</label>`).join("")}</div>
         <div class="chk"><input type="checkbox" id="eRip" ${t.rip_rap?"checked":""}><label for="eRip" style="margin:0;text-transform:none;color:var(--ink);font-size:14px;">Can haul RIP RAP (blue stripe)</label></div>
         <div style="font-size:12px;color:var(--mut);margin-top:10px;line-height:1.6;overflow-wrap:anywhere;">
-          🛰 <b>Samsara:</b> ${t.samsara_id?`${t.samsara_fleet?`fleet <b>${esc(t.samsara_fleet)}</b> · `:""}vehicle ID <span style="user-select:all;">${esc(t.samsara_id)}</span>${t.samsara_name?` · name "${esc(t.samsara_name)}"`:""}${t.samsara_driver_id?`<br>driver${t.hos_driver?" "+esc(t.hos_driver):""} · ID <span style="user-select:all;">${esc(t.samsara_driver_id)}</span>`:""}`:"not linked — no vehicle match yet"}
+          🛰 <b>Samsara:</b> ${t.samsara_id?`${t.samsara_fleet?`fleet <b>${esc(t.samsara_fleet)}</b> · `:""}vehicle ID <span style="user-select:all;">${esc(t.samsara_id)}</span>${t.samsara_name?` · name "${esc(t.samsara_name)}"`:""}${t.samsara_driver_id?`<br>driver${t.hos_driver?" "+esc(t.hos_driver):""} · ID <span style="user-select:all;">${esc(t.samsara_driver_id)}</span>`:""}
+          <br>📲 <b>Driver App login:</b> Fleet ID <b style="user-select:all;">${esc(SAMSARA_LOGIN_FLEET[t.samsara_fleet]||SAMSARA_LOGIN_FLEET[t.org_id]||"—")}</b> · username ${t.samsara_username?`<b style="user-select:all;">${esc(t.samsara_username)}</b>`:"<i>not set in Samsara</i>"}`:"not linked — no vehicle match yet"}
         </div>
       </div>
     </details>

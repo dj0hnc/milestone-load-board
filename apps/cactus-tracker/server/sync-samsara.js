@@ -148,6 +148,21 @@ async function fetchHosClocks(token) {
   } while (after && pages < 10);
   return out;
 }
+// ---- DRIVERS: el username con el que el chofer entra al Driver App ----
+async function fetchDrivers(token) {
+  let out = [], after = '', pages = 0;
+  do {
+    const url = 'https://api.samsara.com/fleet/drivers?limit=512' + (after ? '&after=' + encodeURIComponent(after) : '');
+    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
+    if (!r.ok) throw new Error('Samsara drivers HTTP ' + r.status);
+    const j = await r.json();
+    out = out.concat(j.data || []);
+    after = (j.pagination && j.pagination.hasNextPage) ? j.pagination.endCursor : '';
+    pages++;
+  } while (after && pages < 10);
+  return out;
+}
+
 // nombres: mayúsculas, sin signos, tokens ORDENADOS ("Perez Juan" == "JUAN PEREZ")
 const normDrvName = s => String(s || '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ');
 
@@ -174,7 +189,16 @@ async function syncHOS(cfg, vehiclesByOrg) {
         }
       }
     } catch (e) { summary['vehError_' + org.id] = String(e.message || e); }
-    const trucks = all('SELECT org_id, number, driver, samsara_id, samsara_driver_id FROM trucks WHERE org_id = ? AND archived = 0', org.id);
+    const trucks = all('SELECT org_id, number, driver, samsara_id, samsara_driver_id, samsara_username FROM trucks WHERE org_id = ? AND archived = 0', org.id);
+    // username del Driver App por driver id — con eso el lápiz enseña el login del chofer
+    let unameById = new Map();
+    try {
+      unameById = new Map((await fetchDrivers(token)).filter(d => d.id != null && d.username).map(d => [String(d.id), String(d.username)]));
+      for (const t of trucks) {
+        const u = t.samsara_driver_id && unameById.get(String(t.samsara_driver_id));
+        if (u && u !== t.samsara_username) run(`UPDATE trucks SET samsara_username = ? WHERE org_id = ? AND number = ?`, u, t.org_id, t.number);
+      }
+    } catch (e) { summary['drvError_' + org.id] = String(e.message || e); }
     const byDrvId = new Map(trucks.filter(t => t.samsara_driver_id).map(t => [String(t.samsara_driver_id), t]));
     // EN QUÉ TRUCK ANDA AHORITA: los relojes traen currentVehicle — perfecto para ICs
     // y trucks sin driver asignado en Samsara (el que lo trae rodando ES su driver)
@@ -222,10 +246,12 @@ async function syncHOS(cfg, vehiclesByOrg) {
       if (!t) continue;
       run(`UPDATE trucks SET hos_drive_ms = ?, hos_shift_ms = ?, hos_cycle_ms = ?, hos_cycle_tmrw_ms = ?,
              hos_viol_shift_ms = ?, hos_viol_cycle_ms = ?, hos_at = ?, hos_driver = ?,
-             samsara_driver_id = COALESCE(samsara_driver_id, ?)
+             samsara_driver_id = COALESCE(samsara_driver_id, ?),
+             samsara_username = COALESCE(?, samsara_username)
            WHERE org_id = ? AND number = ?`,
         drive, shift, cycle, tmrw, vShift, vCycle, now, String(drv.name || '').slice(0, 60),
-        drv.id != null ? String(drv.id) : null, t.org_id, t.number);
+        drv.id != null ? String(drv.id) : null,
+        (drv.id != null && unameById.get(String(drv.id))) || null, t.org_id, t.number);
       summary.matched++;
     }
   }
