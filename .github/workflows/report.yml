@@ -141,6 +141,12 @@ jobs:
             # inside the window actually sends; the width only buys tolerance to cron delays.
             # Morning goes out at/after 7:30am CT (gives drivers a little more time to start their
             # first load so the no-show list reflects reality), catch-up until noon. Night 8pm-midnight.
+            elif [ "$HOUR" -eq 8 ] && [ "$MIN" -ge 15 ]; then
+              # morning catch-up AND re-check holder: attempt the morning send now (lock dedupes),
+              # then stay alive until 9:00am CT and run the re-check right on time — the 9am crons
+              # are as starvable as the evening ones (missed entirely on 8/17).
+              KIND=morning
+              RECHECK_HOLD=1
             elif { [ "$HOUR" -eq 7 ] && [ "$MIN" -ge 30 ]; } || { [ "$HOUR" -ge 8 ] && [ "$HOUR" -le 11 ]; }; then
               KIND=morning
             elif [ "$HOUR" -ge 20 ] && [ "$HOUR" -le 23 ]; then
@@ -187,6 +193,15 @@ jobs:
             # ~9AM RE-CHECK: second pass over the 7:30 call list (who fixed themselves, who is
             # still down). Own once-per-day lock; report-cli skips it if morning just went out.
             if [ "$KIND" = "morning" ] && [ "$HOUR" -ge 9 ] && [ "$HOUR" -le 11 ]; then
+              node report-engine/report-cli.js recheck --send
+            fi
+            # RE-CHECK HOLDER: an 8:15-8:59am run stays alive and fires the re-check at 9:00 sharp
+            if [ -n "${RECHECK_HOLD:-}" ]; then
+              H2=$(TZ=America/Chicago date +%H); H2=$((10#$H2)); M2=$(TZ=America/Chicago date +%M); M2=$((10#$M2)); N2=$((H2*60+M2))
+              if [ "$N2" -lt 540 ]; then
+                echo "recheck holder: $H2:$M2 CT — sleeping $((540-N2)) min until 9:00am CT"
+                sleep $(( (540-N2)*60 ))
+              fi
               node report-engine/report-cli.js recheck --send
             fi
           fi
