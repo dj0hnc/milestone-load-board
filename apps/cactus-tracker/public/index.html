@@ -1518,6 +1518,9 @@ function openEdit(org,num){
         <label>Rest days (every week)</label>
         <div class="restdays" id="eRest">${DAYS.map(d=>`<label class="${rest.includes(d)?"on":""}" onclick="this.classList.toggle('on')"><input type="checkbox" value="${d}">${d}</label>`).join("")}</div>
         <div class="chk"><input type="checkbox" id="eRip" ${t.rip_rap?"checked":""}><label for="eRip" style="margin:0;text-transform:none;color:var(--ink);font-size:14px;">Can haul RIP RAP (blue stripe)</label></div>
+        <div style="font-size:12px;color:var(--mut);margin-top:10px;line-height:1.6;overflow-wrap:anywhere;">
+          🛰 <b>Samsara:</b> ${t.samsara_id?`vehicle ID <span style="user-select:all;">${esc(t.samsara_id)}</span>${t.samsara_name?` · name "${esc(t.samsara_name)}"`:""}${t.samsara_driver_id?`<br>driver${t.hos_driver?" "+esc(t.hos_driver):""} · ID <span style="user-select:all;">${esc(t.samsara_driver_id)}</span>`:""}`:"not linked — no vehicle match yet"}
+        </div>
       </div>
     </details>
 

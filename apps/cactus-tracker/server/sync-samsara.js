@@ -934,6 +934,9 @@ async function syncSamsara(cfg, opts) {
       const sets = [], vals = [];
       const sid = v.id != null ? String(v.id) : null;
       if (sid && sid !== row.samsara_id) { sets.push('samsara_id = ?'); vals.push(sid); }
+      // el nombre tal cual en Samsara: se enseña en el lápiz para cotejar de un vistazo
+      const svname = String(v.name || '').trim();
+      if (svname && svname !== row.samsara_name) { sets.push('samsara_name = ?'); vals.push(svname); }
       // driver asignado al vehículo en Samsara → mapea los relojes de HOS a ESTE truck
       const sdrv = v.staticAssignedDriver && v.staticAssignedDriver.id != null ? String(v.staticAssignedDriver.id) : null;
       if (sdrv && sdrv !== row.samsara_driver_id) { sets.push('samsara_driver_id = ?'); vals.push(sdrv); }

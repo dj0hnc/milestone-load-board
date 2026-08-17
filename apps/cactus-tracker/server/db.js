@@ -224,6 +224,8 @@ function migrate(d) {
   addCol(d, 'trucks', 'baja_dismissed_at', "TEXT DEFAULT ''"); // "keep" reciente: no re-avisar 21 días
   // segunda traila (ej. 1144: AL-ED + round bottom para rip rap). Manual, el sync no la toca.
   addCol(d, 'trucks', 'trailer_type2', "TEXT DEFAULT ''");
+  // nombre/username del vehículo tal como aparece en Samsara (para cotejar en el lápiz)
+  addCol(d, 'trucks', 'samsara_name', "TEXT DEFAULT ''");
   // subida de cámara EN CURSO: Retake la retoma en vez de reiniciar el reloj de la subida
   addCol(d, 'trucks', 'camera_rid', "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'camera_rid_at', "TEXT DEFAULT ''");
