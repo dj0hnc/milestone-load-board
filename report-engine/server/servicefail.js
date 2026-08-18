@@ -264,71 +264,11 @@ function buildServiceFailures(raw, opts) {
     '_loadsLost', '_loadsAtRisk'];
   const sfCsv = [sfHead.join(',')].concat(failures.map(f => sfKeys.map(k => csvCell(f[k])).join(','))).join('\r\n');
 
-  // ---- HTML (Milestone: dark header, gold accent) ----
-  const GOLD = '#b8862b', DARK = '#1c1a17', RED = '#b4452e', GRAY = '#667';
-  const rangeStr = from + ' → ' + to;
-  const kpi = (label, value, sub, color) =>
-    '<td style="border:1px solid #e5e2dc;border-radius:6px;padding:10px 14px;vertical-align:top">' +
-    '<div style="font-size:10px;letter-spacing:1px;color:' + GRAY + ';text-transform:uppercase">' + esc(label) + '</div>' +
-    '<div style="font-size:24px;font-weight:800;color:' + (color || DARK) + '">' + value + '</div>' +
-    '<div style="font-size:11px;color:' + GRAY + '">' + esc(sub) + '</div></td>';
+  // ---- email body: same document design as the PDF, in email-safe HTML ----
+  const core = { from: from, to: to, totals: T, rows: rows, unmatched: unmatched };
+  const html = buildEmailHtml(core, failures);
+  const rangeStr = from + ' \u2192 ' + to;
 
-  const bar = pairs => '<table style="border-collapse:collapse;font-size:13px;width:100%;margin:2px 0 12px">' +
-    pairs.slice(0, 8).map(p => '<tr><td style="padding:2px 8px 2px 0;white-space:nowrap;font-weight:600">' + esc(p[0]) +
-      '</td><td style="padding:2px 0;width:60%"><div style="background:' + GOLD + ';height:10px;border-radius:3px;width:' +
-      Math.max(4, Math.round(100 * p[1] / pairs[0][1])) + '%"></div></td><td style="padding:2px 8px;font-weight:700">' + p[1] + '</td></tr>').join('') + '</table>';
-
-  let html = '<div style="font-family:Segoe UI,Arial,sans-serif;max-width:860px">'
-    + '<div style="background:' + DARK + ';color:#fff;border-radius:10px;padding:18px 22px;margin-bottom:14px">'
-    + '<div style="font-size:11px;letter-spacing:2px;color:' + GOLD + ';font-weight:700">MILESTONE TX OPS · NEWMILE SERVICE FAILURES</div>'
-    + '<div style="font-size:26px;font-weight:800;margin:2px 0">SERVICE FAILURE REPORT</div>'
-    + '<div style="font-size:13px;color:#cfc9bf">Milestone Supply — Texas · ' + esc(rangeStr) + ' · ' + T.failures + ' failures · ' + T.failedOrders + ' orders hit</div></div>'
-    + '<table style="border-collapse:separate;border-spacing:6px;width:100%"><tr>'
-    + kpi('GP Lost — Direct', fmtMoneyK(T.lostGp), 'loads documentedly lost (floor)', RED)
-    + kpi('GP At Risk — All Failures', fmtMoneyK(T.gpAtRisk), 'every failure ≥1 load (ceiling)', GOLD)
-    + kpi('Lost Revenue', fmtMoneyK(T.lostRevenue), 'lost qty × customer rate')
-    + '</tr><tr>'
-    + kpi('Est. Loads Lost', Math.round(T.loadsLost) + ' / ' + Math.round(T.loadsAtRisk), fmtQty(T.lostTons) + ' tons direct · at-risk count second')
-    + kpi('Failures Recorded', String(T.failures), T.failedOrders + ' distinct orders · ' + T.taggedFinancial + ' tagged Financial by dispatch')
-    + kpi('Critical Severity', String(T.critical), Math.round(100 * T.critical / Math.max(1, T.failures)) + '% of all failures', RED)
-    + '</tr></table>';
-
-  html += '<h3 style="margin:18px 0 4px;color:' + DARK + '">GP dollars of lost loads — by order</h3>'
-    + '<div style="color:' + GRAY + ';font-size:12px;margin-bottom:6px">Two readings, both priced at the order\'s actual avg load size × the PO+material\'s realized per-unit margin this week. LOST (floor): loads the failure notes document as lost (no count in the note = 1 if Financial impact or No Show, else 0). AT RISK (ceiling): every logged failure counts at least 1 load — even a covered failure displaces planned capacity from another order.</div>'
-    + '<table style="border-collapse:collapse;font-size:12px;width:100%"><tr style="background:#f3f1ec">'
-    + ['Date', 'Order', 'Customer', 'Loads Lost', 'Qty Lost', 'Lost Revenue', 'Lost GP', 'GP at Risk'].map(h => '<td style="padding:4px 8px;font-weight:700">' + h + '</td>').join('') + '</tr>'
-    + rows.map(r => '<tr style="border-bottom:1px solid #eee">'
-      + '<td style="padding:3px 8px;white-space:nowrap">' + esc(r.date) + '</td>'
-      + '<td style="padding:3px 8px">' + esc(r.order) + (r.worstSeverity === 'Critical' ? ' <span style="color:' + RED + ';font-weight:700">●</span>' : '') + '</td>'
-      + '<td style="padding:3px 8px">' + esc(String(r.customer || '').slice(0, 34)) + '</td>'
-      + '<td style="padding:3px 8px;text-align:right">' + Math.round(r.loadsLost) + '</td>'
-      + '<td style="padding:3px 8px;text-align:right;white-space:nowrap">' + fmtQty(r.qtyLost) + ' ' + esc(r.uom) + '</td>'
-      + '<td style="padding:3px 8px;text-align:right">' + fmtMoney(r.lostRevenue) + '</td>'
-      + '<td style="padding:3px 8px;text-align:right;font-weight:800;color:' + (r.lostGp > 0 ? RED : GRAY) + '">' + fmtMoney(r.lostGp) + '</td>'
-      + '<td style="padding:3px 8px;text-align:right;color:' + (r.gpAtRisk > r.lostGp ? GOLD : GRAY) + '">' + fmtMoney(r.gpAtRisk) + '</td></tr>').join('')
-    + '<tr style="border-top:2px solid ' + DARK + '"><td colspan="3" style="padding:5px 8px;font-weight:800">TOTAL</td>'
-    + '<td style="padding:5px 8px;text-align:right;font-weight:800">' + Math.round(T.loadsLost) + '</td>'
-    + '<td style="padding:5px 8px;text-align:right;font-weight:800">' + fmtQty(T.lostTons) + ' Ton</td>'
-    + '<td style="padding:5px 8px;text-align:right;font-weight:800">' + fmtMoney(T.lostRevenue) + '</td>'
-    + '<td style="padding:5px 8px;text-align:right;font-weight:800;color:' + RED + '">' + fmtMoney(T.lostGp) + '</td>'
-    + '<td style="padding:5px 8px;text-align:right;font-weight:800;color:' + GOLD + '">' + fmtMoney(T.gpAtRisk) + '</td></tr></table>';
-
-  if (unmatched.length) {
-    html += '<h3 style="margin:16px 0 4px;color:' + RED + '">⚠ Failures that did not match an order (' + unmatched.length + ')</h3>'
-      + '<div style="font-size:12px;color:' + GRAY + '">The Order name logged on the failure does not match any order reference that day — fix the name in NewMile so GP can be computed.</div>'
-      + '<ul style="font-size:12px">' + unmatched.map(f => '<li>' + esc(f.order_reference) + ' · ' + esc(dateKey(f.order_date)) + '</li>').join('') + '</ul>';
-  }
-
-  html += '<table style="width:100%;border-collapse:collapse"><tr><td style="vertical-align:top;width:33%;padding-right:10px">'
-    + '<h3 style="margin:14px 0 4px">Why service failed</h3>' + bar(byType)
-    + '</td><td style="vertical-align:top;width:33%;padding-right:10px">'
-    + '<h3 style="margin:14px 0 4px">Responsible party</h3>' + bar(byParty)
-    + '</td><td style="vertical-align:top;width:33%">'
-    + '<h3 style="margin:14px 0 4px">Customer impact</h3>' + bar(byCustomer)
-    + '</td></tr></table>';
-
-  html += '<div style="color:#99a;font-size:11px;margin-top:12px">Milestone OS · NewMile service_failures + orders + po_margin reports, order-date ' + esc(rangeStr)
-    + '. GP method per order: per-unit realized margin of the matching PO+material this week; PO margin % or the week margin % when no PO row matches. Full detail in the attached CSVs.</div></div>';
 
   // ---- plain text ----
   const text = [
@@ -361,6 +301,208 @@ function buildServiceFailures(raw, opts) {
  * Returns a full standalone HTML document sized for US Letter; render with Chromium
  * --print-to-pdf or Electron webContents.printToPDF.
  */
+// Aggregates over the failure log, shared by the email body and the print/PDF layout so both
+// documents always tell the same story from the same numbers.
+function computeAggregates(failures) {
+  const cnt = (arr, key) => { const m = new Map(); arr.forEach(f => { const k = key(f); m.set(k, (m.get(k) || 0) + 1); }); return m; };
+  const byDay = Array.from(cnt(failures, f => dateKey(f.order_date).slice(0, 5)).entries()).sort();
+  const typeAll = cnt(failures, f => f.failure_type || '(none)');
+  const typeCrit = cnt(failures.filter(f => norm(f.severity) === 'critical'), f => f.failure_type || '(none)');
+  const byType = Array.from(typeAll.entries()).sort((a, b) => b[1] - a[1]);
+  const byParty = Array.from(cnt(failures, f => {
+    const p = String(f.responsible_party || '').trim(); return p && p.toLowerCase() !== 'none' ? p : 'None assigned';
+  }).entries()).sort((a, b) => b[1] - a[1]);
+  const byCust = Array.from(cnt(failures, f => shortCustomer(f.customer)).entries()).sort((a, b) => b[1] - a[1]);
+  const noShows = failures.filter(f => /no show/i.test(f.failure_type || ''));
+  return {
+    byDay: byDay, byType: byType, typeCrit: typeCrit, byParty: byParty, byCust: byCust, noShows: noShows,
+    worstDay: byDay.slice().sort((a, b) => b[1] - a[1])[0] || ['—', 0],
+    topType: byType[0] || ['—', 0],
+    custHardest: byCust[0] ? byCust[0][0] : '—'
+  };
+}
+
+/*
+ * EMAIL BODY — the same document the PDF prints (dark Milestone header, executive summary cards,
+ * GP of lost loads, failures by day, why/party/customer, driver no-shows, failure detail), rendered
+ * in email-safe HTML: tables for layout (no flex/grid — Outlook drops them), inline styles only,
+ * bars as bgcolor cells. Recipients see the real report in the message, not just a link to an
+ * attachment. GMAIL CLIP GUARD: Gmail truncates messages past ~102KB and hides the rest behind
+ * "View entire message", so when the body would cross the cap the failure-detail rows are trimmed
+ * (the count dropped is stated in the email, and the attached PDF/CSV always carry every row).
+ */
+function buildEmailHtml(rep, failures) {
+  const GOLD = '#b8862b', DARK = '#191713', DIM = '#8a8579', LINE = '#e8e4dc', RED = '#b02a1e';
+  const T = rep.totals, A = computeAggregates(failures || []);
+  const rangeStr = mdLabel(rep.from) + ' → ' + mdLabel(rep.to);
+  const pct = n => Math.round(100 * n / Math.max(1, T.failures));
+  const todayStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago' });
+
+  const sec = (n, title, sub) => '<tr><td style="padding:22px 0 0">'
+    + '<div style="font-size:9px;letter-spacing:2px;color:' + GOLD + ';font-weight:700;font-family:Segoe UI,Arial,sans-serif">SECTION ' + String(n).padStart(2, '0') + '</div>'
+    + '<div style="font-size:19px;font-weight:800;color:' + DARK + ';letter-spacing:.4px;font-family:Segoe UI,Arial,sans-serif;padding:2px 0 1px">' + esc(title) + '</div>'
+    + (sub ? '<div style="font-size:11px;color:' + DIM + ';font-family:Segoe UI,Arial,sans-serif;padding-bottom:6px">' + sub + '</div>' : '')
+    + '</td></tr>';
+
+  const card = (l, v, s, color) => '<td width="33%" style="border:1px solid ' + LINE + ';padding:10px 13px;vertical-align:top;font-family:Segoe UI,Arial,sans-serif">'
+    + '<div style="font-size:8px;letter-spacing:1.5px;color:' + DIM + ';text-transform:uppercase">' + esc(l) + '</div>'
+    + '<div style="font-size:22px;font-weight:800;color:' + (color || DARK) + ';padding:1px 0">' + v + '</div>'
+    + '<div style="font-size:9.5px;color:' + DIM + '">' + esc(s) + '</div></td>';
+  const cardRow = cells => '<tr><td style="padding:3px 0"><table width="100%" cellpadding="0" cellspacing="4" border="0"><tr>' + cells + '</tr></table></td></tr>';
+
+  // bar row: bgcolor cell sized by percentage — the one bar style every email client renders
+  const bars = (pairs, noteFn) => {
+    const max = pairs.reduce((m, x) => Math.max(m, x[1]), 1);
+    return '<tr><td style="padding:2px 0 10px"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="font-family:Segoe UI,Arial,sans-serif;font-size:11px">'
+      + pairs.map(p => {
+        const w = Math.max(3, Math.round(100 * p[1] / max));
+        return '<tr><td width="165" style="padding:3px 8px 3px 0;font-weight:600;color:' + DARK + '">' + esc(p[0]) + '</td>'
+          + '<td style="padding:3px 0"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+          + '<td width="' + w + '%" bgcolor="' + GOLD + '" style="font-size:1px;line-height:11px">&nbsp;</td>'
+          + '<td bgcolor="#f0ede7" style="font-size:1px;line-height:11px">&nbsp;</td></tr></table></td>'
+          + '<td width="115" style="padding:3px 0 3px 8px;font-weight:700;white-space:nowrap;color:' + DARK + '">' + p[1] + (noteFn ? noteFn(p) : '') + '</td></tr>';
+      }).join('') + '</table></td></tr>';
+  };
+
+  const th = (t, right) => '<td class="h' + (right ? ' r' : '') + '">' + t + '</td>';
+  const sevPill = s => {
+    const k = norm(s), bg = { critical: RED, high: '#c47b1e', medium: GOLD, low: '#9b968a' }[k] || '#9b968a';
+    return '<span style="background:' + bg + ';color:#fff;font-size:8px;font-weight:800;letter-spacing:.8px;padding:2px 8px;border-radius:9px;white-space:nowrap">' + esc(String(s || '').toUpperCase()) + '</span>';
+  };
+
+  let h = '<div style="background:#fff;padding:2px">'
+    + '<style>'
+    + 'td.c{padding:5px 7px;border-bottom:1px solid #f0ede7;color:' + DARK + '}'
+    + 'td.h{padding:5px 7px;font-size:8.5px;letter-spacing:1.2px;color:' + DIM + ';text-transform:uppercase;font-weight:600;border-bottom:1px solid ' + LINE + '}'
+    + 'td.r{text-align:right}td.n{white-space:nowrap}td.d{color:' + DIM + '}'
+    + 'td.b{font-weight:800}td.g{color:' + RED + ';font-weight:800}td.k{color:' + GOLD + '}'
+    + 'td.t{border-top:2px solid ' + DARK + ';border-bottom:0;padding:6px 7px;font-weight:800}'
+    + '</style>'
+    + '<table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:900px;font-family:Segoe UI,Arial,sans-serif">'
+
+    // ---- header ----
+    + '<tr><td bgcolor="' + DARK + '" style="padding:24px 26px;color:#fff">'
+    + '<div style="font-size:21px;font-weight:800;letter-spacing:3px;padding-bottom:12px"><span style="color:#fff">MILES</span><span style="color:' + GOLD + '">T</span><span style="color:#b9b3a6">ONE</span></div>'
+    + '<div style="font-size:9px;letter-spacing:2.5px;color:' + GOLD + ';font-weight:700">MILESTONE TX OPS · NEWMILE SERVICE FAILURES</div>'
+    + '<div style="font-size:27px;font-weight:800;letter-spacing:.5px;padding:4px 0 5px">SERVICE FAILURE REPORT</div>'
+    + '<div style="font-size:12px;color:#d9d4c9">Milestone Supply — Texas · ' + esc(rangeStr) + '</div>'
+    + '<div style="font-size:10px;color:#8f897c;padding-top:3px">' + T.failures + ' failures recorded · ' + A.byCust.length + ' customers · data as of ' + esc(todayStr) + '</div>'
+    + '</td></tr>'
+
+    // ---- 01 executive summary ----
+    + sec(1, 'EXECUTIVE SUMMARY')
+    + cardRow(card('GP Lost — Direct', fmtMoneyK(T.lostGp), 'loads documentedly lost (floor)', RED)
+      + card('GP At Risk — All Failures', fmtMoneyK(T.gpAtRisk), 'every failure ≥1 load (ceiling)', GOLD)
+      + card('Lost Revenue', fmtMoneyK(T.lostRevenue), 'lost qty × customer rate'))
+    + cardRow(card('Est. Loads Lost', Math.round(T.loadsLost) + ' / ' + Math.round(T.loadsAtRisk), fmtQty(T.lostTons) + ' tons direct · at-risk second')
+      + card('Failures Recorded', String(T.failures), A.byDay.length + ' dispatch days · ' + T.failedOrders + ' orders hit')
+      + card('Critical Severity', String(T.critical), pct(T.critical) + '% of all failures', RED))
+    + cardRow(card('Top Failure Type', String(A.topType[1]), A.topType[0] + ' — largest driver of misses')
+      + card('Driver No-Shows', String(A.noShows.length), 'trucks committed that never ran')
+      + card('Customers Affected', String(A.byCust.length), A.custHardest + ' hit hardest'))
+    + '<tr><td style="padding:8px 0 0"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+    + '<td bgcolor="#faf6ee" style="border:1px solid #efe7d6;padding:11px 15px;font-size:11.5px;color:' + DARK + ';font-family:Segoe UI,Arial,sans-serif">'
+    + A.topType[1] + ' of ' + T.failures + ' failures were ' + esc(String(A.topType[0]).toLowerCase()) + 's. '
+    + esc(A.worstDay[0]) + ' alone logged ' + A.worstDay[1] + ' failures, the worst day of the week. '
+    + T.critical + ' failures (' + pct(T.critical) + '%) were critical, and ' + A.noShows.length + ' committed trucks never ran. '
+    + '<b>The week’s failures cost an estimated ' + fmtMoney(T.lostGp) + ' in gross profit</b> on ' + fmtQty(T.lostTons) + ' lost tons ('
+    + fmtMoney(T.lostRevenue) + ' revenue, ~' + Math.round(T.loadsLost) + ' loads) — <b>up to ' + fmtMoney(T.gpAtRisk)
+    + ' at risk</b> counting at least one displaced load for every logged failure. '
+    + T.taggedFinancial + ' of ' + T.failures + ' failures (' + pct(T.taggedFinancial) + '%) were tagged Financial impact by dispatch; the GP range above prices every failure’s loads, tagged or not.'
+    + '</td></tr></table></td></tr>'
+
+    // ---- 02 GP of lost loads ----
+    + sec(2, 'GP DOLLARS OF LOST LOADS', 'Per failed order, two readings priced at the order’s actual avg load size × the PO+material’s realized per-unit margin this week. LOST GP (floor): loads the failure notes document as lost. GP AT RISK (ceiling): every logged failure counts at least 1 displaced load.')
+    + '<tr><td><table width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:10.5px;font-family:Segoe UI,Arial,sans-serif">'
+    + '<tr>' + th('Date') + th('Order') + th('Customer') + th('Loads Lost', 1) + th('Qty Lost', 1) + th('Lost Revenue', 1) + th('Lost GP', 1) + th('GP at Risk', 1) + '</tr>'
+    + rep.rows.map(r => { const z = r.lostGp > 0 ? '' : ' d'; return '<tr>'
+      + '<td class="c n' + z + '">' + esc(r.date.slice(0, 5)) + '</td>'
+      + '<td class="c' + z + '">' + esc(r.order.trim()) + '</td>'
+      + '<td class="c' + z + '">' + esc(shortCustomer(r.customer)) + '</td>'
+      + '<td class="c r' + z + '">' + Math.round(r.loadsLost) + '</td>'
+      + '<td class="c r n' + z + '">' + fmtQty(r.qtyLost) + ' ' + esc(r.uom) + '</td>'
+      + '<td class="c r' + z + '">' + fmtMoney(r.lostRevenue) + '</td>'
+      + '<td class="c r ' + (r.lostGp > 0 ? 'g' : 'd') + '">' + fmtMoney(r.lostGp) + '</td>'
+      + '<td class="c r ' + (r.gpAtRisk > 0 ? 'k' : 'd') + '">' + fmtMoney(r.gpAtRisk) + '</td></tr>'; }).join('')
+    + '<tr><td class="t" colspan="3">TOTAL</td>'
+    + '<td class="t r">' + Math.round(T.loadsLost) + '</td>'
+    + '<td class="t r n">' + fmtQty(T.lostTons) + ' Ton</td>'
+    + '<td class="t r">' + fmtMoney(T.lostRevenue) + '</td>'
+    + '<td class="t r g">' + fmtMoney(T.lostGp) + '</td>'
+    + '<td class="t r k">' + fmtMoney(T.gpAtRisk) + '</td></tr>'
+    + '</table></td></tr>';
+
+  if (rep.unmatched.length) {
+    h += '<tr><td style="padding:10px 0 0;font-size:10.5px;color:' + RED + ';font-family:Segoe UI,Arial,sans-serif">'
+      + '<b>⚠ ' + rep.unmatched.length + ' failures did not match an order</b> (order name typo in NewMile — no GP computed): '
+      + rep.unmatched.map(f => esc(f.order_reference) + ' (' + esc(dateKey(f.order_date)) + ')').join('; ') + '</td></tr>';
+  }
+
+  h += sec(3, 'FAILURES BY DAY', 'Recorded failures per dispatch day · all entity types')
+    + bars(A.byDay, p => p[1] === A.worstDay[1] ? ' · peak' : '')
+    + sec(4, 'WHY SERVICE FAILED', 'Failure types by count · critical share noted per type')
+    + bars(A.byType, p => (A.typeCrit.get(p[0]) ? ' · ' + A.typeCrit.get(p[0]) + ' critical' : ''))
+    + sec(5, 'RESPONSIBLE PARTY', 'Who owned each failure, as logged in NewMile')
+    + bars(A.byParty)
+    + sec(6, 'CUSTOMER IMPACT', 'Failures by customer · count of recorded events')
+    + bars(A.byCust)
+
+    // ---- 07 driver no-shows ----
+    + sec(7, 'DRIVER NO-SHOWS', 'Committed trucks and drivers that did not run')
+    + '<tr><td><table width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:10.5px;font-family:Segoe UI,Arial,sans-serif">'
+    + '<tr>' + th('Date') + th('Truck') + th('Driver') + th('Fleet / Owner') + th('Customer') + th('Notes') + '</tr>'
+    + (A.noShows.length ? A.noShows.map(f => '<tr>'
+      + '<td class="c n">' + esc(dateKey(f.order_date).slice(0, 5)) + '</td>'
+      + '<td class="c">' + esc(f.truck_number || '—') + '</td>'
+      + '<td class="c">' + esc(f.driver_name || '—') + '</td>'
+      + '<td class="c">' + esc(f.truck_owner || f.hauler || '—') + '</td>'
+      + '<td class="c">' + esc(shortCustomer(f.customer)) + '</td>'
+      + '<td class="c d">' + esc(String(f.notes || '').trim().slice(0, 120) || '—') + '</td></tr>').join('')
+      : '<tr><td colspan="6" class="c d">No driver no-shows recorded this week.</td></tr>')
+    + '</table></td></tr>';
+
+  // ---- 08 failure detail ----
+  // Ordered by SEVERITY first (critical -> low), then date, so if the clip guard has to drop the
+  // tail it drops the least severe rows, never a critical one. The PDF keeps date order and every row.
+  const SEV_RANK = { critical: 0, high: 1, medium: 2, low: 3 };
+  const sorted = failures.slice().sort((a, b) => {
+    const d = (SEV_RANK[norm(a.severity)] ?? 4) - (SEV_RANK[norm(b.severity)] ?? 4);
+    return d !== 0 ? d : (dateKey(a.order_date) < dateKey(b.order_date) ? -1 : 1);
+  });
+  const clip = (t, n) => { t = String(t || '').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+  const detailRow = f => '<tr>'
+    + '<td class="c n">' + esc(dateKey(f.order_date).slice(0, 5)) + '</td>'
+    + '<td class="c">' + esc(String(f.order_reference || '').trim()) + '</td>'
+    + '<td class="c">' + esc(f.failure_type || '') + '</td>'
+    + '<td class="c">' + sevPill(f.severity) + '</td>'
+    + '<td class="c">' + esc(shortCustomer(f.customer)) + '</td>'
+    + '<td class="c d">' + esc(clip(f.notes, 120) || '—') + '</td></tr>';
+  const CLIP = 92000;
+  let shown = sorted, dropped = 0;
+  const overhead = h.length + 2500;
+  const rowCost = sorted.length ? sorted.map(detailRow).join('').length / sorted.length : 0;
+  if (overhead + rowCost * sorted.length > CLIP && rowCost > 0) {
+    const fits = Math.max(10, Math.floor((CLIP - overhead) / rowCost));
+    if (fits < sorted.length) { shown = sorted.slice(0, fits); dropped = sorted.length - fits; }
+  }
+  h += sec(8, 'FAILURE DETAIL', (dropped
+      ? 'The ' + shown.length + ' most severe of ' + T.failures + ' recorded failures · <b style="color:' + RED + '">the remaining ' + dropped
+        + ' (least severe) are in the attached PDF and CSV, which carry all ' + T.failures + '</b>'
+      : 'All ' + T.failures + ' recorded failures, most severe first · source: NewMile'))
+    + '<tr><td><table width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:10.5px;font-family:Segoe UI,Arial,sans-serif">'
+    + '<tr>' + th('Date') + th('Order') + th('Type') + th('Sev') + th('Customer') + th('Notes') + '</tr>'
+    + shown.map(detailRow).join('')
+    + (dropped ? '<tr><td colspan="6" class="c d">… ' + dropped + ' lower-severity failures continue in the attached PDF / CSV.</td></tr>' : '')
+    + '</table></td></tr>'
+
+    + '<tr><td style="padding:14px 0 4px;font-size:9.5px;color:#99958c;font-family:Segoe UI,Arial,sans-serif;border-top:1px solid ' + LINE + '">'
+    + 'MILESTONE SUPPLY — TEXAS · SERVICE FAILURE REPORT · ' + esc(rangeStr.toUpperCase()) + ' · CONFIDENTIAL<br>'
+    + 'Built from the NewMile service_failures + orders + po_margin reports (order date ' + esc(rep.from) + ' to ' + esc(rep.to) + '). '
+    + 'Week margin ' + (100 * T.orgPct).toFixed(1) + '% realized across all POs. The attached PDF is the full report; the CSVs carry every order and every failure row with its parsed load count.'
+    + '</td></tr></table></div>';
+  return h;
+}
+
 function shortCustomer(s) {
   s = String(s || '').trim().replace(/\.+$/, '');
   let m = s.match(/^Quikrete - (\w+) Texas Ready Mix District$/i);
@@ -380,21 +522,10 @@ function buildPrintHtml(rep, failures) {
   const T = rep.totals;
   const todayStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago' });
 
-  // ---- aggregates over the failure log ----
-  const cnt = (arr, key) => { const m = new Map(); arr.forEach(f => { const k = key(f); m.set(k, (m.get(k) || 0) + 1); }); return m; };
-  const byDay = Array.from(cnt(failures, f => dateKey(f.order_date).slice(0, 5)).entries()).sort();
-  const typeAll = cnt(failures, f => f.failure_type || '(none)');
-  const typeCrit = cnt(failures.filter(f => norm(f.severity) === 'critical'), f => f.failure_type || '(none)');
-  const byType = Array.from(typeAll.entries()).sort((a, b) => b[1] - a[1]);
-  const byParty = Array.from(cnt(failures, f => {
-    const p = String(f.responsible_party || '').trim(); return p && p.toLowerCase() !== 'none' ? p : 'None assigned';
-  }).entries()).sort((a, b) => b[1] - a[1]);
-  const byCust = Array.from(cnt(failures, f => shortCustomer(f.customer)).entries()).sort((a, b) => b[1] - a[1]);
-  const noShows = failures.filter(f => /no show/i.test(f.failure_type || ''));
-  const finImpact = failures.filter(f => norm(f.impact_type) === 'financial').length;
-  const worstDay = byDay.slice().sort((a, b) => b[1] - a[1])[0] || ['—', 0];
-  const topType = byType[0] || ['—', 0];
-  const custHardest = byCust[0] ? byCust[0][0] : '—';
+  // ---- aggregates over the failure log (shared with the email body) ----
+  const A = computeAggregates(failures);
+  const byDay = A.byDay, byType = A.byType, typeCrit = A.typeCrit, byParty = A.byParty, byCust = A.byCust;
+  const noShows = A.noShows, worstDay = A.worstDay, topType = A.topType, custHardest = A.custHardest;
   const pct = n => Math.round(100 * n / Math.max(1, T.failures));
 
   const css = '@page{size:letter;margin:0.55in 0.6in 0.85in 0.6in}'
