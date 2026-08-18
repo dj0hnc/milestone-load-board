@@ -332,6 +332,24 @@ function createRouter({ config, newmile, log }) {
     res.json({ ok: true, created: true, truck: num, newmile: nm ? { driver: clean(nm.driver_name), type: nm.truck_type || '', owner: clean(nm.owner_name), fleet: clean(nm.fleet_name) } : null });
   });
 
+  // ¿Y ESTOS dónde andan? Para las listas de Tony: de cada número dice si está activo
+  // (y en qué tab), BORRADO (archivado), en revisión ⚑ NUEVO, o si no existe.
+  router.post('/api/find/bulk', (req, res) => {
+    const nums = [...new Set(((req.body || {}).numbers || []).map(normNum).filter(Boolean))].slice(0, 60);
+    const out = [];
+    for (const n of nums) {
+      const rows = all(`SELECT org_id, number, display_number, division, status, driver, archived, is_new, is_sub, last_load_date
+                        FROM trucks WHERE number = ? OR display_number = ?`, n, n);
+      if (!rows.length) { out.push({ number: n, found: false }); continue; }
+      for (const t of rows) out.push({
+        number: n, found: true, org: t.org_id, division: t.division, status: t.status,
+        driver: t.driver || '', archived: !!t.archived, is_new: !!t.is_new, sub: !!t.is_sub,
+        last_load: t.last_load_date || null, real_number: t.number
+      });
+    }
+    res.json({ results: out });
+  });
+
   // Restaurar un archivado desde el navegador del cel (GET a propósito, con ?yes=1)
   router.get('/api/truck/:org/:number/restore', (req, res) => {
     if (req.query.yes !== '1') return res.status(400).json({ error: 'add ?yes=1 to confirm' });
