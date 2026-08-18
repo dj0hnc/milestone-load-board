@@ -31,7 +31,7 @@ function createRouter({ config, newmile, log }) {
   const PIN = process.env.ACCESS_PIN || config.accessPin || '';
   const crypto = require('crypto');
   const pinCookie = PIN ? crypto.createHash('sha256').update('cactus|' + PIN).digest('hex').slice(0, 40) : '';
-  const OPEN_PATHS = ['/api/login', '/api/health', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
+  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
   if (PIN) {
     router.use((req, res, next) => {
       if (OPEN_PATHS.includes(req.path)) return next();
@@ -330,6 +330,54 @@ function createRouter({ config, newmile, log }) {
       nm && nm.id != null ? nm.id : null, nowISO());
     logChange(orgId, num, 'created', '', 'added via ➕' + (nm ? ` (NewMile: ${clean(nm.driver_name) || 'no driver'} · ${clean(nm.fleet_name)})` : ' (not found in NewMile yet)'), by || 'web');
     res.json({ ok: true, created: true, truck: num, newmile: nm ? { driver: clean(nm.driver_name), type: nm.truck_type || '', owner: clean(nm.owner_name), fleet: clean(nm.fleet_name) } : null });
+  });
+
+  // ---------- CANAL DE LECTURA para el load board ----------
+  // Estados del tracker (down/shop/vacaciones/X del día/notas) en JSON de SOLO lectura,
+  // sin PIN pero con llave dedicada. La llave se genera UNA vez en esta máquina y vive
+  // en la DB local — nunca en el repo (que es público). Juan la ve en /api/states-key.
+  let statesKey = metaGet('states_key', '');
+  if (!statesKey) { statesKey = crypto.randomBytes(24).toString('hex'); metaSet('states_key', statesKey); }
+
+  router.get('/api/states', (req, res) => {
+    if (String(req.query.key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    const today = todayCT();
+    const trucks = all(`SELECT t.org_id, t.number, t.display_number, t.division, t.driver, t.status, t.status_note,
+                               t.note, t.return_date, t.rest_days, t.updated_at
+                        FROM trucks t JOIN orgs o ON o.id = t.org_id WHERE o.enabled = 1 AND t.archived = 0`);
+    const states = new Map(all('SELECT org_id, number, state FROM dispatch_state WHERE date = ?', today)
+      .map(r => [r.org_id + '|' + r.number, r.state]));
+    const offs = new Map();
+    for (const o of all('SELECT org_id, number, from_date, to_date, reason FROM time_off WHERE from_date <= ? AND to_date >= ?', today, today)) {
+      offs.set(o.org_id + '|' + o.number, `${o.reason} ${o.from_date}→${o.to_date}`);
+    }
+    // contrato pedido por el board: mapa plano {"1096":{status,note,...}} + _meta aparte
+    const out = { _meta: { date: today, count: trucks.length, generatedAt: nowISO() } };
+    for (const t of trucks) {
+      const k0 = t.display_number || t.number;
+      const key = out[k0] ? t.org_id + ':' + k0 : k0; // número repetido entre orgs → prefijo
+      const st = states.get(t.org_id + '|' + t.number) || null;
+      out[key] = {
+        org: t.org_id, division: t.division, driver: t.driver || '',
+        status: t.status, note: [t.status_note, t.note].filter(Boolean).join(' · '),
+        returnDate: t.return_date || '', restDays: t.rest_days || '',
+        timeOff: offs.get(t.org_id + '|' + t.number) || null,
+        todayState: st === 'a' ? 'assigned' : st === 'd' ? 'x' : st === 'p' ? 'pending' : null,
+        updatedAt: t.updated_at || null
+      };
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.json(out);
+  });
+
+  // La llave del canal — SOLO detrás del PIN. Juan la copia y se la pasa al board.
+  router.get('/api/states-key', (req, res) => {
+    res.json({
+      key: statesKey,
+      url: (req.baseUrl || '/cactus-tracker') + '/api/states?key=' + statesKey,
+      note: 'read-only feed for the office board — share the key only with it'
+    });
   });
 
   // ¿Y ESTOS dónde andan? Para las listas de Tony: de cada número dice si está activo
