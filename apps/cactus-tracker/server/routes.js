@@ -203,6 +203,28 @@ function createRouter({ config, newmile, log }) {
       // ¿este día ya se cotejó contra las asignaciones de NewMile? (para avisar "planeado
       // aquí pero NO está en NewMile" solo cuando hay datos reales que comparar)
       nm_checked: !!metaGet('nm_assign_checked_' + date),
+      // 🚛 barra de números del día — TODAS las orgs sin importar el tab, misma división en
+      // flotillas que los reportes AM/PM del board: CACTUS / KT (número trae "KT") / CKJ
+      // (resto de la flota KT) / SUBHAULERS (is_sub). working = marcados cubiertos ese día.
+      working: (() => {
+        const w = { total: 0, CACTUS: 0, KT: 0, CKJ: 0, SUBHAULERS: 0, x: 0, nw: 0 };
+        const rows = all(`SELECT t.org_id, t.number, t.is_sub, s.state FROM trucks t
+                          JOIN orgs o ON o.id = t.org_id
+                          JOIN dispatch_state s ON s.org_id = t.org_id AND s.number = t.number AND s.date = ?
+                          WHERE o.enabled = 1 AND t.archived = 0`, date);
+        for (const r of rows) {
+          if (r.state === 'n') { w.nw++; continue; }
+          if (r.state === 'd') { w.x++; continue; }
+          if (r.state !== 'a') continue;
+          w.total++;
+          const num = String(r.number || '').toUpperCase();
+          let b;
+          if (r.org_id === 'KT') b = num.indexOf('KT') >= 0 ? 'KT' : (num.indexOf('CKJ') === 0 ? 'CKJ' : (r.is_sub ? 'SUBHAULERS' : 'CKJ'));
+          else b = r.is_sub ? 'SUBHAULERS' : 'CACTUS';
+          w[b]++;
+        }
+        return w;
+      })(),
       // huecos en las órdenes de NewMile de este día (calculado en cada sync de actividad)
       nm_gaps: (() => { try { return JSON.parse(metaGet('nm_gaps_' + date) || '[]'); } catch (e) { return []; } })(),
       week: weekDatesCT(date),

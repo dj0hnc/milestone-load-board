@@ -111,7 +111,7 @@ function migrate(d) {
     date TEXT NOT NULL,               -- real ISO date '2026-07-10'
     org_id TEXT NOT NULL,
     number TEXT NOT NULL,
-    state TEXT NOT NULL CHECK (state IN ('p','a','d')),
+    state TEXT NOT NULL CHECK (state IN ('p','a','d','n')),
     source TEXT DEFAULT 'manual',     -- 'manual' | 'auto' (from NewMile loads today)
     marked_by TEXT DEFAULT '',        -- multi-user: who tapped it
     marked_at TEXT,
@@ -224,6 +224,27 @@ function migrate(d) {
   );
   CREATE INDEX IF NOT EXISTS idx_recruit_moves ON recruit_moves (applied, id);
   `);
+  // MIGRACIÓN dispatch_state (2026-08-20): la tabla nació con CHECK state IN ('p','a','d')
+  // y el estado NW ('n') lo violaba — cada tap NW regresaba 500 y ATASCABA la cola de
+  // escrituras del teléfono. SQLite no deja editar CHECKs → rebuild conservando todo.
+  try {
+    const dsDdl = d.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='dispatch_state'`).get();
+    if (dsDdl && dsDdl.sql.indexOf("('p','a','d')") >= 0) {
+      const cols = d.prepare(`SELECT name FROM pragma_table_info('dispatch_state')`).all().map(r => '"' + r.name + '"').join(', ');
+      const newDdl = dsDdl.sql
+        .replace("('p','a','d')", "('p','a','d','n')")
+        .replace(/CREATE TABLE (IF NOT EXISTS )?"?dispatch_state"?/i, 'CREATE TABLE dispatch_state_mig');
+      d.exec('BEGIN');
+      try {
+        d.exec(newDdl);
+        d.exec(`INSERT INTO dispatch_state_mig (${cols}) SELECT ${cols} FROM dispatch_state`);
+        d.exec('DROP TABLE dispatch_state');
+        d.exec('ALTER TABLE dispatch_state_mig RENAME TO dispatch_state');
+        d.exec('COMMIT');
+        console.log('[cactus-tracker] dispatch_state migrated: NW state (n) now allowed');
+      } catch (e) { d.exec('ROLLBACK'); throw e; }
+    }
+  } catch (e) { console.error('[cactus-tracker] dispatch_state migration failed:', e.message); }
   // additive migrations for DBs created before these columns existed
   addCol(d, 'trucks', 'rip_suggested', 'INTEGER DEFAULT 0');
   addCol(d, 'trucks', 'rip_evidence', "TEXT DEFAULT ''");

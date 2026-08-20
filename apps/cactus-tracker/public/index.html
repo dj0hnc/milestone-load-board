@@ -34,6 +34,15 @@ h1 span{color:var(--gold);}
 .faltan-pill.ok{background:var(--green);color:#fff;}
 .hrow2{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-top:8px;}
 .fleet-tab{font-family:'Barlow Condensed';font-weight:700;font-size:17px;letter-spacing:1px;text-transform:uppercase;padding:8px 18px;background:transparent;border:none;color:#8f97ab;cursor:pointer;border-bottom:4px solid transparent;}
+/* 🚛 barra de números del día (como la del board): cubiertos por flotilla + X + NW */
+.workbar{display:flex;gap:18px;align-items:baseline;padding:7px 14px 8px;border-top:1px solid rgba(255,255,255,.08);overflow-x:auto;scrollbar-width:none;}
+.workbar::-webkit-scrollbar{display:none;}
+.workbar:empty{display:none;}
+.wbi{display:flex;gap:7px;align-items:baseline;flex-shrink:0;}
+.wbi b{font-family:'Barlow Condensed';font-weight:800;font-size:22px;line-height:1;}
+.wbi small{font-family:'Barlow Condensed';font-weight:700;font-size:10.5px;letter-spacing:1px;color:#8f97ab;white-space:nowrap;}
+.wbi.tot b{color:#5a95f9;} .wbi.bkt b{color:var(--gold);} .wbi.x b{color:#ff6b52;} .wbi.nw b{color:#e3c84a;}
+.wbi.zero b{color:#4a5468;}
 .fleet-tab.on{color:#fff;border-bottom-color:var(--gold);}
 .days{display:flex;gap:5px;margin-left:auto;padding-bottom:6px;}
 .day{width:42px;height:40px;border-radius:8px;border:1px solid #3a4460;background:var(--navy2);color:#c6cddd;font-family:'Barlow Condensed';font-weight:700;font-size:13px;cursor:pointer;line-height:1.05;padding:2px 0;}
@@ -424,6 +433,7 @@ body.dark .theme-btn{border-color:var(--gold);}
     <div id="fleets"></div>
     <div class="days" id="days"></div>
   </div>
+  <div class="workbar" id="workbar"></div>
 </header>
 
 <div class="wrap">
@@ -620,7 +630,14 @@ async function flushQueue(){
       try{
         const r=await fetch(API+req.path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(req.body)});
         if(!r.ok && r.status>=500)throw new Error("server");
-      }catch(e){break;} // network down: retry on next flush
+      }catch(e){
+        // red caída o 5xx: reintenta después — pero un error PERMANENTE (como fue el CHECK
+        // de NW) no puede atascar la cola para siempre: tras 8 intentos se suelta esa
+        // escritura y las demás pasan.
+        q=JSON.parse(localStorage.getItem(QUEUE_KEY)||"[]");
+        if(q[0]){q[0]._fails=(q[0]._fails||0)+1;if(q[0]._fails>=8)q.shift();localStorage.setItem(QUEUE_KEY,JSON.stringify(q));}
+        break;
+      }
       // quita SOLO el primero de la cola ACTUAL (pudo crecer durante el fetch)
       q=JSON.parse(localStorage.getItem(QUEUE_KEY)||"[]"); q.shift();
       localStorage.setItem(QUEUE_KEY,JSON.stringify(q));
@@ -1329,6 +1346,17 @@ function buildHeader(){
     `<button class="day" style="width:auto;padding:0 9px" onclick="openCal()" title="Jump to any date">📅</button>`+
     `<input type="date" id="calJump" style="position:absolute;width:1px;height:1px;opacity:0;" onchange="if(this.value)setDate(this.value)">`+
     (date!==board.today?`<button class="day" style="width:auto;padding:0 10px" onclick="setDate('${board.today}')" title="Back to today">TODAY</button>`:"");
+  // 🚛 números del día — mismos buckets que los reportes del board, TODAS las orgs
+  const w=board&&board.working;
+  $("workbar").innerHTML=!w?"":[
+    ["tot",w.total,"TRUCKS WORKING","covered/assigned this day, all fleets"],
+    ["bkt",w.CACTUS,"CACTUS","Cactus Express fleet"],
+    ["bkt",w.SUBHAULERS,"SUBHAULERS","subs / ICs"],
+    ["bkt",w.CKJ,"CKJ","CKJ fleet (non-KT numbers)"],
+    ["bkt",w.KT,"KT","KT-numbered trucks"],
+    ["x",w.x,"X / DOWN","marked X this day"],
+    ["nw",w.nw,"NO WORK","marked NW this day"]
+  ].map(([c,v,l,tip])=>`<div class="wbi ${c}${v?"":" zero"}" title="${tip}"><b>${v}</b><small>${l}</small></div>`).join("");
   syncStickyTop();
 }
 // altura real del header (varía si los tabs/días se envuelven) → la barra de búsqueda
