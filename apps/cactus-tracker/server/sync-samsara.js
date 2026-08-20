@@ -948,7 +948,10 @@ async function syncSamsara(cfg, opts) {
 
     for (const v of vehicles) {
       const parsed = splitNameFlag(v.name || '');
-      const flag = parsed.flag;
+      // let (NOT const): line ~974 reassigns it when the flag was already dismissed. As const it
+      // threw "Assignment to constant variable" on the FIRST dismissed-flag truck, killing the
+      // whole org's vehicle+GPS sync (health's orgError_CACTUS) and starving camera timestamps.
+      let flag = parsed.flag;
       const res = resolveSamsaraTruck(org.id, v.name || '');
       let row = res.row;
       // IC en la lista de vehículos pero sin señal de GPS todavía: se crea AQUÍ para
