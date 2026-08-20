@@ -179,6 +179,39 @@ function migrate(d) {
   CREATE INDEX IF NOT EXISTS idx_activity_num ON activity_log (org_id, number, load_date DESC);
   CREATE INDEX IF NOT EXISTS idx_truck_log ON truck_log (org_id, number, ts DESC);
   CREATE INDEX IF NOT EXISTS idx_time_off ON time_off (org_id, number, to_date);
+  CREATE TABLE IF NOT EXISTS recruits (      -- 🤝 RECRUITING: HubSpot Subhauler-pipeline mirror.
+    deal_id TEXT PRIMARY KEY,                -- Juan owns "Onboarding & NewMile Training": he
+    pipeline TEXT DEFAULT '',                -- trains drivers/admins and creates orgs/trucks/
+    stage TEXT DEFAULT '',                   -- users; this table is his working copy so nothing
+    stage_label TEXT DEFAULT '',             -- (and no sub) falls through the cracks.
+    company TEXT DEFAULT '',
+    contact TEXT DEFAULT '',
+    phone TEXT DEFAULT '',
+    email TEXT DEFAULT '',
+    hs_owner TEXT DEFAULT '',                -- recruiter (Tony/Elisa/Matthew/Grace)
+    hs_modified TEXT DEFAULT '',
+    stage_since TEXT DEFAULT '',             -- first time WE saw it in the current stage
+    local_status TEXT DEFAULT '',            -- ''|graduated|paused (local, until HS write-back)
+    next_follow TEXT DEFAULT '',             -- ISO date of the next follow-up Juan promised
+    synced_at TEXT DEFAULT ''
+  );
+  CREATE TABLE IF NOT EXISTS recruit_steps ( -- onboarding checklist, one row per done step
+    deal_id TEXT NOT NULL,
+    step TEXT NOT NULL,                      -- org|trucks|users|drivers|admins|firstload
+    done INTEGER DEFAULT 0,
+    by TEXT DEFAULT '',
+    ts TEXT DEFAULT '',
+    PRIMARY KEY (deal_id, step)
+  );
+  CREATE TABLE IF NOT EXISTS recruit_notes ( -- follow-up log, same spirit as the truck calls
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    deal_id TEXT NOT NULL,
+    author TEXT DEFAULT '',
+    kind TEXT DEFAULT 'call',                -- 'call' | 'note'
+    text TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_recruit_notes ON recruit_notes (deal_id, id);
   `);
   // additive migrations for DBs created before these columns existed
   addCol(d, 'trucks', 'rip_suggested', 'INTEGER DEFAULT 0');

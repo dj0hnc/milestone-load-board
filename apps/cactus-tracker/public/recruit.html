@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>🤝 Recruiting — Milestone</title>
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+/* Same Milestone tokens as the tracker so both pages feel like one product. */
+:root{
+  --navy:#31353A; --navy2:#3B4046; --gold:#B89A4E; --gold-d:#9C8140;
+  --bg:#F2F0EB; --card:#FFFFFF; --ink:#2B2D30; --mut:#8A8D92; --line:#E5E2DB;
+  --green:#4E8C63; --green-bg:#EAF2EC; --red:#B0442F; --red-bg:#F7EAE6;
+  --blue:#3F7080; --blue-bg:#E9F0F2; --warm:#FDF8EC;
+  --sh-card:0 1px 2px rgba(20,20,20,.06),0 4px 14px rgba(20,20,20,.07);
+}
+body.dark{
+  --navy:#141b24; --navy2:#0e1a2e; --gold:#C8991F; --gold-d:#e3b84a;
+  --bg:#1C2333; --card:#141b24; --ink:#e8ecf3; --mut:#8f97ab; --line:#2e3a47;
+  --green:#22c55e; --green-bg:rgba(34,197,94,.14); --red:#ff6b52; --red-bg:rgba(234,78,44,.16);
+  --blue:#5a95f9; --blue-bg:rgba(90,149,249,.14); --warm:#2d2617;
+  --sh-card:0 1px 2px rgba(0,0,0,.35),0 4px 14px rgba(0,0,0,.4);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{font-family:'Poppins',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;}
+header{background:var(--navy);color:#fff;padding:12px 14px 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:40;}
+h1{font-family:'Barlow Condensed';font-weight:800;font-size:24px;letter-spacing:1px;text-transform:uppercase;}
+h1 small{font-weight:600;font-size:14px;color:var(--gold);letter-spacing:1.5px;display:block;line-height:1;}
+.hspacer{margin-left:auto;display:flex;gap:8px;align-items:center;}
+.xlink{font-family:'Barlow Condensed';font-weight:700;font-size:14px;letter-spacing:1px;color:#fff;text-decoration:none;border:1.5px solid rgba(255,255,255,.35);border-radius:999px;padding:5px 12px;background:transparent;cursor:pointer;}
+.funnel{display:flex;gap:6px;padding:10px 14px 2px;overflow-x:auto;}
+.fpill{flex-shrink:0;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px 12px;text-align:center;box-shadow:var(--sh-card);}
+.fpill b{display:block;font-size:17px;line-height:1.1;}
+.fpill small{font-family:'Barlow Condensed';font-weight:700;font-size:10.5px;letter-spacing:.7px;color:var(--mut);white-space:nowrap;}
+.fpill.hot{border-color:var(--gold);background:var(--warm);}
+main{padding:10px 14px 90px;display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;align-items:start;}
+.lane{background:transparent;}
+.lane-h{font-family:'Barlow Condensed';font-weight:800;font-size:17px;letter-spacing:1px;text-transform:uppercase;display:flex;align-items:center;gap:8px;padding:4px 2px 8px;}
+.lane-h .cnt{background:var(--navy);color:#fff;border-radius:999px;font-size:13px;padding:1px 10px;}
+.lane.mine .lane-h{color:var(--gold-d);}
+.cardz{display:flex;flex-direction:column;gap:10px;}
+.rc{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px 12px;box-shadow:var(--sh-card);cursor:pointer;position:relative;}
+.lane.mine .rc{border-left:4px solid var(--gold);}
+.rc .co{font-weight:700;font-size:14.5px;line-height:1.25;padding-right:60px;}
+.rc .who{font-size:12.5px;color:var(--mut);margin-top:1px;}
+.rc .days{position:absolute;top:10px;right:11px;font-family:'Barlow Condensed';font-weight:700;font-size:12px;color:var(--mut);text-align:right;line-height:1.1;}
+.rc .days b{display:block;font-size:16px;color:var(--ink);}
+.rc .days.slow b{color:var(--red);}
+.prog{display:flex;gap:3px;margin-top:8px;}
+.prog i{flex:1;height:6px;border-radius:3px;background:var(--line);}
+.prog i.on{background:var(--green);}
+.rowb{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center;}
+.chip{font-family:'Barlow Condensed';font-weight:700;font-size:12px;letter-spacing:.4px;border-radius:999px;padding:3px 10px;background:var(--blue-bg);color:var(--blue);}
+.chip.due{background:var(--red-bg);color:var(--red);}
+.chip.ok{background:var(--green-bg);color:var(--green);}
+.callq{margin-left:auto;background:var(--green);color:#fff;border:none;border-radius:999px;font-family:'Barlow Condensed';font-weight:800;font-size:13px;letter-spacing:.5px;padding:5px 13px;cursor:pointer;text-decoration:none;}
+.lastn{font-size:11.5px;color:var(--mut);margin-top:7px;border-top:1px dashed var(--line);padding-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.empty{color:var(--mut);font-size:13px;padding:14px 4px;}
+.foot{position:fixed;bottom:0;left:0;right:0;background:var(--navy);color:#c6cddd;font-size:11.5px;padding:8px 14px calc(8px + env(safe-area-inset-bottom));display:flex;gap:10px;align-items:center;z-index:40;}
+/* ---------- modal (recruit command panel) ---------- */
+.modal-bg{position:fixed;inset:0;background:rgba(20,22,30,.55);display:none;z-index:100;overflow-y:auto;padding:20px 12px 40px;}
+.modal-bg.show{display:block;}
+.modal{max-width:560px;margin:0 auto;background:var(--bg);border-radius:18px;padding:16px;box-shadow:0 18px 60px rgba(0,0,0,.4);}
+.m-head{display:flex;align-items:flex-start;gap:10px;}
+.m-head h2{font-family:'Barlow Condensed';font-weight:800;font-size:22px;line-height:1.1;letter-spacing:.5px;flex:1;}
+.m-x{border:none;background:var(--card);border:1px solid var(--line);color:var(--mut);width:34px;height:34px;border-radius:10px;font-size:16px;cursor:pointer;}
+.callbtn{display:block;text-align:center;background:var(--green);color:#fff;border-radius:12px;padding:12px;font-weight:800;font-size:16px;text-decoration:none;margin:12px 0 10px;}
+.tkgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:10px;}
+.tkc{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:7px 9px;display:flex;flex-direction:column;gap:1px;}
+.tkc small{font-family:'Barlow Condensed';font-weight:700;font-size:10px;letter-spacing:.8px;color:var(--mut);}
+.tkc b{font-size:13.5px;line-height:1.25;word-break:break-word;}
+.steps{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:10px;}
+.stp{display:flex;align-items:center;gap:9px;background:var(--card);border:1.5px solid var(--line);border-radius:11px;padding:9px 10px;cursor:pointer;font-size:13px;font-weight:600;}
+.stp .bx{width:20px;height:20px;border-radius:6px;border:2px solid var(--mut);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;}
+.stp.on{border-color:var(--green);background:var(--green-bg);}
+.stp.on .bx{background:var(--green);border-color:var(--green);}
+.stp small{display:block;font-weight:400;font-size:10.5px;color:var(--mut);}
+.frow{display:flex;gap:8px;margin-bottom:10px;align-items:center;}
+.frow label{font-family:'Barlow Condensed';font-weight:700;font-size:12px;letter-spacing:.6px;color:var(--mut);}
+.frow input[type=date]{background:var(--card);border:1.5px solid var(--line);color:var(--ink);border-radius:10px;padding:7px 9px;font-family:inherit;font-size:13px;}
+.gradbtn{margin-left:auto;background:var(--gold);color:var(--navy);border:none;border-radius:999px;font-family:'Barlow Condensed';font-weight:800;font-size:13.5px;letter-spacing:.5px;padding:8px 14px;cursor:pointer;}
+.gradbtn.undone{background:var(--card);color:var(--mut);border:1.5px solid var(--line);}
+.sect{font-family:'Barlow Condensed';font-weight:700;font-size:13px;letter-spacing:1px;color:var(--mut);margin:12px 0 6px;}
+.cfeed{max-height:34vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}
+.cmsg{display:flex;gap:8px;}
+.cav{width:30px;height:30px;border-radius:50%;background:var(--navy2);color:#fff;font-family:'Barlow Condensed';font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.cmeta{font-size:10.5px;color:var(--mut);}
+.ctx{background:var(--card);border:1px solid var(--line);border-radius:4px 12px 12px 12px;padding:7px 10px;font-size:13px;margin-top:2px;}
+.cnew{display:flex;gap:7px;margin-top:10px;}
+.cnew input{flex:1;background:var(--card);border:1.5px solid var(--line);color:var(--ink);border-radius:12px;padding:11px 12px;font-family:inherit;font-size:14px;}
+.cnew button{background:var(--navy);color:#fff;border:none;border-radius:12px;padding:0 16px;font-family:'Barlow Condensed';font-weight:800;font-size:14px;letter-spacing:.5px;cursor:pointer;}
+.hslink{font-size:12px;color:var(--blue);text-decoration:none;font-weight:600;}
+@media(max-width:640px){ main{grid-template-columns:1fr;} h1{font-size:20px;} }
+</style>
+</head>
+<body>
+<header>
+  <h1>🤝 Recruiting <small>SUBHAULER PIPELINE · JUAN'S DESK</small></h1>
+  <div class="hspacer">
+    <a class="xlink" href="./">🌵 TRACKER</a>
+    <a class="xlink" href="/full" target="_blank">📋 BOARD</a>
+    <button class="xlink" id="themeBtn" onclick="toggleTheme()" title="Light/dark theme">🌙</button>
+  </div>
+</header>
+<div class="funnel" id="funnel"></div>
+<main id="lanes"></main>
+<div class="foot"><span id="syncInfo">Loading…</span><span style="margin-left:auto;">signing as <b id="whoami"></b> · <a href="#" style="color:var(--gold);" onclick="changeAuthor();return false;">change</a></span></div>
+<div class="modal-bg" id="mbg" onclick="if(event.target===this)closeModal()"><div class="modal" id="mbox"></div></div>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const HS_PORTAL="7373497";
+// The six things Juan does to every new sub — his stage IS this checklist.
+const STEPS=[
+  ["org","NewMile org","company created in NewMile"],
+  ["trucks","Trucks created","all their trucks exist"],
+  ["users","Users created","logins for everyone"],
+  ["drivers","Drivers trained","Driver App at 100%"],
+  ["admins","Admins trained","office side at 100%"],
+  ["firstload","First load hauled","they ran their first job"]
+];
+// Lane routing by stage label (works for both recruitment pipelines).
+function laneOf(r){
+  const s=(r.stage_label||"").toLowerCase();
+  if(r.local_status==="graduated"||s.includes("cleared"))return "cleared";
+  if(s.includes("onboarding"))return "mine";
+  if(s.includes("netsuite"))return "incoming";
+  return "other";
+}
+let DATA=null,CUR=null;
+function author(){return localStorage.getItem("ct_author")||"";}
+function changeAuthor(){
+  const n=prompt("Your name? (shows on every note you save)",author());
+  if(n&&n.trim()){localStorage.setItem("ct_author",n.trim().slice(0,40));paintWho();}
+}
+function paintWho(){$("whoami").textContent=author()||"— no name yet —";const w=$("cWho");if(w)w.textContent=author()||"— no name yet —";}
+function applyTheme(){document.body.classList.toggle("dark",localStorage.getItem("ct_theme")==="dark");$("themeBtn").textContent=document.body.classList.contains("dark")?"☀️":"🌙";}
+function toggleTheme(){localStorage.setItem("ct_theme",document.body.classList.contains("dark")?"light":"dark");applyTheme();}
+function mdy(iso){if(!iso)return"";const m=String(iso).slice(0,10).split("-");return m.length===3?`${Number(m[1])}/${Number(m[2])}/${m[0].slice(2)}`:iso;}
+function daysIn(iso){if(!iso)return null;const d=Math.floor((Date.now()-Date.parse(iso))/864e5);return d<0?0:d;}
+function telHref(p){return "tel:"+String(p||"").replace(/[^\d+]/g,"");}
+function doneCount(r){let n=0;for(const [k] of STEPS)if(r.steps&&r.steps[k])n++;return n;}
+function todayISO(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+
+async function fetchBoard(){
+  try{
+    const r=await fetch("api/recruit/board");
+    if(r.status===401){location.href="login.html";return;}
+    const j=await r.json();
+    if(!j.ok)throw new Error(j.error||"load failed");
+    DATA=j;render();
+    $("syncInfo").textContent="HubSpot data as of "+(j.synced_at?new Date(j.synced_at).toLocaleString():"—")+" · "+(j.recruits||[]).length+" deals mirrored";
+  }catch(e){$("syncInfo").textContent="Could not load: "+(e.message||e);}
+}
+function render(){
+  const rs=(DATA&&DATA.recruits)||[];
+  const lanes={mine:[],incoming:[],cleared:[],other:[]};
+  for(const r of rs)lanes[laneOf(r)].push(r);
+  lanes.mine.sort((a,b)=>(a.next_follow||"9999")<(b.next_follow||"9999")?-1:1);
+  lanes.cleared.sort((a,b)=>(b.hs_modified||"")<(a.hs_modified||"")?-1:1);
+  // funnel counts by label
+  const cnt={};for(const r of rs){const k=r.stage_label||"?";cnt[k]=(cnt[k]||0)+1;}
+  const ORDER=["New Lead Outreach","Contacted, Awaiting Response","Qualified + Compliance Review","Compliance Document Collection","NetSuite Setup","Onboarding & NewMile Training","Cleared Sub / Active","Looking for Lease On","No Response","Disqualified"];
+  $("funnel").innerHTML=ORDER.filter(k=>cnt[k]).map(k=>`<div class="fpill${k.includes("Onboarding")?" hot":""}"><b>${cnt[k]}</b><small>${esc(k.replace("Compliance Document","Doc").replace(", Awaiting Response","").replace(" Outreach","").replace(" + Compliance Review"," + Compliance"))}</small></div>`).join("");
+  const lane=(key,title,arr,emptyMsg)=>`
+    <section class="lane ${key}">
+      <div class="lane-h">${title} <span class="cnt">${arr.length}</span></div>
+      <div class="cardz">${arr.length?arr.map(card).join(""):`<div class="empty">${emptyMsg}</div>`}</div>
+    </section>`;
+  $("lanes").innerHTML=
+    lane("mine","🎓 YOUR DESK — ONBOARDING & NEWMILE TRAINING",lanes.mine,"Nobody in training right now.")+
+    lane("incoming","⏳ INCOMING — NETSUITE SETUP",lanes.incoming,"Nothing about to land on your desk.")+
+    lane("cleared","✅ CLEARED / ACTIVE",lanes.cleared.slice(0,20),"No graduates yet.");
+}
+function card(r){
+  const d=daysIn(r.stage_since),dc=doneCount(r);
+  const due=r.next_follow&&r.next_follow<=todayISO();
+  return `<div class="rc" onclick="openPanel('${r.deal_id}')">
+    <div class="co">${esc(r.company||r.contact||"?")}</div>
+    <div class="who">${esc(r.contact||"")}${r.hs_owner?" · rec: "+esc(r.hs_owner):""}</div>
+    <div class="days${d>14?" slow":""}"><b>${d==null?"–":d+"d"}</b>in stage</div>
+    ${laneOf(r)!=="cleared"?`<div class="prog">${STEPS.map(([k])=>`<i class="${r.steps&&r.steps[k]?"on":""}"></i>`).join("")}</div>`:""}
+    <div class="rowb">
+      ${laneOf(r)!=="cleared"?`<span class="chip ${dc===STEPS.length?"ok":""}">${dc}/${STEPS.length} done</span>`:`<span class="chip ok">ACTIVE</span>`}
+      ${r.next_follow?`<span class="chip${due?" due":""}">📅 ${due?"FOLLOW UP NOW":"next "+mdy(r.next_follow)}</span>`:""}
+      ${r.notes_count?`<span class="chip">💬 ${r.notes_count}</span>`:""}
+      ${r.phone?`<a class="callq" href="${telHref(r.phone)}" onclick="event.stopPropagation()">📱 CALL</a>`:""}
+    </div>
+    ${r.last_note?`<div class="lastn">💬 ${esc(r.last_note.author||"?")} · ${mdy(r.last_note.ts)}: ${esc(r.last_note.text)}</div>`:""}
+  </div>`;
+}
+function openPanel(id){
+  const r=((DATA&&DATA.recruits)||[]).find(x=>x.deal_id===id);if(!r)return;CUR=r;
+  const first=(r.contact||"").split(" ")[0].toUpperCase();
+  $("mbox").innerHTML=`
+    <div class="m-head"><h2>${esc(r.company||r.contact||"?")}</h2><button class="m-x" onclick="closeModal()">✕</button></div>
+    <div style="font-size:12.5px;color:var(--mut);margin-top:2px;">${esc(r.contact||"")} · ${esc(r.stage_label||"")} · recruiter: ${esc(r.hs_owner||"?")} · <a class="hslink" href="https://app.hubspot.com/contacts/${HS_PORTAL}/record/0-3/${esc(r.deal_id)}" target="_blank">open in HubSpot ↗</a></div>
+    ${r.phone?`<a class="callbtn" href="${telHref(r.phone)}">📱 CALL ${esc(first||"THEM")} — ${esc(r.phone)}</a>`:`<div class="callbtn" style="background:var(--card);color:var(--mut);border:1.5px dashed var(--line);">no phone on file — add one below</div>`}
+    <div class="tkgrid">
+      <div class="tkc"><small>DAYS IN STAGE</small><b>${daysIn(r.stage_since)==null?"–":daysIn(r.stage_since)+" days"}</b></div>
+      <div class="tkc"><small>LAST HS TOUCH</small><b>${mdy(r.hs_modified)||"–"}</b></div>
+      <div class="tkc"><small>EMAIL</small><b style="font-size:12px;">${esc(r.email||"–")}</b></div>
+      <div class="tkc"><small>PHONE</small><b onclick="editPhone()" style="cursor:pointer;">${esc(r.phone||"tap to add")}</b></div>
+    </div>
+    <div class="sect">ONBOARDING CHECKLIST — TAP WHAT'S DONE</div>
+    <div class="steps">${STEPS.map(([k,l,hint])=>{
+      const st=r.steps&&r.steps[k];
+      return `<div class="stp${st?" on":""}" onclick="toggleStep('${k}')"><span class="bx">${st?"✓":""}</span><span>${l}<small>${st?("by "+esc(st.by||"?")+" · "+mdy(st.ts)):hint}</small></span></div>`;}).join("")}
+    </div>
+    <div class="frow">
+      <label>NEXT FOLLOW-UP</label>
+      <input type="date" id="nfDate" value="${esc(r.next_follow||"")}" onchange="setFollow(this.value)">
+      <button class="gradbtn${r.local_status==="graduated"?" undone":""}" onclick="graduate()">${r.local_status==="graduated"?"↩ UNDO GRADUATE":"🎓 GRADUATE → CLEARED"}</button>
+    </div>
+    <div class="sect">💬 FOLLOW-UP LOG — EVERYTHING DISCUSSED WITH THIS SUB</div>
+    <div id="cFeed" class="cfeed"><p style="color:var(--mut);font-size:13px;">Loading…</p></div>
+    <div class="cnew"><input type="text" id="cText" placeholder="What was discussed / next step…" maxlength="500" onkeydown="if(event.key==='Enter')saveNote()"><button onclick="saveNote()">SAVE</button></div>
+    <div style="font-size:11px;color:var(--mut);margin-top:6px;">signing as <b id="cWho">${esc(author()||"— no name yet —")}</b> · <a href="#" onclick="changeAuthor();return false;">change</a></div>`;
+  $("mbg").classList.add("show");
+  loadNotes();
+}
+function closeModal(){$("mbg").classList.remove("show");CUR=null;}
+async function loadNotes(){
+  if(!CUR)return;
+  try{
+    const j=await(await fetch(`api/recruit/${encodeURIComponent(CUR.deal_id)}/notes`)).json();
+    const rows=(j.notes||[]).map(c=>`<div class="cmsg"><div class="cav">${esc((c.author||"?").slice(0,2).toUpperCase())}</div><div><div class="cmeta"><b>${esc(c.author||"?")}</b> · ${mdy(c.ts)}${c.kind==="call"?" · 📞 call":" · note"}</div><div class="ctx">${esc(c.text)}</div></div></div>`).join("");
+    const el=$("cFeed");if(el)el.innerHTML=rows||`<p style="color:var(--mut);font-size:13px;">No notes yet — the first follow-up you log lives here forever.</p>`;
+  }catch(e){const el=$("cFeed");if(el)el.innerHTML=`<p style="color:var(--red);font-size:13px;">Could not load: ${esc(e.message||String(e))}</p>`;}
+}
+async function saveNote(){
+  if(!CUR)return;let who=author();
+  if(!who){changeAuthor();who=author();if(!who)return;}
+  const inp=$("cText");const text=(inp.value||"").trim();if(!text)return;
+  inp.disabled=true;
+  try{
+    const j=await(await fetch(`api/recruit/${encodeURIComponent(CUR.deal_id)}/notes`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({author:who,text,kind:"call"})})).json();
+    if(!j.ok)throw new Error(j.error||"save failed");
+    inp.value="";CUR.notes_count=(CUR.notes_count||0)+1;CUR.last_note={ts:j.note.ts,author:who,text};
+    loadNotes();render();
+  }catch(e){alert("Not saved: "+(e.message||e));}
+  finally{inp.disabled=false;const i=$("cText");if(i)i.focus();}
+}
+async function toggleStep(step){
+  if(!CUR)return;let who=author();
+  if(!who){changeAuthor();who=author();if(!who)return;}
+  const on=!(CUR.steps&&CUR.steps[step]);
+  CUR.steps=CUR.steps||{};
+  if(on)CUR.steps[step]={by:who,ts:new Date().toISOString()};else delete CUR.steps[step];
+  openPanel(CUR.deal_id);render();
+  try{await fetch(`api/recruit/${encodeURIComponent(CUR.deal_id)}/step`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({step,done:on?1:0,by:who})});}catch(e){}
+}
+async function setFollow(v){
+  if(!CUR)return;CUR.next_follow=v||"";render();
+  try{await fetch(`api/recruit/${encodeURIComponent(CUR.deal_id)}/set`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({next_follow:v||""})});}catch(e){}
+}
+async function graduate(){
+  if(!CUR)return;
+  const to=CUR.local_status==="graduated"?"":"graduated";
+  CUR.local_status=to;openPanel(CUR.deal_id);render();
+  try{await fetch(`api/recruit/${encodeURIComponent(CUR.deal_id)}/set`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({local_status:to})});}catch(e){}
+  if(to)alert("Marked CLEARED here. Remember to also move the deal in HubSpot (link at the top) until the write-back is wired.");
+}
+async function editPhone(){
+  if(!CUR)return;
+  const p=prompt("Phone for "+(CUR.contact||CUR.company||"this sub")+":",CUR.phone||"");
+  if(p==null)return;
+  CUR.phone=p.trim();openPanel(CUR.deal_id);render();
+  try{await fetch(`api/recruit/${encodeURIComponent(CUR.deal_id)}/set`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:CUR.phone})});}catch(e){}
+}
+applyTheme();paintWho();fetchBoard();
+setInterval(fetchBoard,60000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)fetchBoard();});
+</script>
+</body>
+</html>

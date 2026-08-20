@@ -31,7 +31,7 @@ function createRouter({ config, newmile, log }) {
   const PIN = process.env.ACCESS_PIN || config.accessPin || '';
   const crypto = require('crypto');
   const pinCookie = PIN ? crypto.createHash('sha256').update('cactus|' + PIN).digest('hex').slice(0, 40) : '';
-  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
+  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/recruit/import', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
   if (PIN) {
     router.use((req, res, next) => {
       if (OPEN_PATHS.includes(req.path)) return next();
@@ -563,6 +563,100 @@ function createRouter({ config, newmile, log }) {
     res.json({ ok: true, call: { ts, author, kind, text } });
   });
 
+  // ---------- 🤝 RECRUITING (HubSpot Subhauler pipeline — Juan's onboarding cockpit) ----------
+  // The tracker keeps a local mirror of the recruitment deals so the page is instant and
+  // Juan's own layer (checklist, follow-ups, notes) lives HERE, not in HubSpot. The mirror
+  // arrives through /api/recruit/import (below), pushed from the laptop.
+  router.get('/api/recruit/board', (req, res) => {
+    const recruits = all('SELECT * FROM recruits ORDER BY hs_modified DESC');
+    const steps = all('SELECT deal_id, step, done, by, ts FROM recruit_steps WHERE done = 1');
+    const notes = all(`SELECT n.deal_id, n.ts, n.author, n.kind, n.text FROM recruit_notes n
+                       JOIN (SELECT deal_id, MAX(id) mid FROM recruit_notes GROUP BY deal_id) l
+                       ON n.deal_id = l.deal_id AND n.id = l.mid`);
+    const counts = all('SELECT deal_id, COUNT(*) c FROM recruit_notes GROUP BY deal_id');
+    const stepMap = {}, noteMap = {}, countMap = {};
+    for (const s of steps) (stepMap[s.deal_id] = stepMap[s.deal_id] || {})[s.step] = { by: s.by, ts: s.ts };
+    for (const n of notes) noteMap[n.deal_id] = n;
+    for (const c of counts) countMap[c.deal_id] = c.c;
+    for (const r of recruits) { r.steps = stepMap[r.deal_id] || {}; r.last_note = noteMap[r.deal_id] || null; r.notes_count = countMap[r.deal_id] || 0; }
+    res.json({ ok: true, recruits, synced_at: metaGet('recruit_synced_at', '') });
+  });
+
+  // Import/refresh the mirror. OPEN (no PIN) but guarded by the states key — this is how
+  // the laptop pushes fresh HubSpot data without a session. Upsert: HubSpot fields update,
+  // Juan's local layer (steps/notes/local_status/next_follow) is never touched; stage_since
+  // moves only when the stage actually changed.
+  router.post('/api/recruit/import', (req, res) => {
+    if (String((req.query || {}).key || (req.body || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    const list = (req.body || {}).recruits;
+    if (!Array.isArray(list) || !list.length) return res.status(400).json({ error: 'recruits[] required' });
+    const ts = nowISO();
+    let created = 0, updated = 0;
+    for (const d of list) {
+      const id = String(d.deal_id || '').trim();
+      if (!id) continue;
+      const prev = get('SELECT deal_id, stage FROM recruits WHERE deal_id = ?', id);
+      const since = (!prev || prev.stage !== String(d.stage || '')) ? ts : null;
+      if (prev) {
+        run(`UPDATE recruits SET pipeline=?, stage=?, stage_label=?, company=?, contact=?,
+             phone=CASE WHEN ?<>'' THEN ? ELSE phone END, email=CASE WHEN ?<>'' THEN ? ELSE email END,
+             hs_owner=?, hs_modified=?, synced_at=?${since ? ', stage_since=?' : ''} WHERE deal_id=?`,
+          ...[String(d.pipeline || ''), String(d.stage || ''), String(d.stage_label || ''), String(d.company || '').slice(0, 80), String(d.contact || '').slice(0, 60),
+            String(d.phone || ''), String(d.phone || ''), String(d.email || ''), String(d.email || ''),
+            String(d.hs_owner || ''), String(d.hs_modified || ''), ts, ...(since ? [since] : []), id]);
+        updated++;
+      } else {
+        run(`INSERT INTO recruits (deal_id, pipeline, stage, stage_label, company, contact, phone, email, hs_owner, hs_modified, stage_since, synced_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+          id, String(d.pipeline || ''), String(d.stage || ''), String(d.stage_label || ''), String(d.company || '').slice(0, 80), String(d.contact || '').slice(0, 60),
+          String(d.phone || ''), String(d.email || ''), String(d.hs_owner || ''), String(d.hs_modified || ''), ts, ts);
+        created++;
+      }
+    }
+    metaSet('recruit_synced_at', ts);
+    say(`recruit import: ${created} new, ${updated} updated`);
+    res.json({ ok: true, created, updated });
+  });
+
+  // Checklist toggle — idempotent, safe to retry from the yard.
+  router.post('/api/recruit/:dealId/step', (req, res) => {
+    const r = get('SELECT deal_id FROM recruits WHERE deal_id = ?', req.params.dealId);
+    if (!r) return res.status(404).json({ error: 'recruit not found' });
+    const b = req.body || {};
+    const step = String(b.step || '');
+    if (!['org', 'trucks', 'users', 'drivers', 'admins', 'firstload'].includes(step)) return res.status(400).json({ error: 'bad step' });
+    if (b.done) run('INSERT OR REPLACE INTO recruit_steps (deal_id, step, done, by, ts) VALUES (?,?,1,?,?)', r.deal_id, step, String(b.by || '').slice(0, 40), nowISO());
+    else run('DELETE FROM recruit_steps WHERE deal_id = ? AND step = ?', r.deal_id, step);
+    res.json({ ok: true });
+  });
+
+  // Juan's local fields: follow-up date, graduated/paused flag, phone/email corrections.
+  router.post('/api/recruit/:dealId/set', (req, res) => {
+    const r = get('SELECT deal_id FROM recruits WHERE deal_id = ?', req.params.dealId);
+    if (!r) return res.status(404).json({ error: 'recruit not found' });
+    const b = req.body || {};
+    for (const f of ['local_status', 'next_follow', 'phone', 'email']) {
+      if (b[f] !== undefined) run(`UPDATE recruits SET ${f} = ? WHERE deal_id = ?`, String(b[f]).slice(0, 80), r.deal_id);
+    }
+    res.json({ ok: true });
+  });
+
+  // Follow-up notes — same thread pattern as the truck call log.
+  router.get('/api/recruit/:dealId/notes', (req, res) => {
+    res.json({ ok: true, notes: all('SELECT id, ts, author, kind, text FROM recruit_notes WHERE deal_id = ? ORDER BY id DESC LIMIT 200', req.params.dealId) });
+  });
+  router.post('/api/recruit/:dealId/notes', (req, res) => {
+    const r = get('SELECT deal_id FROM recruits WHERE deal_id = ?', req.params.dealId);
+    if (!r) return res.status(404).json({ error: 'recruit not found' });
+    const b = req.body || {};
+    const text = String(b.text || '').trim().slice(0, 500);
+    if (!text) return res.status(400).json({ error: 'text required' });
+    const ts = nowISO();
+    const kind = b.kind === 'note' ? 'note' : 'call';
+    run('INSERT INTO recruit_notes (ts, deal_id, author, kind, text) VALUES (?,?,?,?,?)', ts, r.deal_id, String(b.author || '').slice(0, 40), kind, text);
+    res.json({ ok: true, note: { ts, author: b.author, kind, text } });
+  });
+
   // 📷 Snapshot de las cámaras (frontal + cabina) AL MOMENTO — sin abrir Samsara.
   // Tarda ~10-20 s (la cámara sube la foto); si no regresa nada, la cámara está mal.
   router.post('/api/truck/:org/:number/camera', async (req, res) => {
@@ -945,6 +1039,8 @@ function createRouter({ config, newmile, log }) {
       hos_trucks: get(`SELECT COUNT(*) AS n FROM trucks WHERE hos_at != '' AND hos_at IS NOT NULL`).n
     });
   });
+
+  router.get('/recruit', (req, res) => res.redirect(req.baseUrl + '/recruit.html'));
 
   // ---------- static frontend ----------
   // el HTML nunca se cachea (cada deploy llega al instante al cel); los iconos sí
