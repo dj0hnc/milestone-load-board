@@ -31,7 +31,11 @@ h1 small{font-weight:600;font-size:14px;color:var(--gold);letter-spacing:1.5px;d
 .hspacer{margin-left:auto;display:flex;gap:8px;align-items:center;}
 .xlink{font-family:'Barlow Condensed';font-weight:700;font-size:14px;letter-spacing:1px;color:#fff;text-decoration:none;border:1.5px solid rgba(255,255,255,.35);border-radius:999px;padding:5px 12px;background:transparent;cursor:pointer;}
 .funnel{display:flex;gap:6px;padding:10px 14px 2px;overflow-x:auto;}
-.fpill{flex-shrink:0;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px 12px;text-align:center;box-shadow:var(--sh-card);}
+.fpill{flex-shrink:0;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px 12px;text-align:center;box-shadow:var(--sh-card);cursor:pointer;}
+.fpill.sel{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold);}
+.fpill.own{background:var(--navy);border-color:var(--navy);}
+.fpill.own b,.fpill.own small{color:#fff;}
+.fpill.own small{color:var(--gold);}
 .fpill b{display:block;font-size:17px;line-height:1.1;}
 .fpill small{font-family:'Barlow Condensed';font-weight:700;font-size:10.5px;letter-spacing:.7px;color:var(--mut);white-space:nowrap;}
 .fpill.hot{border-color:var(--gold);background:var(--warm);}
@@ -131,6 +135,13 @@ function laneOf(r){
   return "other";
 }
 let DATA=null,CUR=null;
+// Texas = Tony's desk: default shows ONLY deals recruited by Tony Salazar. The pill up
+// top flips to ALL recruiters when needed; the choice sticks per device.
+let OWNER_ONLY=localStorage.getItem("rc_owner")!=="all";
+let STAGE_SEL="";
+function subs(){const rs=(DATA&&DATA.recruits)||[];return OWNER_ONLY?rs.filter(r=>(r.hs_owner||"").indexOf("Tony")===0):rs;}
+function toggleOwner(){OWNER_ONLY=!OWNER_ONLY;localStorage.setItem("rc_owner",OWNER_ONLY?"tony":"all");render();}
+function pickStage(l){STAGE_SEL=(STAGE_SEL===l)?"":l;render();}
 function author(){return localStorage.getItem("ct_author")||"";}
 function changeAuthor(){
   const n=prompt("Your name? (shows on every note you save)",author());
@@ -156,20 +167,28 @@ async function fetchBoard(){
   }catch(e){$("syncInfo").textContent="Could not load: "+(e.message||e);}
 }
 function render(){
-  const rs=(DATA&&DATA.recruits)||[];
+  const rs=subs();
   const lanes={mine:[],incoming:[],cleared:[],other:[]};
   for(const r of rs)lanes[laneOf(r)].push(r);
   lanes.mine.sort((a,b)=>(a.next_follow||"9999")<(b.next_follow||"9999")?-1:1);
   lanes.cleared.sort((a,b)=>(b.hs_modified||"")<(a.hs_modified||"")?-1:1);
-  // funnel counts by label
+  // funnel: tap a stage pill to open that whole stage; tap again to go back
   const cnt={};for(const r of rs){const k=r.stage_label||"?";cnt[k]=(cnt[k]||0)+1;}
   const ORDER=["New Lead Outreach","Contacted, Awaiting Response","Qualified + Compliance Review","Compliance Document Collection","NetSuite Setup","Onboarding & NewMile Training","Cleared Sub / Active","Looking for Lease On","No Response","Disqualified"];
-  $("funnel").innerHTML=ORDER.filter(k=>cnt[k]).map(k=>`<div class="fpill${k.includes("Onboarding")?" hot":""}"><b>${cnt[k]}</b><small>${esc(k.replace("Compliance Document","Doc").replace(", Awaiting Response","").replace(" Outreach","").replace(" + Compliance Review"," + Compliance"))}</small></div>`).join("");
+  if(STAGE_SEL&&!cnt[STAGE_SEL])STAGE_SEL="";
+  $("funnel").innerHTML=
+    `<div class="fpill own" onclick="toggleOwner()"><b>${OWNER_ONLY?"TONY":"ALL"}</b><small>${OWNER_ONLY?"TEXAS ONLY":"ALL RECRUITERS"}</small></div>`+
+    ORDER.filter(k=>cnt[k]).map(k=>`<div class="fpill${k.includes("Onboarding")?" hot":""}${STAGE_SEL===k?" sel":""}" data-s="${esc(k)}" onclick="pickStage(this.dataset.s)"><b>${cnt[k]}</b><small>${esc(k.replace("Compliance Document","Doc").replace(", Awaiting Response","").replace(" Outreach","").replace(" + Compliance Review"," + Compliance"))}</small></div>`).join("");
   const lane=(key,title,arr,emptyMsg)=>`
     <section class="lane ${key}">
       <div class="lane-h">${title} <span class="cnt">${arr.length}</span></div>
       <div class="cardz">${arr.length?arr.map(card).join(""):`<div class="empty">${emptyMsg}</div>`}</div>
     </section>`;
+  if(STAGE_SEL){
+    const arr=rs.filter(r=>(r.stage_label||"")===STAGE_SEL).sort((a,b)=>(b.hs_modified||"")<(a.hs_modified||"")?-1:1);
+    $("lanes").innerHTML=lane("mine","🔎 "+esc(STAGE_SEL.toUpperCase())+" <span style='font-weight:600;font-size:11px;color:var(--mut);text-transform:none;'>tap the pill again to close</span>",arr,"Nothing in this stage.");
+    return;
+  }
   $("lanes").innerHTML=
     lane("mine","🎓 YOUR DESK — ONBOARDING & NEWMILE TRAINING",lanes.mine,"Nobody in training right now.")+
     lane("incoming","⏳ INCOMING — NETSUITE SETUP",lanes.incoming,"Nothing about to land on your desk.")+
