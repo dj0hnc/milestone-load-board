@@ -194,6 +194,20 @@ function createTracker(opts) {
           const old = fs.readdirSync(dir).filter(f => /^cactus-\d{4}-\d{2}-\d{2}\.db$/.test(f)).sort().slice(0, -14);
           for (const f of old) { try { fs.unlinkSync(path.join(dir, f)); } catch (e) {} }
           log('backup diario listo: cactus-' + dateISO + '.db');
+          // COPIA FUERA DE ESTA MÁQUINA (2026-08-20): el backup local muere con el disco. Una
+          // copia se va a OneDrive (sincroniza solo a la nube) — historial de llamadas, estados
+          // y notas sobreviven aunque la PC de la oficina se incendie. Conserva 14 allá también.
+          try {
+            const od = process.env.OneDriveCommercial || process.env.OneDrive || 'C:\\Users\\JuanJoseDeAlba\\OneDrive - Miles Ahead Brands';
+            if (fs.existsSync(od)) {
+              const odDir = path.join(od, 'TrackerBackups');
+              fs.mkdirSync(odDir, { recursive: true });
+              fs.copyFileSync(path.join(dir, 'cactus-' + dateISO + '.db'), path.join(odDir, 'cactus-' + dateISO + '.db'));
+              const oldOd = fs.readdirSync(odDir).filter(f => /^cactus-\d{4}-\d{2}-\d{2}\.db$/.test(f)).sort().slice(0, -14);
+              for (const f of oldOd) { try { fs.unlinkSync(path.join(odDir, f)); } catch (e) {} }
+              log('backup OFFSITE listo → OneDrive/TrackerBackups');
+            } else log('backup offsite omitido: OneDrive no encontrado en esta máquina');
+          } catch (e) { log('backup offsite falló: ' + (e.message || e)); }
         } catch (e) { log('backup falló: ' + (e.message || e)); }
       }
       // Actividad periódica: CADA 2 HORAS (horas pares 4–18 CT) con ventana CORTA (3 días).

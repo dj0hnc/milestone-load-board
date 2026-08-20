@@ -392,6 +392,7 @@ body.dark .theme-btn{border-color:var(--gold);}
     <h1>MILESTONE TEXAS <span>TRACKER</span></h1>
     <div class="faltan-pill" id="faltanPill" onclick="toggleFaltan()">—</div>
     <a class="xlink" href="/full" target="_blank" title="Abrir el Load Board">📋 BOARD</a>
+    <button class="xlink" style="background:transparent;cursor:pointer;" onclick="copyTony()" title="Copiar 'available but not planned' en inglés, listo para Tony">🤠 TONY</button>
     <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Tema claro/oscuro">🌙</button>
   </div>
   <div class="hrow2">
@@ -1836,6 +1837,24 @@ function resolveRemoved(org,num,action){
   if(action==="archive")t.archived=1; t.maybe_removed=0;
   queuePush({path:`/api/truck/${t.org_id}/${encodeURIComponent(num)}/resolve-removed`,body:{action}});
   closeModal();render();
+}
+
+// ---------- 🤠 BOTÓN TONY: "available but not planned" en inglés, un tap ----------
+// El tracker ya sabe quién está libre-sin-plan (estado + auto-cover vs NewMile + time-off).
+// Este botón arma la lista EN INGLÉS y la deja en el portapapeles, lista para pegarle a Tony.
+async function copyTony(){
+  const ts=(board&&board.trucks||[]).filter(t=>!t.archived&&!t.is_new&&subOnlyOk(t)&&(isVirtual()||t.division===division));
+  const free=[],out=[];
+  for(const t of ts){
+    const off=outOfService(t),offE=offOf(t),rest=restsToday(t);
+    if(t.state==="a")continue;                                  // ya planeada/cubierta
+    if(t.state==="d"){out.push(`${dnum(t)} (${t.driver||"no driver"}) — marked X/down today${t.status_note||t.note?": "+(t.status_note||t.note):""}`);continue;}
+    if(off||offE||rest){out.push(`${dnum(t)} (${t.driver||"no driver"}) — ${offE?(OFF_LBL[offE.reason]||offE.reason)+" "+mdy(offE.from_date)+"–"+mdy(offE.to_date):(STATUS_LBL[t.status]||t.status)}${t.return_date?" · back "+esc(t.return_date):""}${t.status_note||t.note?" · "+(t.status_note||t.note):""}`);continue;}
+    free.push(`${dnum(t)} (${t.driver||"no driver"})${t.note?" — "+t.note:""}`);
+  }
+  const txt=`Available but not planned — ${mdy(date)}:\n`+(free.length?free.map(s=>"• "+s).join("\n"):"• none — everyone available is planned")+(out.length?`\n\nNot available:\n`+out.map(s=>"• "+s).join("\n"):"");
+  try{await navigator.clipboard.writeText(txt);}catch(e){const ta=document.createElement("textarea");ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);}
+  openModal(`<h3>🤠 Tony report — copied ✓</h3><p style="font-size:12px;color:var(--mut);margin-bottom:8px;">ya está en tu portapapeles — pégalo en el mensaje. Esto se copió:</p><pre style="white-space:pre-wrap;font-size:12.5px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;max-height:50vh;overflow:auto;">${esc(txt)}</pre><div class="actions"><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
 }
 
 // ---------- 📞 BITÁCORA: el hilo de llamadas/notas por troca ----------
