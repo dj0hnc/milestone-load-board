@@ -212,6 +212,17 @@ function migrate(d) {
     text TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_recruit_notes ON recruit_notes (deal_id, id);
+  CREATE TABLE IF NOT EXISTS recruit_moves ( -- stage moves queued for HubSpot write-back:
+    id INTEGER PRIMARY KEY AUTOINCREMENT,    -- the page moves the deal locally at once and
+    ts TEXT NOT NULL,                        -- the laptop applies the move in HubSpot, then
+    deal_id TEXT NOT NULL,                   -- acks it here. applied=0 rows are the queue.
+    to_stage TEXT NOT NULL,
+    to_label TEXT DEFAULT '',
+    moved_by TEXT DEFAULT '',
+    applied INTEGER DEFAULT 0,
+    applied_at TEXT DEFAULT ''
+  );
+  CREATE INDEX IF NOT EXISTS idx_recruit_moves ON recruit_moves (applied, id);
   `);
   // additive migrations for DBs created before these columns existed
   addCol(d, 'trucks', 'rip_suggested', 'INTEGER DEFAULT 0');

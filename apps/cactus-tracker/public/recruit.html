@@ -83,7 +83,7 @@ main{padding:10px 14px 90px;display:grid;grid-template-columns:repeat(auto-fit,m
 .stp small{display:block;font-weight:400;font-size:10.5px;color:var(--mut);}
 .frow{display:flex;gap:8px;margin-bottom:10px;align-items:center;}
 .frow label{font-family:'Barlow Condensed';font-weight:700;font-size:12px;letter-spacing:.6px;color:var(--mut);}
-.frow input[type=date]{background:var(--card);border:1.5px solid var(--line);color:var(--ink);border-radius:10px;padding:7px 9px;font-family:inherit;font-size:13px;}
+.frow input[type=date],.frow select{background:var(--card);border:1.5px solid var(--line);color:var(--ink);border-radius:10px;padding:7px 9px;font-family:inherit;font-size:13px;max-width:52%;}
 .gradbtn{margin-left:auto;background:var(--gold);color:var(--navy);border:none;border-radius:999px;font-family:'Barlow Condensed';font-weight:800;font-size:13.5px;letter-spacing:.5px;padding:8px 14px;cursor:pointer;}
 .gradbtn.undone{background:var(--card);color:var(--mut);border:1.5px solid var(--line);}
 .sect{font-family:'Barlow Condensed';font-weight:700;font-size:13px;letter-spacing:1px;color:var(--mut);margin:12px 0 6px;}
@@ -125,6 +125,14 @@ const STEPS=[
   ["drivers","Drivers trained","Driver App at 100%"],
   ["admins","Admins trained","office side at 100%"],
   ["firstload","First load hauled","they ran their first job"]
+];
+// Subhauler Recruitment stages, in pipeline order — the MOVE control writes these.
+const SUB_STAGES=[
+  ["1349821618","New Lead Outreach"],["1410103319","Contacted, Awaiting Response"],
+  ["1349821620","Qualified + Compliance Review"],["1409282066","Compliance Document Collection"],
+  ["1349821621","NetSuite Setup"],["1349821622","Onboarding & NewMile Training"],
+  ["1358630992","Cleared Sub / Active"],["1380231940","Looking for Lease On"],
+  ["1413127551","No Response"],["1363909224","Disqualified"]
 ];
 // Lane routing by stage label (works for both recruitment pipelines).
 function laneOf(r){
@@ -206,6 +214,7 @@ function card(r){
       ${laneOf(r)!=="cleared"?`<span class="chip ${dc===STEPS.length?"ok":""}">${dc}/${STEPS.length} done</span>`:`<span class="chip ok">ACTIVE</span>`}
       ${r.next_follow?`<span class="chip${due?" due":""}">📅 ${due?"FOLLOW UP NOW":"next "+mdy(r.next_follow)}</span>`:""}
       ${r.notes_count?`<span class="chip">💬 ${r.notes_count}</span>`:""}
+      ${r.pending_move?`<span class="chip due">⏳ HS</span>`:""}
       ${r.phone?`<a class="callq" href="${telHref(r.phone)}" onclick="event.stopPropagation()">📱 CALL</a>`:""}
     </div>
     ${r.last_note?`<div class="lastn">💬 ${esc(r.last_note.author||"?")} · ${mdy(r.last_note.ts)}: ${esc(r.last_note.text)}</div>`:""}
@@ -232,8 +241,14 @@ function openPanel(id){
     <div class="frow">
       <label>NEXT FOLLOW-UP</label>
       <input type="date" id="nfDate" value="${esc(r.next_follow||"")}" onchange="setFollow(this.value)">
-      <button class="gradbtn${r.local_status==="graduated"?" undone":""}" onclick="graduate()">${r.local_status==="graduated"?"↩ UNDO GRADUATE":"🎓 GRADUATE → CLEARED"}</button>
+      <button class="gradbtn" onclick="quickGrad()">🎓 GRADUATE</button>
     </div>
+    <div class="frow">
+      <label>MOVE STAGE</label>
+      <select id="mvSel">${SUB_STAGES.map(([id,l])=>`<option value="${id}"${id===r.stage?" selected":""}>${esc(l)}</option>`).join("")}</select>
+      <button class="gradbtn" onclick="moveStage()">➜ MOVE</button>
+    </div>
+    ${r.pending_move?`<div style="margin-bottom:10px;"><span class="chip due">⏳ HubSpot pending: → ${esc(r.pending_move.to_label||"")} — moved here already; tell Claude "apply recruiting" to push it to HubSpot</span></div>`:""}
     <div class="sect">💬 FOLLOW-UP LOG — EVERYTHING DISCUSSED WITH THIS SUB</div>
     <div id="cFeed" class="cfeed"><p style="color:var(--mut);font-size:13px;">Loading…</p></div>
     <div class="cnew"><input type="text" id="cText" placeholder="What was discussed / next step…" maxlength="500" onkeydown="if(event.key==='Enter')saveNote()"><button onclick="saveNote()">SAVE</button></div>
@@ -276,13 +291,21 @@ async function setFollow(v){
   if(!CUR)return;CUR.next_follow=v||"";render();
   try{await fetch(`api/recruit/${encodeURIComponent(CUR.deal_id)}/set`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({next_follow:v||""})});}catch(e){}
 }
-async function graduate(){
-  if(!CUR)return;
-  const to=CUR.local_status==="graduated"?"":"graduated";
-  CUR.local_status=to;openPanel(CUR.deal_id);render();
-  try{await fetch(`api/recruit/${encodeURIComponent(CUR.deal_id)}/set`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({local_status:to})});}catch(e){}
-  if(to)alert("Marked CLEARED here. Remember to also move the deal in HubSpot (link at the top) until the write-back is wired.");
+async function moveTo(stage,label){
+  if(!CUR)return;let who=author();
+  if(!who){changeAuthor();who=author();if(!who)return;}
+  if(stage===CUR.stage)return;
+  if(!confirm("Move "+(CUR.company||CUR.contact||"this sub")+' to "'+label+'"?'))return;
+  CUR.stage=stage;CUR.stage_label=label;CUR.stage_since=new Date().toISOString();
+  CUR.pending_move={to_label:label,ts:CUR.stage_since};
+  openPanel(CUR.deal_id);render();
+  try{
+    const j=await(await fetch(`api/recruit/${encodeURIComponent(CUR.deal_id)}/move`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to_stage:stage,to_label:label,by:who})})).json();
+    if(!j.ok)throw new Error(j.error||"move failed");
+  }catch(e){alert("Move not saved: "+(e.message||e));fetchBoard();}
 }
+function moveStage(){const s=$("mvSel");if(!s)return;moveTo(s.value,s.options[s.selectedIndex].text);}
+function quickGrad(){moveTo("1358630992","Cleared Sub / Active");}
 async function editPhone(){
   if(!CUR)return;
   const p=prompt("Phone for "+(CUR.contact||CUR.company||"this sub")+":",CUR.phone||"");

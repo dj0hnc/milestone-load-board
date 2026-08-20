@@ -31,7 +31,7 @@ function createRouter({ config, newmile, log }) {
   const PIN = process.env.ACCESS_PIN || config.accessPin || '';
   const crypto = require('crypto');
   const pinCookie = PIN ? crypto.createHash('sha256').update('cactus|' + PIN).digest('hex').slice(0, 40) : '';
-  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/recruit/import', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
+  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
   if (PIN) {
     router.use((req, res, next) => {
       if (OPEN_PATHS.includes(req.path)) return next();
@@ -569,6 +569,9 @@ function createRouter({ config, newmile, log }) {
   // arrives through /api/recruit/import (below), pushed from the laptop.
   router.get('/api/recruit/board', (req, res) => {
     const recruits = all('SELECT * FROM recruits ORDER BY hs_modified DESC');
+    const pend = all('SELECT deal_id, to_label, ts FROM recruit_moves WHERE applied = 0');
+    const pendMap = {};
+    for (const p of pend) pendMap[p.deal_id] = p;
     const steps = all('SELECT deal_id, step, done, by, ts FROM recruit_steps WHERE done = 1');
     const notes = all(`SELECT n.deal_id, n.ts, n.author, n.kind, n.text FROM recruit_notes n
                        JOIN (SELECT deal_id, MAX(id) mid FROM recruit_notes GROUP BY deal_id) l
@@ -578,7 +581,7 @@ function createRouter({ config, newmile, log }) {
     for (const s of steps) (stepMap[s.deal_id] = stepMap[s.deal_id] || {})[s.step] = { by: s.by, ts: s.ts };
     for (const n of notes) noteMap[n.deal_id] = n;
     for (const c of counts) countMap[c.deal_id] = c.c;
-    for (const r of recruits) { r.steps = stepMap[r.deal_id] || {}; r.last_note = noteMap[r.deal_id] || null; r.notes_count = countMap[r.deal_id] || 0; }
+    for (const r of recruits) { r.steps = stepMap[r.deal_id] || {}; r.last_note = noteMap[r.deal_id] || null; r.notes_count = countMap[r.deal_id] || 0; r.pending_move = pendMap[r.deal_id] || null; }
     res.json({ ok: true, recruits, synced_at: metaGet('recruit_synced_at', '') });
   });
 
@@ -630,6 +633,38 @@ function createRouter({ config, newmile, log }) {
     if (b.done) run('INSERT OR REPLACE INTO recruit_steps (deal_id, step, done, by, ts) VALUES (?,?,1,?,?)', r.deal_id, step, String(b.by || '').slice(0, 40), nowISO());
     else run('DELETE FROM recruit_steps WHERE deal_id = ? AND step = ?', r.deal_id, step);
     res.json({ ok: true });
+  });
+
+  // Move a deal to another pipeline stage. The page reflects it INSTANTLY (local truth);
+  // the move is queued for HubSpot and shows as "HS pending" until the laptop applies it
+  // through the HubSpot connector and acks. One pending move per deal (a newer one wins).
+  router.post('/api/recruit/:dealId/move', (req, res) => {
+    const r = get('SELECT deal_id, stage, stage_label FROM recruits WHERE deal_id = ?', req.params.dealId);
+    if (!r) return res.status(404).json({ error: 'recruit not found' });
+    const b = req.body || {};
+    const toStage = String(b.to_stage || '').trim(), toLabel = String(b.to_label || '').trim();
+    if (!/^\d{6,}$/.test(toStage)) return res.status(400).json({ error: 'bad stage' });
+    if (toStage === r.stage) return res.json({ ok: true, noop: true });
+    const ts = nowISO();
+    run('DELETE FROM recruit_moves WHERE deal_id = ? AND applied = 0', r.deal_id);
+    run('INSERT INTO recruit_moves (ts, deal_id, to_stage, to_label, moved_by) VALUES (?,?,?,?,?)', ts, r.deal_id, toStage, toLabel, String(b.by || '').slice(0, 40));
+    run('UPDATE recruits SET stage = ?, stage_label = ?, stage_since = ? WHERE deal_id = ?', toStage, toLabel, ts, r.deal_id);
+    say(`recruit move: ${r.deal_id} → ${toLabel || toStage} (queued for HubSpot)`);
+    res.json({ ok: true });
+  });
+
+  // The HubSpot write-back queue (states-key guarded, no PIN — the laptop drains it).
+  router.get('/api/recruit/pending', (req, res) => {
+    if (String((req.query || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    res.json({ ok: true, moves: all('SELECT m.id, m.ts, m.deal_id, m.to_stage, m.to_label, m.moved_by, r.company FROM recruit_moves m LEFT JOIN recruits r ON r.deal_id = m.deal_id WHERE m.applied = 0 ORDER BY m.id') });
+  });
+  router.post('/api/recruit/pending/ack', (req, res) => {
+    if (String((req.query || {}).key || (req.body || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    const ids = ((req.body || {}).ids || []).map(Number).filter(n => n > 0);
+    if (!ids.length) return res.status(400).json({ error: 'ids[] required' });
+    const ts = nowISO();
+    for (const id of ids) run('UPDATE recruit_moves SET applied = 1, applied_at = ? WHERE id = ?', ts, id);
+    res.json({ ok: true, acked: ids.length });
   });
 
   // Juan's local fields: follow-up date, graduated/paused flag, phone/email corrections.
