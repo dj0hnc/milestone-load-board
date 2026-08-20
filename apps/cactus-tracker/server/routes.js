@@ -154,6 +154,11 @@ function createRouter({ config, newmile, log }) {
                            ON m.org_id = c.org_id AND m.number = c.number AND m.mid = c.id`)) {
       lastCallMap.set(r.org_id + '|' + r.number, { ts: r.ts, author: r.author, kind: r.kind, text: r.text });
     }
+    // 📝 cuántas entradas acumula cada troca (bitácora) — el chip enseña el contador
+    const callCountMap = new Map();
+    for (const r of all('SELECT org_id, number, COUNT(*) AS n FROM calls GROUP BY org_id, number')) {
+      callCountMap.set(r.org_id + '|' + r.number, r.n);
+    }
     const outTrucks = trucks.map(t => {
       const s = stMap.get(t.org_id + '|' + t.number);
       const driverChangedRecent = t.driver_changed_at && (Date.now() - Date.parse(t.driver_changed_at)) < 48 * 3600 * 1000;
@@ -180,7 +185,8 @@ function createRouter({ config, newmile, log }) {
         time_off: offMap.get(t.org_id + '|' + t.number) || [],
         days_since_last_load: t.last_load_date ? daysBetween(t.last_load_date, today) : null,
         driver_changed_recent: driverChangedRecent ? { prev: t.driver_prev, at: t.driver_changed_at } : null,
-        last_call: lastCallMap.get(t.org_id + '|' + t.number) || null
+        last_call: lastCallMap.get(t.org_id + '|' + t.number) || null,
+        calls_count: callCountMap.get(t.org_id + '|' + t.number) || 0
       };
     });
 
@@ -217,8 +223,8 @@ function createRouter({ config, newmile, log }) {
   // ---------- dispatch state ----------
   router.post('/api/state', (req, res) => {
     const { date, org, number, state, by } = req.body || {};
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !org || !number || !['p', 'a', 'd'].includes(state)) {
-      return res.status(400).json({ error: 'body: {date ISO, org, number, state p|a|d}' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !org || !number || !['p', 'a', 'd', 'n'].includes(state)) {
+      return res.status(400).json({ error: 'body: {date ISO, org, number, state p|a|d|n}' });
     }
     // nm_confirmed vuelve a 0: la confirmación vs NewMile se re-verifica en el próximo sync
     // (y el destino se limpia — si sigue asignado en NewMile, el sync lo repone solo)
@@ -370,7 +376,7 @@ function createRouter({ config, newmile, log }) {
         status: t.status, note: [t.status_note, t.note].filter(Boolean).join(' · '),
         returnDate: t.return_date || '', restDays: t.rest_days || '',
         timeOff: offs.get(t.org_id + '|' + t.number) || null,
-        todayState: st === 'a' ? 'assigned' : st === 'd' ? 'x' : st === 'p' ? 'pending' : null,
+        todayState: st === 'a' ? 'assigned' : st === 'd' ? 'x' : st === 'n' ? 'nowork' : st === 'p' ? 'pending' : null,
         updatedAt: t.updated_at || null
       };
     }

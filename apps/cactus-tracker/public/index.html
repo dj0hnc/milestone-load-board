@@ -130,6 +130,8 @@ h1 span{color:var(--gold);}
 .btn-call{position:absolute;bottom:8px;left:40px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;font-size:12px;cursor:pointer;line-height:1;}
 .btn-call:hover{border-color:#2456a6;}
 .btn-zap{position:absolute;bottom:8px;left:8px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:12px;cursor:pointer;line-height:1;}
+.btn-note{position:absolute;bottom:8px;left:72px;min-width:26px;height:26px;padding:0 5px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#5a6a85;font-size:11px;font-weight:700;cursor:pointer;line-height:1;white-space:nowrap;}
+.btn-nw{position:absolute;top:6px;right:38px;width:32px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-family:'Barlow Condensed';font-weight:800;font-size:11px;letter-spacing:.5px;cursor:pointer;line-height:1;}
 .btn-zap:hover{border-color:var(--gold);color:var(--gold);}
 .chip{padding-bottom:44px;}
 /* Truck Command Panel (the 📞 panel): live snapshot grid + action row */
@@ -163,6 +165,11 @@ h1 span{color:var(--gold);}
 .chip.s-d{border-color:var(--red);background:var(--red-bg);opacity:.7;}
 .chip.s-d .num{text-decoration:line-through;color:var(--red);}
 .chip.s-d .btn-down{background:var(--red);border-color:var(--red);color:#fff;}
+/* NW = no trabaja HOY por una razón (no down, no shop): AMARILLO sólido, no cuenta */
+.chip.s-n{border-color:#D9B430;background:#FBF3D0;}
+.chip.s-n .num{color:#8a6d00;}
+.chip.s-n .btn-nw{background:#D9A400;border-color:#D9A400;color:#fff;}
+.chip.s-n .nwmark{position:absolute;top:-9px;left:-9px;height:26px;min-width:26px;padding:0 7px;border-radius:13px;background:#D9A400;color:#fff;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed';font-weight:800;font-size:11px;letter-spacing:.5px;box-shadow:0 1px 4px rgba(0,0,0,.3);}
 .chip.rest{opacity:.55;background:#eef0f5;}
 .chip.status-off{background:#f2f3f6;}
 /* no disponible (vacaciones/shop programado/status): ámbar rayado, imposible de confundir */
@@ -244,6 +251,8 @@ h1 span{color:var(--sand);}
 .btn-edit{top:8px;right:40px;}
 .btn-call{bottom:8px;left:40px;}
 .btn-zap{bottom:8px;left:8px;}
+.btn-note{bottom:8px;left:72px;}
+.btn-nw{top:8px;right:40px;}
 .btn-loc{bottom:8px;right:8px;}
 .btn-cam{bottom:8px;right:40px;}
 /* los botones de esquina (📷 ⟳) flotan sobre el cuadrito: cuando el texto se envuelve se
@@ -385,6 +394,10 @@ body.dark .btn-edit,body.dark .btn-down,body.dark .btn-call,body.dark .btn-zap,b
 body.dark .chip.rest{background:#10151d;}
 body.dark .chip.status-off{background:#10151d;}
 body.dark .chip.s-off{background:repeating-linear-gradient(135deg,#241f14,#241f14 9px,#2d2617 9px,#2d2617 18px);border-color:#c98a2f;}
+body.dark .chip.s-n{background:#2c2610;border-color:#D9B430;}
+body.dark .chip.s-n .num{color:#e3c84a;}
+body.dark .btn-note,body.dark .btn-nw{background:#16243c;border-color:#2e3a47;color:#8f97ab;}
+body.dark .chip.s-n .btn-nw{background:#D9A400;border-color:#D9A400;color:#141b24;}
 body.dark .progress{background:#2e3a47;}
 body.dark .cmsg{background:#141b24;border-color:#2e3a47;}
 body.dark .cav{background:var(--gold);color:#1C2333;}
@@ -628,6 +641,8 @@ function setSt(t,s){
 }
 function tapChip(org,num){const t=truckOf(org,num);if(!t)return; setSt(t,t.state==="a"?"p":"a");}
 function tapDown(ev,org,num){ev.stopPropagation();const t=truckOf(org,num);if(!t)return; setSt(t,t.state==="d"?"p":"d");}
+// NW: no trabaja ESTE día por una razón (cita, personal, sin material…) — amarillo, no cuenta
+function tapNW(ev,org,num){ev.stopPropagation();const t=truckOf(org,num);if(!t)return; setSt(t,t.state==="n"?"p":"n");}
 // STAR DRIVER: marca por truck (no por día). Optimista + cola offline, como los demás edits.
 function toggleStar(ev,org,num){
   ev.stopPropagation();
@@ -659,7 +674,7 @@ function trlTxt(t){return [t.trailer_type,t.trailer_type2].filter(Boolean).join(
 // API — Juan los dicta y quedan fijos aquí; la llave es el fleet/org de Samsara)
 const SAMSARA_LOGIN_FLEET={};
 // status: cómo está HOY (para planear); type: qué trae (equipo)
-function isOffNow(t){return t.state==="d"||outOfService(t)||restsToday(t);}
+function isOffNow(t){return t.state==="d"||t.state==="n"||outOfService(t)||restsToday(t);}
 function matchStatus(t){
   switch(statusFilter){
     case "": return true;
@@ -1102,8 +1117,8 @@ function chipHtml(t){
   const rest=restsToday(t);
   const offEntry=offOf(t);
   const off=outOfService(t);
-  // orden visual: verde=cubierto, rojo=down HOY, ámbar rayado=no disponible (programado/status)
-  const cls=t.state==="a"?"s-a":t.state==="d"?"s-d":(off?"s-off":"");
+  // orden visual: verde=cubierto, rojo=down HOY, AMARILLO=NW no trabaja hoy, ámbar rayado=no disponible
+  const cls=t.state==="a"?"s-a":t.state==="d"?"s-d":t.state==="n"?"s-n":(off?"s-off":"");
   const offEmoji=offEntry?(OFF_EMOJI[offEntry.reason]||"⛔"):(off?(OFF_EMOJI[t.status]||"⛔"):"");
   const flag=t.samsara_flag||t.detected_flag;
   const drvChg=t.driver_changed_recent;
@@ -1111,10 +1126,13 @@ function chipHtml(t){
     ${t.rip_rap?'<div class="ripflag"></div>':""}
     ${t.state==="a"?`<div class="check ${(t.state_source==="auto"||t.nm_confirmed)?"auto":""}" title="${t.state_source==="auto"?"auto-covered: hauled or assigned in NewMile":(t.nm_confirmed?"planned by you — CONFIRMED in NewMile":"assigned (not yet verified vs NewMile)")}">${(t.state_source==="auto"||t.nm_confirmed)?"⚡":"✓"}</div>`:""}
     ${cls==="s-off"?`<div class="offmark" title="not available">${offEmoji}</div>`:""}
+    ${cls==="s-n"?`<div class="nwmark" title="not working this day — not counted">NW</div>`:""}
     <button class="btn-zap" onclick="event.stopPropagation();openSendTruck('${t.org_id}','${esc(t.number)}')" title="Assign this truck to a NewMile order">⚡</button>
     <button class="btn-call" onclick="event.stopPropagation();openCalls('${t.org_id}','${esc(t.number)}')" title="Truck panel — call log, status, location, everything">📞</button>
+    <button class="btn-note" onclick="event.stopPropagation();openNotesHist('${t.org_id}','${esc(t.number)}')" title="All notes ever logged for this truck">📝${t.calls_count?t.calls_count:""}</button>
     <button class="btn-edit" onclick="event.stopPropagation();openEdit('${t.org_id}','${esc(t.number)}')" title="Edit">✎</button>
     <button class="btn-down" onclick="tapDown(event,'${t.org_id}','${esc(t.number)}')" title="Mark down">✕</button>
+    <button class="btn-nw" onclick="tapNW(event,'${t.org_id}','${esc(t.number)}')" title="NO WORK this day (yellow, not counted) — tap again to unmark">NW</button>
     <div class="top"><span class="num"><button class="star-btn ${t.star?"on":""}" onclick="toggleStar(event,'${t.org_id}','${esc(t.number)}')" title="${t.star?"Star driver — tap to remove":"Mark as star driver"}">${t.star?"★":"☆"}</button>${esc(dnum(t))}${isVirtual()?`<span class="orgtag ${t.org_id==="KT"?(t.is_sub?"ic":"kt"):(t.is_sub?"sub":"")}">${t.org_id==="KT"?(t.is_sub?"IC":"KT"):(t.is_sub?"SUB":"CACTUS")}</span>`:""}</span>${trlTxt(t)?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(trlTxt(t))}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}${liveMoveHtml(t)}${liveLoadHtml(t)}</div>
     <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ NO DRIVER"}</div>
     ${t.state==="a"&&t.nm_dest&&t.nm_dest.length?`<div class="dest" title="${esc(t.nm_dest.map(d=>[d.n,d.c,d.m,d.d].filter(Boolean).join(" · ")).join("  +  "))}">🚚 ${t.nm_dest.map(d=>esc([d.c||d.n,d.d||d.m].filter(Boolean).join(" → "))).join(" + ")}</div>`:""}
@@ -1128,6 +1146,7 @@ function chipHtml(t){
     ${t.state==="a"&&t.state_source!=="auto"&&!t.nm_confirmed&&board.nm_checked&&!board.historical?`<span class="badge" style="background:#fdf3e3;color:#8a5a10;border:1px solid #c98a2f;">⚠ not in NewMile</span>`:""}
     ${t.state==="d"&&t.state_source==="carry"?`<span class="badge" style="background:var(--red-bg);color:var(--red);">⛔ DOWN since ${mdy(t.down_since)}${lastMovedLbl(t)} — confirm driver</span>`:""}
     ${t.state==="d"&&t.state_source!=="carry"&&t.last_moved_at?`<span class="badge" style="background:var(--red-bg);color:var(--red);">⏱ last moved ${tsMdy(t.last_moved_at)}</span>`:""}
+    ${t.state==="n"?`<span class="badge" style="background:#FBF3D0;color:#8a6d00;border:1px solid #D9B430;">🟡 NO WORK this day — not counted</span>`:""}
     ${rest?'<span class="badge status">OFF TODAY</span>':""}
     ${(()=>{const o=offOf(t);return o?`<span class="badge status" style="background:#fdeedd;color:#a8622f;">${OFF_LBL[o.reason]||o.reason} ${mdy(o.from_date)}–${mdy(o.to_date)}</span>`:"";})()}
     ${(()=>{const u=!offOf(t)&&upcomingOff(t);return u?`<span class="badge" style="background:#fdf3e3;border:1px solid #c98a2f;color:#8a5a10;" title="scheduled — goes off on ${u.from_date}">${OFF_EMOJI[u.reason]||"🗓"} ${esc(u.reason).toUpperCase()} STARTS ${mdy(u.from_date)}</span>`:"";})()}
@@ -1861,12 +1880,72 @@ async function copyTony(){
     const off=outOfService(t),offE=offOf(t),rest=restsToday(t);
     if(t.state==="a")continue;                                  // ya planeada/cubierta
     if(t.state==="d"){out.push(`${dnum(t)} (${t.driver||"no driver"}) — marked X/down today${t.status_note||t.note?": "+(t.status_note||t.note):""}`);continue;}
+    if(t.state==="n"){out.push(`${dnum(t)} (${t.driver||"no driver"}) — NO WORK today${t.status_note||t.note?": "+(t.status_note||t.note):""}`);continue;}
     if(off||offE||rest){out.push(`${dnum(t)} (${t.driver||"no driver"}) — ${offE?(OFF_LBL[offE.reason]||offE.reason)+" "+mdy(offE.from_date)+"–"+mdy(offE.to_date):(STATUS_LBL[t.status]||t.status)}${t.return_date?" · back "+esc(t.return_date):""}${t.status_note||t.note?" · "+(t.status_note||t.note):""}`);continue;}
     free.push(`${dnum(t)} (${t.driver||"no driver"})${t.note?" — "+t.note:""}`);
   }
   const txt=`Available but not planned — ${mdy(date)}:\n`+(free.length?free.map(s=>"• "+s).join("\n"):"• none — everyone available is planned")+(out.length?`\n\nNot available:\n`+out.map(s=>"• "+s).join("\n"):"");
   try{await navigator.clipboard.writeText(txt);}catch(e){const ta=document.createElement("textarea");ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);}
   openModal(`<h3>🤠 Tony report — copied ✓</h3><p style="font-size:12px;color:var(--mut);margin-bottom:8px;">already in your clipboard — paste it into the message. This was copied:</p><pre style="white-space:pre-wrap;font-size:12.5px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;max-height:50vh;overflow:auto;">${esc(txt)}</pre><div class="actions"><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
+}
+
+// ---------- 📝 NOTES HISTORY — every note EVER, from every source, one timeline ----------
+// Merges the call log (calls table) with every edit of the chip note and status note
+// (truck_log audit), grouped by day, newest first. Nothing anyone wrote is ever lost.
+async function openNotesHist(org,num){
+  const t=truckOf(org,num);if(!t)return;
+  openModal(`<h3>📝 Notes — Truck ${esc(dnum(t))}</h3>
+    <div style="font-size:12.5px;color:var(--mut);margin-bottom:6px;">${esc(t.driver||"(no driver)")} — everything ever written: 📞 calls · 📝 notes · ✎ chip-note edits · 🔧 status notes</div>
+    <div id="nhFeed" class="cfeed" style="max-height:56vh;"><p style="color:var(--mut);font-size:13px;">Loading…</p></div>
+    <div class="cnew"><input type="text" id="nhText" placeholder="Add a note…" maxlength="500" onkeydown="if(event.key==='Enter')saveHistNote('${t.org_id}','${esc(t.number)}')"><button onclick="saveHistNote('${t.org_id}','${esc(t.number)}')">SAVE</button></div>
+    <div style="font-size:11px;color:var(--mut);margin-top:6px;">signing as <b>${esc(localStorage.getItem("ct_author")||"— no name yet —")}</b> · <a href="#" onclick="changeAuthor();return false;">change</a></div>`);
+  try{
+    const [cr,hr]=await Promise.all([
+      fetch(`${API}/api/truck/${encodeURIComponent(t.org_id)}/${encodeURIComponent(t.number)}/calls`).then(r=>r.json()),
+      fetch(`${API}/api/truck/${encodeURIComponent(t.org_id)}/${encodeURIComponent(t.number)}/history`).then(r=>r.json())
+    ]);
+    const items=[];
+    for(const c of ((cr&&cr.calls)||[]))items.push({ts:c.ts,author:c.author,src:c.kind==="call"?"📞 call":"📝 note",text:c.text,color:"var(--blue)"});
+    for(const h of ((hr&&hr.changes)||[])){
+      if(h.field!=="note"&&h.field!=="status_note")continue;
+      items.push({ts:h.ts,author:h.changed_by,src:h.field==="note"?"✎ chip note":"🔧 status note",
+        text:h.new_value?h.new_value:(h.old_value?`(cleared — was "${h.old_value}")`:"(cleared)"),color:"#a8622f"});
+    }
+    items.sort((a,b)=>a.ts<b.ts?1:-1);
+    const el=$("nhFeed");if(!el)return;
+    if(!items.length){el.innerHTML=`<p style="color:var(--mut);font-size:13px;">Nothing yet — every note anyone writes on this truck piles up here forever.</p>`;return;}
+    let html="",lastDay="";
+    for(const it of items){
+      const day=String(it.ts).slice(0,10);
+      if(day!==lastDay){lastDay=day;html+=`<div style="font-family:'Barlow Condensed';font-weight:800;font-size:12.5px;letter-spacing:1px;color:var(--mut);margin:7px 0 3px;border-bottom:1px dashed var(--line);padding-bottom:2px;">${nhDayLbl(day)}</div>`;}
+      html+=`<div class="cmsg"><div class="cav">${esc((it.author||"?").slice(0,2).toUpperCase())}</div><div style="flex:1;"><div class="cmeta"><b>${esc(it.author||"?")}</b> · ${esc(String(it.ts).slice(11,16))} · <span style="color:${it.color};font-weight:700;">${it.src}</span></div><div class="ctx">${esc(it.text)}</div></div></div>`;
+    }
+    html+=`<div style="text-align:center;color:var(--mut);font-size:11px;margin-top:5px;">${items.length} entries — the full life story of this truck</div>`;
+    el.innerHTML=html;
+  }catch(e){const el=$("nhFeed");if(el)el.innerHTML=`<p style="color:var(--red);font-size:13px;">Could not load: ${esc(e.message||String(e))}</p>`;}
+}
+function nhDayLbl(day){
+  const today=board.today||"";
+  if(day===today)return "TODAY · "+mdy(day);
+  if(today&&day===isoShift(today,-1))return "YESTERDAY · "+mdy(day);
+  const wd=["SUN","MON","TUE","WED","THU","FRI","SAT"][new Date(day+"T12:00:00Z").getUTCDay()];
+  return wd+" · "+mdy(day);
+}
+async function saveHistNote(org,num){
+  let who=localStorage.getItem("ct_author")||"";
+  if(!who){changeAuthor();who=localStorage.getItem("ct_author")||"";if(!who)return;}
+  const inp=$("nhText");if(!inp)return;
+  const text=(inp.value||"").trim();if(!text)return;
+  inp.disabled=true;
+  try{
+    const r=await fetch(`${API}/api/truck/${encodeURIComponent(org)}/${encodeURIComponent(num)}/calls`,{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({author:who,text:text,kind:"note"})});
+    const j=await r.json();
+    if(!j.ok)throw new Error(j.error||"save failed");
+    const t=truckOf(org,num);if(t){t.last_call={ts:j.call.ts,author:who,kind:"note",text:text};t.calls_count=(t.calls_count||0)+1;}
+    openNotesHist(org,num);render();
+  }catch(e){alert("Not saved: "+(e.message||e));const i=$("nhText");if(i)i.disabled=false;}
 }
 
 // ---------- 📞 TRUCK COMMAND PANEL — the heart of every driver call ----------
@@ -1877,7 +1956,7 @@ function openCalls(org,num){
   const t=truckOf(org,num);if(!t)return;
   const st=STATUS_LBL[t.status]||t.status||"OK";
   const stColor=(t.status==="ok"||!t.status)?"var(--green)":(t.status==="down"||t.status==="deleased")?"var(--red)":"#c98a2f";
-  const today=t.state==="a"?("✅ COVERED "+(t.state_source==="auto"?"(auto — NewMile)":(t.nm_confirmed?"(confirmed)":"(planned)"))):t.state==="d"?"⛔ X TODAY":"• pending";
+  const today=t.state==="a"?("✅ COVERED "+(t.state_source==="auto"?"(auto — NewMile)":(t.nm_confirmed?"(confirmed)":"(planned)"))):t.state==="d"?"⛔ X TODAY":t.state==="n"?"🟡 NO WORK today":"• pending";
   const dest=(t.nm_dest&&t.nm_dest.length)?t.nm_dest.map(d=>[d.c||d.n,d.d||d.m].filter(Boolean).join(" → ")).join("  +  "):"";
   const off=offOf(t);const up=!off&&upcomingOff(t);
   const phone=String(t.phone||"").trim();
@@ -1901,6 +1980,7 @@ function openCalls(org,num){
       <button onclick="closeModal();openEdit('${t.org_id}','${esc(t.number)}')">✎ Edit</button>
       ${hasGPS(t)?`<button onclick="closeModal();locateNow('${t.org_id}','${esc(t.number)}')">⟳ GPS</button>`:""}
       ${hasGPS(t)&&t.samsara_id?`<button onclick="closeModal();openCamera('${t.org_id}','${esc(t.number)}')">📷 Cams</button>`:""}
+      <button onclick="closeModal();openNotesHist('${t.org_id}','${esc(t.number)}')">📝 Notes</button>
       <button onclick="closeModal();openHistory('${t.org_id}','${esc(t.number)}')">📅 History</button>
     </div>
     <div style="font-family:'Barlow Condensed';font-weight:700;font-size:13px;letter-spacing:1px;color:var(--mut);margin:10px 0 6px;">📞 CALL LOG — EVERYTHING DISCUSSED WITH THIS DRIVER</div>
