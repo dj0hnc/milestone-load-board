@@ -125,6 +125,20 @@ h1 span{color:var(--gold);}
 .btn-down:hover{border-color:var(--red);color:var(--red);}
 .btn-edit{position:absolute;top:6px;right:36px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:13px;cursor:pointer;line-height:1;}
 .btn-edit:hover{border-color:var(--gold);color:var(--gold);}
+/* 📞 bitácora: tercer botón del carril de arriba (✕ 6 · ✎ 36 · 📞 66) */
+.btn-call{position:absolute;top:6px;right:66px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;font-size:12px;cursor:pointer;line-height:1;}
+.btn-call:hover{border-color:#2456a6;}
+.lastcall{font-size:10.5px;color:#5a6a85;margin-top:4px;line-height:1.3;overflow-wrap:anywhere;}
+.lastcall b{color:#2456a6;}
+.cfeed{display:flex;flex-direction:column;gap:8px;max-height:46vh;overflow:auto;margin:8px 0;}
+.cmsg{display:flex;gap:8px;background:#f6f8fb;border:1px solid #dfe5ee;border-radius:10px;padding:8px 10px;}
+.cav{width:26px;height:26px;min-width:26px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:11px;font-family:'Barlow Condensed';}
+.cmeta{font-size:11px;color:var(--mut);}
+.cmeta b{color:#2456a6;}
+.ctx{font-size:13.5px;line-height:1.4;overflow-wrap:anywhere;}
+.cnew{display:flex;gap:8px;margin-top:4px;}
+.cnew input{flex:1;padding:10px 12px;border:1.5px solid #cdd3df;border-radius:10px;font-size:15px;font-family:'Barlow';}
+.cnew button{border:none;border-radius:10px;padding:0 16px;font-family:'Barlow Condensed';font-weight:800;font-size:15px;color:#fff;cursor:pointer;background:var(--green);}
 .chip.s-a{border-color:var(--green);background:var(--green-bg);}
 .chip.s-a .check{position:absolute;top:-9px;left:-9px;width:26px;height:26px;border-radius:50%;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;box-shadow:0 1px 4px rgba(0,0,0,.3);}
 .chip.s-a .check.auto{background:#2456a6;font-size:11px;}
@@ -210,6 +224,7 @@ h1 span{color:var(--sand);}
 .btn-down,.btn-edit,.btn-loc,.btn-cam{border:1px solid var(--line);background:#FAF9F6;color:#A6A29A;border-radius:9px;transition:all .12s;}
 .btn-down{top:8px;right:8px;}
 .btn-edit{top:8px;right:40px;}
+.btn-call{top:8px;right:72px;}
 .btn-loc{bottom:8px;right:8px;}
 .btn-cam{bottom:8px;right:40px;}
 /* los botones de esquina (📷 ⟳) flotan sobre el cuadrito: cuando el texto se envuelve se
@@ -1034,6 +1049,7 @@ function chipHtml(t){
     ${t.rip_rap?'<div class="ripflag"></div>':""}
     ${t.state==="a"?`<div class="check ${(t.state_source==="auto"||t.nm_confirmed)?"auto":""}" title="${t.state_source==="auto"?"auto-covered: hauled or assigned in NewMile":(t.nm_confirmed?"planned by you — CONFIRMED in NewMile":"assigned (not yet verified vs NewMile)")}">${(t.state_source==="auto"||t.nm_confirmed)?"⚡":"✓"}</div>`:""}
     ${cls==="s-off"?`<div class="offmark" title="not available">${offEmoji}</div>`:""}
+    <button class="btn-call" onclick="event.stopPropagation();openCalls('${t.org_id}','${esc(t.number)}')" title="Bitácora — llamadas y notas del chofer">📞</button>
     <button class="btn-edit" onclick="event.stopPropagation();openEdit('${t.org_id}','${esc(t.number)}')" title="Edit">✎</button>
     <button class="btn-down" onclick="tapDown(event,'${t.org_id}','${esc(t.number)}')" title="Mark down">✕</button>
     <div class="top"><span class="num"><button class="star-btn ${t.star?"on":""}" onclick="toggleStar(event,'${t.org_id}','${esc(t.number)}')" title="${t.star?"Star driver — tap to remove":"Mark as star driver"}">${t.star?"★":"☆"}</button>${esc(dnum(t))}${isVirtual()?`<span class="orgtag ${t.org_id==="KT"?(t.is_sub?"ic":"kt"):(t.is_sub?"sub":"")}">${t.org_id==="KT"?(t.is_sub?"IC":"KT"):(t.is_sub?"SUB":"CACTUS")}</span>`:""}</span>${trlTxt(t)?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(trlTxt(t))}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}${liveMoveHtml(t)}${liveLoadHtml(t)}</div>
@@ -1057,6 +1073,7 @@ function chipHtml(t){
     ${flag?`<span class="badge flag" onclick="event.stopPropagation();openFlag('${t.org_id}','${esc(t.number)}')">⚑ ${esc(flag)}</span>`:""}
     ${t.suggested_area&&!board.historical?`<span class="badge" style="background:var(--blue-bg);color:var(--blue);cursor:pointer;" onclick="event.stopPropagation();openAreaSuggest('${t.org_id}','${esc(t.number)}')">📍 parks @ ${esc(t.suggested_area)}</span>`:""}
     ${t.note?`<div class="note">${esc(t.note)}</div>`:""}
+    ${t.last_call?`<div class="lastcall">📞 <b>${esc(t.last_call.author||"?")}</b> ${tsMdy(t.last_call.ts)} — ${esc(t.last_call.text)}</div>`:""}
   </div>`;
 }
 
@@ -1769,6 +1786,52 @@ function resolveRemoved(org,num,action){
   if(action==="archive")t.archived=1; t.maybe_removed=0;
   queuePush({path:`/api/truck/${t.org_id}/${encodeURIComponent(num)}/resolve-removed`,body:{action}});
   closeModal();render();
+}
+
+// ---------- 📞 BITÁCORA: el hilo de llamadas/notas por troca ----------
+// Cualquiera que hable con el chofer lo anota con SU nombre (se pide una vez, queda en el
+// navegador). Todos ven el hilo completo; la última entrada vive al pie del chip.
+function openCalls(org,num){
+  const t=truckOf(org,num);if(!t)return;
+  openModal(`<h3>📞 Bitácora — Truck ${esc(dnum(t))}</h3>
+    <div style="font-size:12.5px;color:var(--mut);margin-bottom:6px;">${esc(t.driver||"(no driver)")}${t.note?" · "+esc(t.note):""} — todo lo hablado con este chofer queda aquí, con nombre y hora</div>
+    <div id="cFeed" class="cfeed"><p style="color:var(--mut);font-size:13px;">Loading…</p></div>
+    <div class="cnew"><input type="text" id="cText" placeholder="Qué se habló / nota…" maxlength="500" onkeydown="if(event.key==='Enter')saveCall('${t.org_id}','${esc(t.number)}')"><button onclick="saveCall('${t.org_id}','${esc(t.number)}')">SAVE</button></div>
+    <div style="font-size:11px;color:var(--mut);margin-top:6px;">firmando como <b id="cWho">${esc(localStorage.getItem("ct_author")||"— sin nombre —")}</b> · <a href="#" onclick="changeAuthor();return false;">cambiar</a></div>`);
+  loadCalls(t.org_id,t.number);
+  setTimeout(()=>{const i=$("cText");if(i)i.focus();},50);
+}
+async function loadCalls(org,num){
+  try{
+    const r=await fetch(`${API}/api/truck/${encodeURIComponent(org)}/${encodeURIComponent(num)}/calls`);
+    const j=await r.json();
+    if(!j.ok)throw new Error(j.error||"load failed");
+    const rows=(j.calls||[]).map(c=>`<div class="cmsg"><div class="cav">${esc((c.author||"?").slice(0,2).toUpperCase())}</div><div><div class="cmeta"><b>${esc(c.author||"?")}</b> · ${tsMdy(c.ts)}${c.kind==="call"?" · 📞 llamada":" · nota"}</div><div class="ctx">${esc(c.text)}</div></div></div>`).join("");
+    const el=$("cFeed");if(!el)return;
+    el.innerHTML=rows||`<p style="color:var(--mut);font-size:13px;">Sin notas todavía — la primera llamada que anotes queda aquí para siempre.</p>`;
+  }catch(e){const el=$("cFeed");if(el)el.innerHTML=`<p style="color:var(--red);font-size:13px;">No se pudo cargar: ${esc(e.message||String(e))}</p>`;}
+}
+function changeAuthor(){
+  const n=prompt("¿Tu nombre? (aparece en cada nota que guardes)",localStorage.getItem("ct_author")||"");
+  if(n&&n.trim()){localStorage.setItem("ct_author",n.trim().slice(0,40));const w=$("cWho");if(w)w.textContent=n.trim().slice(0,40);}
+}
+async function saveCall(org,num){
+  let who=localStorage.getItem("ct_author")||"";
+  if(!who){changeAuthor();who=localStorage.getItem("ct_author")||"";if(!who)return;}
+  const inp=$("cText");if(!inp)return;
+  const text=(inp.value||"").trim();if(!text)return;
+  inp.disabled=true;
+  try{
+    const r=await fetch(`${API}/api/truck/${encodeURIComponent(org)}/${encodeURIComponent(num)}/calls`,{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({author:who,text:text,kind:"call"})});
+    const j=await r.json();
+    if(!j.ok)throw new Error(j.error||"save failed");
+    inp.value="";
+    const t=truckOf(org,num);if(t)t.last_call={ts:j.call.ts,author:who,kind:"call",text:text};
+    loadCalls(org,num);render();
+  }catch(e){alert("No se guardó: "+(e.message||e));}
+  finally{inp.disabled=false;const i=$("cText");if(i)i.focus();}
 }
 
 function openFlag(org,num){

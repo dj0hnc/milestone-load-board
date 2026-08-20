@@ -147,6 +147,13 @@ function createRouter({ config, newmile, log }) {
       hosWkMap.set(r.driver_id, r.n);
     }
 
+    // 📞 última entrada de la bitácora por troca — se enseña al pie del chip
+    const lastCallMap = new Map();
+    for (const r of all(`SELECT c.org_id, c.number, c.ts, c.author, c.kind, c.text FROM calls c
+                         JOIN (SELECT org_id, number, MAX(id) AS mid FROM calls GROUP BY org_id, number) m
+                           ON m.org_id = c.org_id AND m.number = c.number AND m.mid = c.id`)) {
+      lastCallMap.set(r.org_id + '|' + r.number, { ts: r.ts, author: r.author, kind: r.kind, text: r.text });
+    }
     const outTrucks = trucks.map(t => {
       const s = stMap.get(t.org_id + '|' + t.number);
       const driverChangedRecent = t.driver_changed_at && (Date.now() - Date.parse(t.driver_changed_at)) < 48 * 3600 * 1000;
@@ -172,7 +179,8 @@ function createRouter({ config, newmile, log }) {
         state_by: s ? s.marked_by : null,
         time_off: offMap.get(t.org_id + '|' + t.number) || [],
         days_since_last_load: t.last_load_date ? daysBetween(t.last_load_date, today) : null,
-        driver_changed_recent: driverChangedRecent ? { prev: t.driver_prev, at: t.driver_changed_at } : null
+        driver_changed_recent: driverChangedRecent ? { prev: t.driver_prev, at: t.driver_changed_at } : null,
+        last_call: lastCallMap.get(t.org_id + '|' + t.number) || null
       };
     });
 
@@ -530,6 +538,29 @@ function createRouter({ config, newmile, log }) {
     } catch (e) {
       res.status(502).json({ error: String(e.message || e) });
     }
+  });
+
+  // 📞 BITÁCORA — el registro de llamadas/notas por troca (autor + hora). Cualquiera que
+  // hable con el chofer lo anota; todos ven el hilo completo en el modal 📞 del chip.
+  router.get('/api/truck/:org/:number/calls', (req, res) => {
+    const t = get('SELECT org_id, number FROM trucks WHERE org_id = ? AND number = ?', req.params.org, req.params.number);
+    if (!t) return res.status(404).json({ error: 'truck not found' });
+    res.json({
+      ok: true,
+      calls: all('SELECT id, ts, author, kind, text FROM calls WHERE org_id = ? AND number = ? ORDER BY id DESC LIMIT 200', t.org_id, t.number)
+    });
+  });
+  router.post('/api/truck/:org/:number/calls', (req, res) => {
+    const t = get('SELECT org_id, number FROM trucks WHERE org_id = ? AND number = ?', req.params.org, req.params.number);
+    if (!t) return res.status(404).json({ error: 'truck not found' });
+    const b = req.body || {};
+    const text = String(b.text || '').trim().slice(0, 500);
+    const author = String(b.author || '').trim().slice(0, 40);
+    if (!text) return res.status(400).json({ error: 'text required' });
+    const ts = nowISO();
+    const kind = b.kind === 'note' ? 'note' : 'call';
+    run('INSERT INTO calls (ts, org_id, number, author, kind, text) VALUES (?,?,?,?,?,?)', ts, t.org_id, t.number, author, kind, text);
+    res.json({ ok: true, call: { ts, author, kind, text } });
   });
 
   // 📷 Snapshot de las cámaras (frontal + cabina) AL MOMENTO — sin abrir Samsara.

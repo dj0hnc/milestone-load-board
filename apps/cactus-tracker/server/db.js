@@ -139,6 +139,16 @@ function migrate(d) {
     new_value TEXT DEFAULT '',
     changed_by TEXT DEFAULT ''
   );
+  CREATE TABLE IF NOT EXISTS calls (       -- 📞 BITÁCORA: todo lo hablado con el chofer, con
+    id INTEGER PRIMARY KEY AUTOINCREMENT,  -- autor y hora. "Quien sea que hable con el driver
+    ts TEXT NOT NULL,                      -- lo anota y todos saben qué pasa con él."
+    org_id TEXT NOT NULL,
+    number TEXT NOT NULL,
+    author TEXT DEFAULT '',
+    kind TEXT DEFAULT 'call',              -- 'call' | 'note'
+    text TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_calls_truck ON calls(org_id, number, id);
   CREATE TABLE IF NOT EXISTS truck_days (  -- daily snapshot: how the truck WAS that day
     date TEXT NOT NULL,
     org_id TEXT NOT NULL,
