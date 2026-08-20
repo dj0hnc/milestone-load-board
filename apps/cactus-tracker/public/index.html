@@ -125,9 +125,16 @@ h1 span{color:var(--gold);}
 .btn-down:hover{border-color:var(--red);color:var(--red);}
 .btn-edit{position:absolute;top:6px;right:36px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:13px;cursor:pointer;line-height:1;}
 .btn-edit:hover{border-color:var(--gold);color:var(--gold);}
-/* 📞 bitácora: tercer botón del carril de arriba (✕ 6 · ✎ 36 · 📞 66) */
+/* 📞 bitácora: tercer botón del carril de arriba (✕ 6 · ✎ 36 · 📞 66 · ⚡ 96) */
 .btn-call{position:absolute;top:6px;right:66px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;font-size:12px;cursor:pointer;line-height:1;}
 .btn-call:hover{border-color:#2456a6;}
+/* ⚡ asignar de emergencia: abre el 🚀 send-to-order existente directo desde el chip */
+.btn-zap{position:absolute;top:6px;right:96px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:12px;cursor:pointer;line-height:1;}
+.btn-zap:hover{border-color:var(--gold);color:var(--gold);}
+/* enlaces cruzados board⇄tracker + switch de tema en el header */
+.xlink{font-family:'Barlow Condensed';font-weight:800;font-size:14px;letter-spacing:.6px;color:#c6cddd;border:1px solid #3a4460;border-radius:8px;padding:6px 12px;text-decoration:none;white-space:nowrap;}
+.xlink:hover{border-color:var(--gold);color:var(--gold);}
+.theme-btn{border:1px solid #3a4460;background:transparent;border-radius:8px;width:34px;height:31px;font-size:14px;cursor:pointer;line-height:1;}
 .lastcall{font-size:10.5px;color:#5a6a85;margin-top:4px;line-height:1.3;overflow-wrap:anywhere;}
 .lastcall b{color:#2456a6;}
 .cfeed{display:flex;flex-direction:column;gap:8px;max-height:46vh;overflow:auto;margin:8px 0;}
@@ -225,6 +232,7 @@ h1 span{color:var(--sand);}
 .btn-down{top:8px;right:8px;}
 .btn-edit{top:8px;right:40px;}
 .btn-call{top:8px;right:72px;}
+.btn-zap{top:auto;right:auto;bottom:8px;left:8px;}  /* en el cel se baja a la esquina libre */
 .btn-loc{bottom:8px;right:8px;}
 .btn-cam{bottom:8px;right:40px;}
 /* los botones de esquina (📷 ⟳) flotan sobre el cuadrito: cuando el texto se envuelve se
@@ -341,6 +349,41 @@ html{overflow-x:hidden;}
   .grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));}
   h1{font-size:14.5px;}
 }
+
+/* ===== 🌙 SKIN LOAD BOARD — navy + oro, el mismo ADN del board. Switch en el header,
+   se recuerda por dispositivo (localStorage). El tema claro queda intacto por default. ===== */
+body.dark{
+  --navy:#141b24; --navy2:#0e1a2e; --gold:#C8991F; --gold-d:#e3b84a;
+  --bg:#1C2333; --card:#141b24; --ink:#e8ecf3; --mut:#8f97ab; --line:#2e3a47;
+  --green:#22c55e; --green-bg:rgba(34,197,94,.14); --red:#ff6b52; --red-bg:rgba(234,78,44,.16);
+  --blue:#5a95f9; --blue-bg:rgba(90,149,249,.14);
+  --sand:#e3b84a; --stone:#8f97ab; --dirt:#b08d5f; --warm:#2d2617;
+  --sh-card:0 1px 2px rgba(0,0,0,.35),0 4px 14px rgba(0,0,0,.4);
+}
+:root{--warm:#FDF8EC;}
+body.dark .seg,body.dark .grpseg{border-color:#33507a;}
+body.dark .seg button{background:#16243c;color:#8f97ab;border-right-color:#22304a;}
+body.dark .seg button.on{background:var(--gold);color:#1C2333;}
+body.dark .grpseg button{background:#16243c;color:#8f97ab;border-right-color:#22304a;}
+body.dark .grpseg button.on{background:var(--gold);color:#1C2333;}
+body.dark .searchrow input,body.dark .searchrow select,body.dark .cnew input,
+body.dark .modal input[type=text],body.dark .modal input[type=number],body.dark .modal input[type=date],body.dark .modal select{background:#16243c;color:#e8ecf3;border-color:#33507a;}
+body.dark .modal{background:#0e1a2e;color:#e8ecf3;}
+body.dark .chip{background:var(--card);border-color:#2e3a47;box-shadow:var(--sh-card);}
+body.dark .btn-edit,body.dark .btn-down,body.dark .btn-call,body.dark .btn-zap,body.dark .btn-loc,body.dark .btn-cam{background:#0e1a2e;border-color:#33507a;color:#8f97ab;}
+body.dark .chip.rest{background:#10151d;}
+body.dark .chip.status-off{background:#10151d;}
+body.dark .chip.s-off{background:repeating-linear-gradient(135deg,#241f14,#241f14 9px,#2d2617 9px,#2d2617 18px);border-color:#c98a2f;}
+body.dark .progress{background:#2e3a47;}
+body.dark .cmsg{background:#141b24;border-color:#2e3a47;}
+body.dark .cav{background:var(--gold);color:#1C2333;}
+body.dark .cmeta b{color:var(--gold-d);}
+body.dark .lastcall{color:#8f97ab;} body.dark .lastcall b{color:var(--blue);}
+body.dark .chip .note{color:#d8a05f;}
+body.dark .restdays label{border-color:#33507a;color:#e8ecf3;}
+body.dark footer{color:#5d6578;}
+body.dark .day{border-color:#33507a;}
+body.dark .theme-btn{border-color:var(--gold);}
 </style>
 </head>
 <body>
@@ -348,6 +391,8 @@ html{overflow-x:hidden;}
   <div class="hrow">
     <h1>MILESTONE TEXAS <span>TRACKER</span></h1>
     <div class="faltan-pill" id="faltanPill" onclick="toggleFaltan()">—</div>
+    <a class="xlink" href="/full" target="_blank" title="Abrir el Load Board">📋 BOARD</a>
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Tema claro/oscuro">🌙</button>
   </div>
   <div class="hrow2">
     <div id="fleets"></div>
@@ -471,6 +516,10 @@ function ensureWho(){
 }
 
 const $=id=>document.getElementById(id);
+// 🌙 tema por dispositivo — claro (default de siempre) u oscuro Load Board
+function applyTheme(){const d=localStorage.getItem("ct_theme")==="dark";document.body.classList.toggle("dark",d);const b=$("themeBtn");if(b)b.textContent=d?"☀️":"🌙";}
+function toggleTheme(){localStorage.setItem("ct_theme",localStorage.getItem("ct_theme")==="dark"?"light":"dark");applyTheme();}
+applyTheme();
 const CACHE_KEY="cactus-tracker-cache-v1";
 const QUEUE_KEY="cactus-tracker-queue-v1";
 
@@ -1049,6 +1098,7 @@ function chipHtml(t){
     ${t.rip_rap?'<div class="ripflag"></div>':""}
     ${t.state==="a"?`<div class="check ${(t.state_source==="auto"||t.nm_confirmed)?"auto":""}" title="${t.state_source==="auto"?"auto-covered: hauled or assigned in NewMile":(t.nm_confirmed?"planned by you — CONFIRMED in NewMile":"assigned (not yet verified vs NewMile)")}">${(t.state_source==="auto"||t.nm_confirmed)?"⚡":"✓"}</div>`:""}
     ${cls==="s-off"?`<div class="offmark" title="not available">${offEmoji}</div>`:""}
+    <button class="btn-zap" onclick="event.stopPropagation();openSendTruck('${t.org_id}','${esc(t.number)}')" title="⚡ Asignar a una orden de NewMile (emergencia)">⚡</button>
     <button class="btn-call" onclick="event.stopPropagation();openCalls('${t.org_id}','${esc(t.number)}')" title="Bitácora — llamadas y notas del chofer">📞</button>
     <button class="btn-edit" onclick="event.stopPropagation();openEdit('${t.org_id}','${esc(t.number)}')" title="Edit">✎</button>
     <button class="btn-down" onclick="tapDown(event,'${t.org_id}','${esc(t.number)}')" title="Mark down">✕</button>
@@ -1463,10 +1513,10 @@ function renderSendTruck(org,num){
     ${os.length?"":`<p style="color:var(--mut);font-size:14px;">No NewMile orders for this day yet.</p>`}
     <div style="max-height:52vh;overflow:auto;">
     ${os.map(o=>{const gap=gapOf(o);
-      return `<div onclick="sendTruckTo(${o.id},'${t.org_id}','${esc(t.number)}')" style="border:1.5px solid ${gap?"#c98a2f":"var(--line)"};background:${gap?"#FDF8EC":"#fff"};border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer;">
+      return `<div onclick="sendTruckTo(${o.id},'${t.org_id}','${esc(t.number)}')" style="border:1.5px solid ${gap?"#c98a2f":"var(--line)"};background:${gap?"var(--warm)":"var(--card)"};border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer;">
         <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
           <b style="font-size:14.5px;">${esc(o.customer||o.name)}</b>
-          <span style="margin-left:auto;font-weight:800;font-size:13px;color:${gap?"#8a5a10":"var(--green)"};">${o.assigned.length}${o.planned!=null?"/"+o.planned:""}${gap?` · NEEDS ${gap}`:" · full"}</span>
+          <span style="margin-left:auto;font-weight:800;font-size:13px;color:${gap?"var(--gold-d)":"var(--green)"};">${o.assigned.length}${o.planned!=null?"/"+o.planned:""}${gap?` · NEEDS ${gap}`:" · full"}</span>
         </div>
         <div style="font-size:12px;color:var(--stone);margin-top:2px;">${esc(o.material)}${o.qty!=null?` · ${o.qty} ${esc(o.unit)}`:""}${o.dropoff?` · → ${esc(o.dropoff)}`:""}</div>
       </div>`;}).join("")}
