@@ -573,6 +573,7 @@ async function fetchBoard(){
       if(myseq!==_fetchSeq)return; // ya salió una navegación más nueva: descarta esta
       board=j;
       if(!date)date=board.date;
+      applyRecentMarks(); // un fetch que venía EN VUELO trae el estado de ANTES de tus taps
       // AUTO-UPDATE: si el server ya trae versión nueva (auto-pull en el laptop),
       // la página se recarga sola una vez — sin F5 manual, sin PowerShell.
       const v=j.meta&&j.meta.version;
@@ -592,7 +593,7 @@ async function fetchBoard(){
       }
       // Regla de oro: si la red falla, mostrar la última data buena CON timestamp, nunca inventar.
       const c=localStorage.getItem(CACHE_KEY+":"+ORG);
-      if(c&&!board){const j=JSON.parse(c);board=j.board;if(!date)date=board.date;}
+      if(c&&!board){const j=JSON.parse(c);board=j.board;if(!date)date=board.date;applyRecentMarks();}
       offline=true;
     }
   }
@@ -633,9 +634,26 @@ window.addEventListener("online",()=>{flushQueue();fetchBoard();});
 
 // ---------- state taps ----------
 function truckOf(org,num){return (board.trucks||[]).find(t=>t.org_id===org&&t.number===num);}
+// TAPS QUE NO SE PIERDEN: un fetch del board que ya venía en vuelo (o el poll de 60 s)
+// trae el estado de ANTES de tus taps y los pisaba (el NW "no se quedaba guardado").
+// Cada marca manual se recuerda 90 s y se RE-APLICA sobre cualquier board que llegue —
+// para entonces el server ya la tiene y los fetches siguientes la traen solos.
+const recentMarks={};
+function applyRecentMarks(){
+  const now=Date.now();
+  for(const k in recentMarks){
+    const m=recentMarks[k];
+    if(now-m.ts>90000){delete recentMarks[k];continue;}
+    if(m.date!==date)continue;
+    const sep=k.indexOf("|");
+    const t=(board.trucks||[]).find(x=>x.org_id===k.slice(0,sep)&&x.number===k.slice(sep+1));
+    if(t){t.state=m.state;t.state_source="manual";}
+  }
+}
 function setSt(t,s){
   ensureWho();
   t.state=s; t.state_source="manual"; t.state_by=WHO;
+  recentMarks[t.org_id+"|"+t.number]={state:s,ts:Date.now(),date:date};
   queuePush({path:"/api/state",body:{date,org:t.org_id,number:t.number,state:s,by:WHO}});
   render();
 }
