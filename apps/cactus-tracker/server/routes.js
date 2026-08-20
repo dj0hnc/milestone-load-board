@@ -596,7 +596,9 @@ function createRouter({ config, newmile, log }) {
       const id = String(d.deal_id || '').trim();
       if (!id) continue;
       const prev = get('SELECT deal_id, stage FROM recruits WHERE deal_id = ?', id);
-      const since = (!prev || prev.stage !== String(d.stage || '')) ? ts : null;
+      // HubSpot knows the REAL stage-entry date (hs_v2_date_entered_current_stage) — when the
+      // import carries it, it wins; otherwise fall back to "first time we saw this stage".
+      const since = String(d.stage_since || '') || ((!prev || prev.stage !== String(d.stage || '')) ? ts : null);
       if (prev) {
         run(`UPDATE recruits SET pipeline=?, stage=?, stage_label=?, company=?, contact=?,
              phone=CASE WHEN ?<>'' THEN ? ELSE phone END, email=CASE WHEN ?<>'' THEN ? ELSE email END,
