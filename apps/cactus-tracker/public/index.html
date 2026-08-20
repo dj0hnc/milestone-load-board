@@ -125,12 +125,23 @@ h1 span{color:var(--gold);}
 .btn-down:hover{border-color:var(--red);color:var(--red);}
 .btn-edit{position:absolute;top:6px;right:36px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:13px;cursor:pointer;line-height:1;}
 .btn-edit:hover{border-color:var(--gold);color:var(--gold);}
-/* 📞 bitácora: tercer botón del carril de arriba (✕ 6 · ✎ 36 · 📞 66 · ⚡ 96) */
-.btn-call{position:absolute;top:6px;right:66px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;font-size:12px;cursor:pointer;line-height:1;}
+/* 📞 + ⚡ live in the BOTTOM-LEFT lane (the top row belongs to the trailer chips — they were
+   overlapping on phones). Bottom-right stays reserved for ⟳/📷. Every chip reserves the lane. */
+.btn-call{position:absolute;bottom:8px;left:40px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;font-size:12px;cursor:pointer;line-height:1;}
 .btn-call:hover{border-color:#2456a6;}
-/* ⚡ asignar de emergencia: abre el 🚀 send-to-order existente directo desde el chip */
-.btn-zap{position:absolute;top:6px;right:96px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:12px;cursor:pointer;line-height:1;}
+.btn-zap{position:absolute;bottom:8px;left:8px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:12px;cursor:pointer;line-height:1;}
 .btn-zap:hover{border-color:var(--gold);color:var(--gold);}
+.chip{padding-bottom:44px;}
+/* Truck Command Panel (the 📞 panel): live snapshot grid + action row */
+.tkgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:8px;}
+.tkc{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:7px 9px;display:flex;flex-direction:column;gap:1px;}
+.tkc small{font-family:'Barlow Condensed';font-weight:700;font-size:10px;letter-spacing:.8px;color:var(--mut);}
+.tkc b{font-size:13.5px;line-height:1.25;}
+.tkc span{font-size:11.5px;color:var(--mut);}
+.tkacts{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 2px;}
+.tkacts button{flex:1;min-width:72px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:9px 6px;font-family:'Barlow Condensed';font-weight:700;font-size:13px;cursor:pointer;}
+.tkacts button:hover{border-color:var(--gold);}
+.callbtn{display:block;text-align:center;background:var(--green);color:#fff;border-radius:12px;padding:12px;font-weight:800;font-size:16px;text-decoration:none;margin-bottom:10px;}
 /* enlaces cruzados board⇄tracker + switch de tema en el header */
 .xlink{font-family:'Barlow Condensed';font-weight:800;font-size:14px;letter-spacing:.6px;color:#c6cddd;border:1px solid #3a4460;border-radius:8px;padding:6px 12px;text-decoration:none;white-space:nowrap;}
 .xlink:hover{border-color:var(--gold);color:var(--gold);}
@@ -231,8 +242,8 @@ h1 span{color:var(--sand);}
 .btn-down,.btn-edit,.btn-loc,.btn-cam{border:1px solid var(--line);background:#FAF9F6;color:#A6A29A;border-radius:9px;transition:all .12s;}
 .btn-down{top:8px;right:8px;}
 .btn-edit{top:8px;right:40px;}
-.btn-call{top:8px;right:72px;}
-.btn-zap{top:auto;right:auto;bottom:8px;left:8px;}  /* en el cel se baja a la esquina libre */
+.btn-call{bottom:8px;left:40px;}
+.btn-zap{bottom:8px;left:8px;}
 .btn-loc{bottom:8px;right:8px;}
 .btn-cam{bottom:8px;right:40px;}
 /* los botones de esquina (📷 ⟳) flotan sobre el cuadrito: cuando el texto se envuelve se
@@ -391,9 +402,9 @@ body.dark .theme-btn{border-color:var(--gold);}
   <div class="hrow">
     <h1>MILESTONE TEXAS <span>TRACKER</span></h1>
     <div class="faltan-pill" id="faltanPill" onclick="toggleFaltan()">—</div>
-    <a class="xlink" href="/full" target="_blank" title="Abrir el Load Board">📋 BOARD</a>
-    <button class="xlink" style="background:transparent;cursor:pointer;" onclick="copyTony()" title="Copiar 'available but not planned' en inglés, listo para Tony">🤠 TONY</button>
-    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Tema claro/oscuro">🌙</button>
+    <a class="xlink" href="/full" target="_blank" title="Open the Load Board">📋 BOARD</a>
+    <button class="xlink" style="background:transparent;cursor:pointer;" onclick="copyTony()" title="Copy 'available but not planned' — ready to paste to Tony">🤠 TONY</button>
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Light/dark theme">🌙</button>
   </div>
   <div class="hrow2">
     <div id="fleets"></div>
@@ -1099,8 +1110,8 @@ function chipHtml(t){
     ${t.rip_rap?'<div class="ripflag"></div>':""}
     ${t.state==="a"?`<div class="check ${(t.state_source==="auto"||t.nm_confirmed)?"auto":""}" title="${t.state_source==="auto"?"auto-covered: hauled or assigned in NewMile":(t.nm_confirmed?"planned by you — CONFIRMED in NewMile":"assigned (not yet verified vs NewMile)")}">${(t.state_source==="auto"||t.nm_confirmed)?"⚡":"✓"}</div>`:""}
     ${cls==="s-off"?`<div class="offmark" title="not available">${offEmoji}</div>`:""}
-    <button class="btn-zap" onclick="event.stopPropagation();openSendTruck('${t.org_id}','${esc(t.number)}')" title="⚡ Asignar a una orden de NewMile (emergencia)">⚡</button>
-    <button class="btn-call" onclick="event.stopPropagation();openCalls('${t.org_id}','${esc(t.number)}')" title="Bitácora — llamadas y notas del chofer">📞</button>
+    <button class="btn-zap" onclick="event.stopPropagation();openSendTruck('${t.org_id}','${esc(t.number)}')" title="Assign this truck to a NewMile order">⚡</button>
+    <button class="btn-call" onclick="event.stopPropagation();openCalls('${t.org_id}','${esc(t.number)}')" title="Truck panel — call log, status, location, everything">📞</button>
     <button class="btn-edit" onclick="event.stopPropagation();openEdit('${t.org_id}','${esc(t.number)}')" title="Edit">✎</button>
     <button class="btn-down" onclick="tapDown(event,'${t.org_id}','${esc(t.number)}')" title="Mark down">✕</button>
     <div class="top"><span class="num"><button class="star-btn ${t.star?"on":""}" onclick="toggleStar(event,'${t.org_id}','${esc(t.number)}')" title="${t.star?"Star driver — tap to remove":"Mark as star driver"}">${t.star?"★":"☆"}</button>${esc(dnum(t))}${isVirtual()?`<span class="orgtag ${t.org_id==="KT"?(t.is_sub?"ic":"kt"):(t.is_sub?"sub":"")}">${t.org_id==="KT"?(t.is_sub?"IC":"KT"):(t.is_sub?"SUB":"CACTUS")}</span>`:""}</span>${trlTxt(t)?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(trlTxt(t))}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}${liveMoveHtml(t)}${liveLoadHtml(t)}</div>
@@ -1854,34 +1865,61 @@ async function copyTony(){
   }
   const txt=`Available but not planned — ${mdy(date)}:\n`+(free.length?free.map(s=>"• "+s).join("\n"):"• none — everyone available is planned")+(out.length?`\n\nNot available:\n`+out.map(s=>"• "+s).join("\n"):"");
   try{await navigator.clipboard.writeText(txt);}catch(e){const ta=document.createElement("textarea");ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);}
-  openModal(`<h3>🤠 Tony report — copied ✓</h3><p style="font-size:12px;color:var(--mut);margin-bottom:8px;">ya está en tu portapapeles — pégalo en el mensaje. Esto se copió:</p><pre style="white-space:pre-wrap;font-size:12.5px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;max-height:50vh;overflow:auto;">${esc(txt)}</pre><div class="actions"><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
+  openModal(`<h3>🤠 Tony report — copied ✓</h3><p style="font-size:12px;color:var(--mut);margin-bottom:8px;">already in your clipboard — paste it into the message. This was copied:</p><pre style="white-space:pre-wrap;font-size:12.5px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;max-height:50vh;overflow:auto;">${esc(txt)}</pre><div class="actions"><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
 }
 
-// ---------- 📞 BITÁCORA: el hilo de llamadas/notas por troca ----------
-// Cualquiera que hable con el chofer lo anota con SU nombre (se pide una vez, queda en el
-// navegador). Todos ven el hilo completo; la última entrada vive al pie del chip.
+// ---------- 📞 TRUCK COMMAND PANEL — the heart of every driver call ----------
+// One tap = EVERYTHING about the truck while you talk: call the driver, live status, today's
+// order, live location, HOS, last load, time off — plus the full call log with author + time.
+function tkAgo(iso){ if(!iso)return ""; const m=Math.round((Date.now()-Date.parse(iso))/60000); if(!isFinite(m)||m<0)return ""; if(m<60)return m+"m ago"; const h=Math.round(m/60); if(h<48)return h+"h ago"; return Math.round(h/24)+"d ago"; }
 function openCalls(org,num){
   const t=truckOf(org,num);if(!t)return;
-  openModal(`<h3>📞 Bitácora — Truck ${esc(dnum(t))}</h3>
-    <div style="font-size:12.5px;color:var(--mut);margin-bottom:6px;">${esc(t.driver||"(no driver)")}${t.note?" · "+esc(t.note):""} — todo lo hablado con este chofer queda aquí, con nombre y hora</div>
+  const st=STATUS_LBL[t.status]||t.status||"OK";
+  const stColor=(t.status==="ok"||!t.status)?"var(--green)":(t.status==="down"||t.status==="deleased")?"var(--red)":"#c98a2f";
+  const today=t.state==="a"?("✅ COVERED "+(t.state_source==="auto"?"(auto — NewMile)":(t.nm_confirmed?"(confirmed)":"(planned)"))):t.state==="d"?"⛔ X TODAY":"• pending";
+  const dest=(t.nm_dest&&t.nm_dest.length)?t.nm_dest.map(d=>[d.c||d.n,d.d||d.m].filter(Boolean).join(" → ")).join("  +  "):"";
+  const off=offOf(t);const up=!off&&upcomingOff(t);
+  const phone=String(t.phone||"").trim();
+  openModal(`<div class="emod-head" style="margin-bottom:8px;">
+      <div class="enum">${esc(dnum(t))}</div>
+      <div class="esub">${esc(t.driver||"⚠ NO DRIVER")}${trlTxt(t)?" · "+esc(trlTxt(t)):""}${t.tags?" · "+esc(t.tags):""}<br>${esc(areaLbl(t.area||"(NO YARD)"))} · wk ${t.loads_week||0} loads</div>
+    </div>
+    ${phone?`<a class="callbtn" href="tel:${esc(phone.replace(/[^\d+]/g,""))}">📱 CALL ${esc((t.driver||"DRIVER").split(" ")[0].toUpperCase())} — ${esc(phone)}</a>`:""}
+    <div class="tkgrid">
+      <div class="tkc"><small>STATUS</small><b style="color:${stColor}">${esc(st)}${t.return_date?" · back "+esc(t.return_date):""}</b>${t.status_note?`<span>${esc(t.status_note)}</span>`:""}</div>
+      <div class="tkc"><small>TODAY · ${mdy(date)}</small><b>${today}</b>${dest?`<span>🚚 ${esc(dest)}</span>`:""}</div>
+      <div class="tkc"><small>LOCATION</small><b>${esc(t.parked_city||"?")}</b><span>${t.moving?"🟢 moving":"⚪ parked"}${t.samsara_seen_at?" · GPS "+tkAgo(t.samsara_seen_at):" · no GPS"}</span></div>
+      <div class="tkc"><small>LAST LOAD</small><b>${t.last_load_date?mdy(t.last_load_date):"—"}</b><span>${t.days_since_last_load!=null?t.days_since_last_load+"d ago":""}</span></div>
+      ${off?`<div class="tkc" style="grid-column:1/-1;"><small>TIME OFF</small><b>${OFF_LBL[off.reason]||esc(off.reason)} ${mdy(off.from_date)} – ${mdy(off.to_date)}</b>${off.note?`<span>${esc(off.note)}</span>`:""}</div>`:""}
+      ${up?`<div class="tkc" style="grid-column:1/-1;"><small>SCHEDULED</small><b>${esc(String(up.reason).toUpperCase())} starts ${mdy(up.from_date)}</b></div>`:""}
+      ${t.note?`<div class="tkc" style="grid-column:1/-1;"><small>NOTE</small><b style="color:#a8622f;">${esc(t.note)}</b></div>`:""}
+    </div>
+    ${hosHtml(t)||""}
+    <div class="tkacts">
+      <button onclick="closeModal();openSendTruck('${t.org_id}','${esc(t.number)}')">⚡ Assign</button>
+      <button onclick="closeModal();openEdit('${t.org_id}','${esc(t.number)}')">✎ Edit</button>
+      ${hasGPS(t)?`<button onclick="closeModal();locateNow('${t.org_id}','${esc(t.number)}')">⟳ GPS</button>`:""}
+      ${hasGPS(t)&&t.samsara_id?`<button onclick="closeModal();openCamera('${t.org_id}','${esc(t.number)}')">📷 Cams</button>`:""}
+      <button onclick="closeModal();openHistory('${t.org_id}','${esc(t.number)}')">📅 History</button>
+    </div>
+    <div style="font-family:'Barlow Condensed';font-weight:700;font-size:13px;letter-spacing:1px;color:var(--mut);margin:10px 0 6px;">📞 CALL LOG — EVERYTHING DISCUSSED WITH THIS DRIVER</div>
     <div id="cFeed" class="cfeed"><p style="color:var(--mut);font-size:13px;">Loading…</p></div>
-    <div class="cnew"><input type="text" id="cText" placeholder="Qué se habló / nota…" maxlength="500" onkeydown="if(event.key==='Enter')saveCall('${t.org_id}','${esc(t.number)}')"><button onclick="saveCall('${t.org_id}','${esc(t.number)}')">SAVE</button></div>
-    <div style="font-size:11px;color:var(--mut);margin-top:6px;">firmando como <b id="cWho">${esc(localStorage.getItem("ct_author")||"— sin nombre —")}</b> · <a href="#" onclick="changeAuthor();return false;">cambiar</a></div>`);
+    <div class="cnew"><input type="text" id="cText" placeholder="What was discussed / note…" maxlength="500" onkeydown="if(event.key==='Enter')saveCall('${t.org_id}','${esc(t.number)}')"><button onclick="saveCall('${t.org_id}','${esc(t.number)}')">SAVE</button></div>
+    <div style="font-size:11px;color:var(--mut);margin-top:6px;">signing as <b id="cWho">${esc(localStorage.getItem("ct_author")||"— no name yet —")}</b> · <a href="#" onclick="changeAuthor();return false;">change</a></div>`);
   loadCalls(t.org_id,t.number);
-  setTimeout(()=>{const i=$("cText");if(i)i.focus();},50);
 }
 async function loadCalls(org,num){
   try{
     const r=await fetch(`${API}/api/truck/${encodeURIComponent(org)}/${encodeURIComponent(num)}/calls`);
     const j=await r.json();
     if(!j.ok)throw new Error(j.error||"load failed");
-    const rows=(j.calls||[]).map(c=>`<div class="cmsg"><div class="cav">${esc((c.author||"?").slice(0,2).toUpperCase())}</div><div><div class="cmeta"><b>${esc(c.author||"?")}</b> · ${tsMdy(c.ts)}${c.kind==="call"?" · 📞 llamada":" · nota"}</div><div class="ctx">${esc(c.text)}</div></div></div>`).join("");
+    const rows=(j.calls||[]).map(c=>`<div class="cmsg"><div class="cav">${esc((c.author||"?").slice(0,2).toUpperCase())}</div><div><div class="cmeta"><b>${esc(c.author||"?")}</b> · ${tsMdy(c.ts)}${c.kind==="call"?" · 📞 call":" · note"}</div><div class="ctx">${esc(c.text)}</div></div></div>`).join("");
     const el=$("cFeed");if(!el)return;
-    el.innerHTML=rows||`<p style="color:var(--mut);font-size:13px;">Sin notas todavía — la primera llamada que anotes queda aquí para siempre.</p>`;
-  }catch(e){const el=$("cFeed");if(el)el.innerHTML=`<p style="color:var(--red);font-size:13px;">No se pudo cargar: ${esc(e.message||String(e))}</p>`;}
+    el.innerHTML=rows||`<p style="color:var(--mut);font-size:13px;">No notes yet — the first call you log lives here forever.</p>`;
+  }catch(e){const el=$("cFeed");if(el)el.innerHTML=`<p style="color:var(--red);font-size:13px;">Could not load: ${esc(e.message||String(e))}</p>`;}
 }
 function changeAuthor(){
-  const n=prompt("¿Tu nombre? (aparece en cada nota que guardes)",localStorage.getItem("ct_author")||"");
+  const n=prompt("Your name? (shows on every note you save)",localStorage.getItem("ct_author")||"");
   if(n&&n.trim()){localStorage.setItem("ct_author",n.trim().slice(0,40));const w=$("cWho");if(w)w.textContent=n.trim().slice(0,40);}
 }
 async function saveCall(org,num){
@@ -1899,7 +1937,7 @@ async function saveCall(org,num){
     inp.value="";
     const t=truckOf(org,num);if(t)t.last_call={ts:j.call.ts,author:who,kind:"call",text:text};
     loadCalls(org,num);render();
-  }catch(e){alert("No se guardó: "+(e.message||e));}
+  }catch(e){alert("Not saved: "+(e.message||e));}
   finally{inp.disabled=false;const i=$("cText");if(i)i.focus();}
 }
 

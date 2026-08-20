@@ -89,6 +89,55 @@ async function selfUpdate(log) {
   }
 }
 
+// ---------- BOARD GUARDIAN ----------
+// El tracker y el board viven en la MISMA PC de la oficina. Si el board (:8090) se cae
+// (un restart fallido, un crash), nadie en la oficina puede ir a levantarlo — así que lo
+// levanta el tracker: 2 checks fallidos seguidos → spawn del node del board. Su env
+// (SESSION_SECRET/PUBLIC_URL) viaja por OneDrive (mab-deploy/session-env.json), NUNCA por
+// este repo público. En máquinas sin bundle del board (laptop, Azure) no hace nada.
+const BOARD_CANDIDATES = [
+  process.env.MAB_BOARD_DIR,
+  'C:\\Users\\JuanJoseDeAlba\\mab-office-bundle\\mab-mobile',
+  path.join(require('os').homedir(), 'mab-office-bundle', 'mab-mobile'),
+  path.join(require('os').homedir(), 'Desktop', 'mab-office-bundle', 'mab-mobile'),
+  path.join(require('os').homedir(), 'Documents', 'mab-office-bundle', 'mab-mobile')
+].filter(Boolean);
+function boardAppDir() {
+  for (const d of BOARD_CANDIDATES) { try { if (fs.existsSync(path.join(d, 'server', 'index.js'))) return d; } catch (e) {} }
+  return null;
+}
+function boardEnvFile() {
+  const od = process.env.OneDriveCommercial || process.env.OneDrive || 'C:\\Users\\JuanJoseDeAlba\\OneDrive - Miles Ahead Brands';
+  try { return JSON.parse(fs.readFileSync(path.join(od, 'mab-deploy', 'session-env.json'), 'utf8')); } catch (e) { return {}; }
+}
+function boardHealthy() {
+  return new Promise((resolve) => {
+    const req = require('http').get({ host: '127.0.0.1', port: 8090, path: '/healthz', timeout: 4000 }, (res) => { res.resume(); resolve(res.statusCode === 200); });
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.on('error', () => resolve(false));
+  });
+}
+let boardDownTicks = 0, boardRebootAt = 0, boardGuardBusy = false;
+async function guardBoard(log) {
+  if (process.env.WEBSITE_INSTANCE_ID || process.env.CACTUS_NO_BOARD_GUARD || boardGuardBusy) return;
+  const appDir = boardAppDir();
+  if (!appDir) return; // esta máquina no corre el board
+  boardGuardBusy = true;
+  try {
+    if (await boardHealthy()) { boardDownTicks = 0; return; }
+    boardDownTicks++;
+    if (boardDownTicks < 2) return;                       // un blip de 1 tick no reinicia nada
+    if (Date.now() - boardRebootAt < 3 * 60000) return;   // ya lo arranqué hace <3 min: darle chance
+    boardRebootAt = Date.now(); boardDownTicks = 0;
+    const extra = boardEnvFile();
+    log('BOARD GUARDIAN: :8090 sin responder — levantando el board server (' + appDir + ')' + (extra.SESSION_SECRET ? ' con env de OneDrive' : ' SIN session-env.json (sesiones se reinician)'));
+    const env = Object.assign({}, process.env, { PORT: '8090' }, extra);
+    require('child_process').spawn(process.execPath, ['server/index.js'], { cwd: appDir, detached: true, stdio: 'ignore', env }).unref();
+  } catch (e) {
+    log('BOARD GUARDIAN error: ' + (e.message || e));
+  } finally { boardGuardBusy = false; }
+}
+
 function createTracker(opts) {
   const config = (opts && opts.config) || loadConfig();
   const log = (opts && opts.log) || ((s) => console.log('[cactus-tracker]', s));
@@ -133,6 +182,7 @@ function createTracker(opts) {
       lastUpdCheck = Date.now();
       if (await selfUpdate(log)) return; // se va a reiniciar: no arranques jobs a medias
     }
+    guardBoard(log).catch(() => {}); // el board caído se levanta solo (misma PC)
     const { dateISO, hour, minute, weekday } = ctParts();
     // POSICIÓN AL MOMENTO: barrido ligero de puro GPS cada 3 min en horario de trabajo
     // (cada 15 min de noche). Es lo que hace que "rodando/parado" y la ubicación sean de
