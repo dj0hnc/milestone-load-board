@@ -144,7 +144,22 @@ async function guardBoard(log) {
 // :8000, mantenido VIVO por el tracker. Si cloudflared muere, se relanza solo; la URL
 // (rota solo al relanzar) se escribe a OneDrive mab-deploy\CURRENT_TUNNEL.txt para
 // leerla desde la laptop sin depender de ningún túnel.
-let tgUrl = '', tgBusy = false, tgLastOk = 0, tgSpawnAt = 0;
+let tgUrl = '', tgBusy = false, tgLastOk = 0, tgSpawnAt = 0, tgNote = 'boot';
+// LATIDO a OneDrive en cada ciclo: cuando el túnel está muerto la laptop queda CIEGA del
+// lado office — este archivo es el único canal de diagnóstico que no depende de túneles.
+function tgHeartbeat(extra) {
+  try {
+    const od = process.env.OneDriveCommercial || process.env.OneDrive || 'C:\\Users\\JuanJoseDeAlba\\OneDrive - Miles Ahead Brands';
+    if (!fs.existsSync(od)) return;
+    let cfTail = '';
+    try { const l = fs.readFileSync(path.join(DATA_DIR, 'cf-tunnel.log'), 'utf8').split('\n'); cfTail = l.slice(-15).join('\n'); } catch (e) {}
+    fs.mkdirSync(path.join(od, 'mab-deploy'), { recursive: true });
+    fs.writeFileSync(path.join(od, 'mab-deploy', 'tunnel-status.txt'),
+      ['ts: ' + new Date().toISOString(), 'version: ' + currentVersion(), 'url: ' + tgUrl,
+       'lastOk: ' + (tgLastOk ? new Date(tgLastOk).toISOString() : 'never'),
+       'note: ' + tgNote, (extra || ''), '--- cloudflared tail ---', cfTail].join('\n'));
+  } catch (e) {}
+}
 function cfExe() {
   for (const d of BOARD_CANDIDATES) {
     try {
@@ -167,8 +182,10 @@ async function guardTunnel(log) {
         const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 8000);
         const r = await fetch(tgUrl + '/cactus-tracker/api/health', { signal: ctl.signal });
         clearTimeout(to);
-        if (r.ok) { tgLastOk = Date.now(); return; }
-      } catch (e) {}
+        if (r.ok) { tgLastOk = Date.now(); tgNote = 'healthy'; tgHeartbeat(); return; }
+        tgNote = 'edge answered HTTP ' + r.status;
+      } catch (e) { tgNote = 'edge check failed: ' + String(e.message || e).slice(0, 120); }
+      tgHeartbeat();
       if (tgLastOk && Date.now() - tgLastOk < 2 * 60000) return; // un blip no reinicia el túnel
     }
     if (Date.now() - tgSpawnAt < 3 * 60000) return; // ya arranqué uno hace poco: darle chance
@@ -177,16 +194,19 @@ async function guardTunnel(log) {
     const logPath = path.join(DATA_DIR, 'cf-tunnel.log');
     try { fs.unlinkSync(logPath); } catch (e) {}
     const fd = fs.openSync(logPath, 'a');
-    require('child_process').spawn(exe, ['tunnel', '--url', 'http://localhost:8000', '--no-autoupdate'],
+    // http2 (TCP 443) en vez de QUIC: aguanta firewalls que dejan pasar el primer túnel
+    // y luego matan UDP — el síntoma del 8/20 (túnel nace bien y muere a los minutos).
+    require('child_process').spawn(exe, ['tunnel', '--url', 'http://localhost:8000', '--no-autoupdate', '--protocol', 'http2', '--edge-ip-version', '4'],
       { detached: true, stdio: ['ignore', fd, fd] }).unref();
     fs.closeSync(fd);
+    tgNote = 'spawning cloudflared (http2)'; tgHeartbeat();
     log('TUNNEL GUARDIAN: arrancando quick tunnel de Cloudflare hacia :8000…');
     let url = '';
     for (let i = 0; i < 45 && !url; i++) {
       await new Promise(r => setTimeout(r, 2000));
       try { const m = fs.readFileSync(logPath, 'utf8').match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/); if (m) url = m[0]; } catch (e) {}
     }
-    if (!url) { log('TUNNEL GUARDIAN: no salió URL del log — reintento en el próximo ciclo'); return; }
+    if (!url) { tgNote = 'no URL from cloudflared log after 90s'; tgHeartbeat(); log('TUNNEL GUARDIAN: no salió URL del log — reintento en el próximo ciclo'); return; }
     tgUrl = url; tgLastOk = Date.now(); metaSet('cf_tunnel_url', url);
     const od = process.env.OneDriveCommercial || process.env.OneDrive || 'C:\\Users\\JuanJoseDeAlba\\OneDrive - Miles Ahead Brands';
     try {
