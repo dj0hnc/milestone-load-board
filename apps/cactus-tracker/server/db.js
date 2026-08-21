@@ -246,6 +246,7 @@ function migrate(d) {
     }
   } catch (e) { console.error('[cactus-tracker] dispatch_state migration failed:', e.message); }
   // additive migrations for DBs created before these columns existed
+  addCol(d, 'activity_log', 'revenue', 'REAL DEFAULT 0'); // 💰 freight ganado ese día (Tony)
   addCol(d, 'trucks', 'rip_suggested', 'INTEGER DEFAULT 0');
   addCol(d, 'trucks', 'rip_evidence', "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'parked_city', "TEXT DEFAULT ''");

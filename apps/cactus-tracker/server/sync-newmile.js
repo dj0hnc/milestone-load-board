@@ -360,8 +360,9 @@ async function syncActivity(client, days) {
     if (!m) { summary.unmatched++; continue; }
 
     const key = m.orgId + '|' + m.num + '|' + iso;
-    const cur = agg.get(key) || { loads: 0, driver: '', owner: '', m };
+    const cur = agg.get(key) || { loads: 0, rev: 0, driver: '', owner: '', m };
     cur.loads++;
+    cur.rev += Number(String(r.freight_rate_extended || '').replace(/[$,]/g, '')) || 0; // 💰 freight ganado por carga (pedido de Tony)
     if (r.driver_name) cur.driver = String(r.driver_name).trim();
     if (r.truck_owner) cur.owner = String(r.truck_owner).trim(); // dueño (denormalizado en el ticket)
     agg.set(key, cur);
@@ -411,9 +412,9 @@ async function syncActivity(client, days) {
         run(`UPDATE trucks SET owner_name = ? WHERE org_id = ? AND number = ?`, v.owner, orgId, num);
       }
     }
-    run(`INSERT INTO activity_log (org_id, number, load_date, driver, loads) VALUES (?,?,?,?,?)
-         ON CONFLICT(org_id, number, load_date) DO UPDATE SET loads = excluded.loads, driver = excluded.driver`,
-      orgId, num, iso, v.driver || '', v.loads);
+    run(`INSERT INTO activity_log (org_id, number, load_date, driver, loads, revenue) VALUES (?,?,?,?,?,?)
+         ON CONFLICT(org_id, number, load_date) DO UPDATE SET loads = excluded.loads, driver = excluded.driver, revenue = excluded.revenue`,
+      orgId, num, iso, v.driver || '', v.loads, Math.round(v.rev * 100) / 100);
     summary.matched++;
 
     const isToday = iso === today;

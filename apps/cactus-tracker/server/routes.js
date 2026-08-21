@@ -130,9 +130,14 @@ function createRouter({ config, newmile, log }) {
     const wk = weekDatesCT(date);
     const wkFrom = wk.Mon, wkTo = wk.Sat;
     const wkMap = new Map();
-    for (const r of all(`SELECT org_id, number, SUM(loads) AS n FROM activity_log
+    for (const r of all(`SELECT org_id, number, SUM(loads) AS n, SUM(revenue) AS rev FROM activity_log
                          WHERE load_date >= ? AND load_date <= ? GROUP BY org_id, number`, wkFrom, wkTo)) {
-      wkMap.set(r.org_id + '|' + r.number, r.n);
+      wkMap.set(r.org_id + '|' + r.number, r);
+    }
+    // 💰 dinero del DÍA VISTO por truck (freight_rate_extended sumado por el sync) — Tony
+    const dayRevMap = new Map();
+    for (const r of all('SELECT org_id, number, revenue FROM activity_log WHERE load_date = ?', date)) {
+      dayRevMap.set(r.org_id + '|' + r.number, r.revenue || 0);
     }
     // HOS trabajado: lo de ESTE día y el acumulado de la semana hasta este día (por driver)
     const hosDayMap = new Map(), hosWkMap = new Map();
@@ -179,7 +184,9 @@ function createRouter({ config, newmile, log }) {
         hos_worked: t.samsara_driver_id ? (hosDayMap.get(String(t.samsara_driver_id)) || null) : null,
         hos_worked_wk_ms: t.samsara_driver_id ? (hosWkMap.get(String(t.samsara_driver_id)) || null) : null,
         work_day: workMap.get(t.org_id + '|' + t.number) || null,
-        loads_week: wkMap.get(t.org_id + '|' + t.number) || 0,
+        loads_week: (wkMap.get(t.org_id + '|' + t.number) || {}).n || 0,
+        rev_week: Math.round(((wkMap.get(t.org_id + '|' + t.number) || {}).rev || 0)),
+        rev_day: Math.round(dayRevMap.get(t.org_id + '|' + t.number) || 0),
         down_since: !s && (carryMap.get(t.org_id + '|' + t.number) || {}).state === 'd' ? carryMap.get(t.org_id + '|' + t.number).date : null,
         state_by: s ? s.marked_by : null,
         time_off: offMap.get(t.org_id + '|' + t.number) || [],

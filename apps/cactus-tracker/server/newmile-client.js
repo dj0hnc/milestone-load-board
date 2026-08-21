@@ -445,7 +445,7 @@ class NewMileClient {
       const r = await this.callTool('query_report', {
         report_name: 'load_tickets',
         filters: { order_date_from: fromISO, order_date_to: toISO },
-        columns: ['truck_number', 'driver_name', 'fleet', 'truck_owner', 'order_date'],
+        columns: ['truck_number', 'driver_name', 'fleet', 'truck_owner', 'order_date', 'freight_rate_extended'],
         page_size: 200, page
       });
       rows = rows.concat((r && (r.rows || r.results || r.data)) || []);

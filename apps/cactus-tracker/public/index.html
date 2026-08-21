@@ -875,6 +875,15 @@ function camShow(org,num,j){
     </div>`).join("")+
     `<div class="actions"><button class="b-save" onclick="openCamera('${org}','${esc(num)}')">↻ Retake</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
 }
+// 💰 dinero freight ganado (pedido de Tony): del día visto + acumulado de la semana
+function money(n){ if(!n)return ""; return n>=10000?("$"+(n/1000).toFixed(1)+"k"):("$"+Math.round(n).toLocaleString("en-US")); }
+function revHtml(t){
+  if(!t.rev_day&&!t.rev_week)return "";
+  const parts=[];
+  if(t.rev_day)parts.push(`<b style="color:var(--green);">💰 ${money(t.rev_day)}</b> earned`);
+  if(t.rev_week)parts.push(`wk <b>${money(t.rev_week)}</b>`);
+  return `<div class="act" title="freight earned (NewMile freight rate × loads hauled)">${parts.join(" · ")}</div>`;
+}
 function actHtml(t){
   // equidad: cargas de ESTA semana en cada cuadrito (wk N) — para repartir parejo
   const wk=t.loads_week?` · <b>wk ${t.loads_week}</b>`:"";
@@ -1175,6 +1184,7 @@ function chipHtml(t){
     ${groupMode==="owner"?`<div class="park mut" style="color:#7a2fa8;">📌 zone: ${esc(areaLbl(t.area||"(SIN YARD)"))}</div>`:""}
     ${parkHtml(t)}
     ${actHtml(t)}
+    ${revHtml(t)}
     ${hasGPS(t)?`<button class="btn-loc" title="Refresh live GPS + HOS" onclick="event.stopPropagation();locateNow('${t.org_id}','${esc(t.number)}')">⟳</button>`:""}
     ${hasGPS(t)&&t.samsara_id?`<button class="btn-cam" title="Live camera snapshots (road + cab)" onclick="event.stopPropagation();openCamera('${t.org_id}','${esc(t.number)}')">📷</button>`:""}
     ${date===board.today&&!board.historical&&t.samsara_id&&!t.is_sub&&t.samsara_seen_at&&(Date.now()-Date.parse(t.samsara_seen_at))>24*3600e3?`<span class="badge flag" title="no GPS signal in over 24h — tap to re-check right now" onclick="event.stopPropagation();locateNow('${t.org_id}','${esc(t.number)}')">📵 SAMSARA DEAD since ${tsMdy(t.samsara_seen_at)} — camera/cable?</span>`:""}
@@ -2016,6 +2026,7 @@ function openCalls(org,num){
       <div class="tkc"><small>TODAY · ${mdy(date)}</small><b>${today}</b>${dest?`<span>🚚 ${esc(dest)}</span>`:""}</div>
       <div class="tkc"><small>LOCATION</small><b>${esc(t.parked_city||"?")}</b><span>${t.moving?"🟢 moving":"⚪ parked"}${t.samsara_seen_at?" · GPS "+tkAgo(t.samsara_seen_at):" · no GPS"}</span></div>
       <div class="tkc"><small>LAST LOAD</small><b>${t.last_load_date?mdy(t.last_load_date):"—"}</b><span>${t.days_since_last_load!=null?t.days_since_last_load+"d ago":""}</span></div>
+      ${(t.rev_day||t.rev_week)?`<div class="tkc"><small>💰 EARNED (FREIGHT)</small><b style="color:var(--green);">${t.rev_day?money(t.rev_day)+" this day":"—"}</b><span>${t.rev_week?"week: "+money(t.rev_week):""}</span></div>`:""}
       ${off?`<div class="tkc" style="grid-column:1/-1;"><small>TIME OFF</small><b>${OFF_LBL[off.reason]||esc(off.reason)} ${mdy(off.from_date)} – ${mdy(off.to_date)}</b>${off.note?`<span>${esc(off.note)}</span>`:""}</div>`:""}
       ${up?`<div class="tkc" style="grid-column:1/-1;"><small>SCHEDULED</small><b>${esc(String(up.reason).toUpperCase())} starts ${mdy(up.from_date)}</b></div>`:""}
       ${t.note?`<div class="tkc" style="grid-column:1/-1;"><small>NOTE</small><b style="color:#a8622f;">${esc(t.note)}</b></div>`:""}
