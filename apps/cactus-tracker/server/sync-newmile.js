@@ -362,7 +362,21 @@ async function syncActivity(client, days) {
     const key = m.orgId + '|' + m.num + '|' + iso;
     const cur = agg.get(key) || { loads: 0, rev: 0, driver: '', owner: '', m };
     cur.loads++;
-    cur.rev += Number(String(r.freight_rate_extended || '').replace(/[$,]/g, '')) || 0; // 💰 freight ganado por carga (pedido de Tony)
+    // 💰 freight ganado por carga (Tony). NewMile deja freight_rate_extended en $0 mientras
+    // el ticket espera cantidad del driver ("Waiting for Driver") — en ese caso lo estimamos:
+    // rate × toneladas del pickup ticket, o ×1 si el rate es por CARGA. El re-sync diario de
+    // 21 días reemplaza el estimado con el número final cuando NewMile lo cierra.
+    const _m = (x) => Number(String(x == null ? '' : x).replace(/[$,]/g, '')) || 0;
+    let _rev = _m(r.freight_rate_extended);
+    if (!_rev) {
+      const _rate = _m(r.freight_rate);
+      if (_rate) {
+        const _uom = String(r.freight_rate_uom || '').toLowerCase();
+        const _qty = _m(r.quantity) || _m(r.pickup_ticket_quantity) || (_uom.indexOf('load') >= 0 ? 1 : 0);
+        _rev = _rate * _qty;
+      }
+    }
+    cur.rev += _rev;
     if (r.driver_name) cur.driver = String(r.driver_name).trim();
     if (r.truck_owner) cur.owner = String(r.truck_owner).trim(); // dueño (denormalizado en el ticket)
     agg.set(key, cur);
