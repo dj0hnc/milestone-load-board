@@ -13,3 +13,6 @@ _chk_board.js
 
 # cloud report engine: the self-rotating NewMile token lives in Actions cache, NEVER in the repo
 report-engine/.state/
+
+# tracker runtime data (SQLite + tokens + configs) - business data NEVER in this public repo
+apps/cactus-tracker/data/
