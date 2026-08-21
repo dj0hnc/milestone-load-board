@@ -876,7 +876,7 @@ function camShow(org,num,j){
     `<div class="actions"><button class="b-save" onclick="openCamera('${org}','${esc(num)}')">↻ Retake</button><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
 }
 // 💰 dinero freight ganado (pedido de Tony): del día visto + acumulado de la semana
-function money(n){ if(!n)return ""; return n>=10000?("$"+(n/1000).toFixed(1)+"k"):("$"+Math.round(n).toLocaleString("en-US")); }
+function money(n){ if(!n)return ""; return "$"+Number(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function revHtml(t){
   if(!t.rev_day&&!t.rev_week)return "";
   const parts=[];
