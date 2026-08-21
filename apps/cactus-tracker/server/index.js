@@ -138,6 +138,49 @@ async function guardBoard(log) {
   } finally { boardGuardBusy = false; }
 }
 
+// ---------- PROXY GUARDIAN ----------
+// El túnel apunta al proxy :8000 (reparte /cactus-tracker → 8791 y el resto → 8090). Tras
+// un reinicio de la PC nadie lo levantaba — ahora el tracker lo revive igual que al board.
+let pxSpawnAt = 0, pxBusy = false;
+async function guardProxy(log) {
+  if (process.env.WEBSITE_INSTANCE_ID || process.env.CACTUS_NO_PROXY_GUARD || pxBusy) return;
+  const proxyJs = path.join(__dirname, '..', 'proxy.js');
+  if (process.platform !== 'win32' || !fs.existsSync(proxyJs) || !cfExe()) return; // solo la office
+  pxBusy = true;
+  try {
+    const ok = await new Promise((resolve) => {
+      const req = require('http').get({ host: '127.0.0.1', port: 8000, path: '/cactus-tracker/api/health', timeout: 3000 }, (res) => { res.resume(); resolve(res.statusCode === 200); });
+      req.on('timeout', () => { req.destroy(); resolve(false); });
+      req.on('error', () => resolve(false));
+    });
+    if (ok) return;
+    if (Date.now() - pxSpawnAt < 2 * 60000) return;
+    pxSpawnAt = Date.now();
+    log('PROXY GUARDIAN: :8000 sin responder — levantando proxy.js');
+    require('child_process').spawn(process.execPath, [proxyJs], { detached: true, stdio: 'ignore', env: process.env }).unref();
+  } catch (e) { log('PROXY GUARDIAN error: ' + (e.message || e)); } finally { pxBusy = false; }
+}
+
+// ---------- AUTOSTART ----------
+// Un reinicio de la PC de la office mataba TODO el stack hasta que alguien abriera los
+// programas a mano. El tracker se registra solo en el arranque de Windows (HKCU Run →
+// run-tracker.cmd); ya arriba, sus guardianes reviven proxy, board y túnel. Un reinicio
+// deja de ser un evento — solo en la office (la laptop no tiene el bundle).
+let autostartDone = false;
+function ensureAutostart(log) {
+  if (autostartDone || process.platform !== 'win32' || process.env.WEBSITE_INSTANCE_ID || process.env.CACTUS_NO_AUTOSTART || !cfExe()) return;
+  autostartDone = true;
+  try {
+    const cmd = path.join(__dirname, '..', 'run-tracker.cmd');
+    if (!fs.existsSync(cmd)) return;
+    const r = require('child_process').spawnSync('reg',
+      ['add', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', '/v', 'CactusTracker', '/t', 'REG_SZ', '/d', '"' + cmd + '"', '/f'],
+      { timeout: 15000 });
+    if (r.status === 0) log('AUTOSTART: run-tracker.cmd registrado en el arranque de Windows');
+    else log('AUTOSTART no se registró (reg exit ' + r.status + ')');
+  } catch (e) { log('AUTOSTART error: ' + (e.message || e)); }
+}
+
 // ---------- TUNNEL GUARDIAN ----------
 // El ngrok gratis nos cortó por tope de datos (ERR_NGROK_725) y dejó TODO fuera. Plan
 // permanente y GRATIS: quick tunnel de Cloudflare (sin tope de datos) apuntado al proxy
@@ -263,7 +306,9 @@ function createTracker(opts) {
       lastUpdCheck = Date.now();
       if (await selfUpdate(log)) return; // se va a reiniciar: no arranques jobs a medias
     }
+    ensureAutostart(log); // un reinicio de la PC ya no mata el stack: Windows nos arranca
     guardBoard(log).catch(() => {}); // el board caído se levanta solo (misma PC)
+    guardProxy(log).catch(() => {}); // el proxy :8000 caído se levanta solo
     guardTunnel(log).catch(() => {}); // el túnel caído se relanza solo (Cloudflare, gratis)
     const { dateISO, hour, minute, weekday } = ctParts();
     // POSICIÓN AL MOMENTO: barrido ligero de puro GPS cada 3 min en horario de trabajo
