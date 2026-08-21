@@ -169,9 +169,9 @@ async function guardTunnel(log) {
         clearTimeout(to);
         if (r.ok) { tgLastOk = Date.now(); return; }
       } catch (e) {}
-      if (tgLastOk && Date.now() - tgLastOk < 3 * 60000) return; // un blip no reinicia el túnel
+      if (tgLastOk && Date.now() - tgLastOk < 2 * 60000) return; // un blip no reinicia el túnel
     }
-    if (Date.now() - tgSpawnAt < 4 * 60000) return; // ya arranqué uno hace poco: darle chance
+    if (Date.now() - tgSpawnAt < 3 * 60000) return; // ya arranqué uno hace poco: darle chance
     tgSpawnAt = Date.now();
     try { execSync('taskkill /F /IM cloudflared.exe', { timeout: 10000, stdio: 'ignore' }); } catch (e) {}
     const logPath = path.join(DATA_DIR, 'cf-tunnel.log');
