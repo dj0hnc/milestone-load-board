@@ -211,6 +211,8 @@ function card(r){
     <div class="days${d>14?" slow":""}"><b>${d==null?"–":d+"d"}</b>in stage</div>
     ${laneOf(r)!=="cleared"?`<div class="prog">${STEPS.map(([k])=>`<i class="${r.steps&&r.steps[k]?"on":""}"></i>`).join("")}</div>`:""}
     <div class="rowb">
+      ${r.trucks?`<span class="chip" style="background:var(--navy);color:#fff;">🚛 ${esc(r.trucks)} truck${r.trucks==="1"?"":"s"}</span>`:""}
+      ${r.truck_type?`<span class="chip">${esc(r.truck_type)}</span>`:""}
       ${laneOf(r)!=="cleared"?`<span class="chip ${dc===STEPS.length?"ok":""}">${dc}/${STEPS.length} done</span>`:`<span class="chip ok">ACTIVE</span>`}
       ${r.next_follow?`<span class="chip${due?" due":""}">📅 ${due?"FOLLOW UP NOW":"next "+mdy(r.next_follow)}</span>`:""}
       ${r.notes_count?`<span class="chip">💬 ${r.notes_count}</span>`:""}
@@ -228,10 +230,13 @@ function openPanel(id){
     <div style="font-size:12.5px;color:var(--mut);margin-top:2px;">${esc(r.contact||"")} · ${esc(r.stage_label||"")} · recruiter: ${esc(r.hs_owner||"?")} · <a class="hslink" href="https://app.hubspot.com/contacts/${HS_PORTAL}/record/0-3/${esc(r.deal_id)}" target="_blank">open in HubSpot ↗</a></div>
     ${r.phone?`<a class="callbtn" href="${telHref(r.phone)}">📱 CALL ${esc(first||"THEM")} — ${esc(r.phone)}</a>`:`<div class="callbtn" style="background:var(--card);color:var(--mut);border:1.5px dashed var(--line);">no phone on file — add one below</div>`}
     <div class="tkgrid">
+      <div class="tkc"><small>🚛 FLEET SIZE</small><b>${r.trucks?esc(r.trucks)+(r.trucks==="1"?" truck":" trucks"):"—"}</b>${r.truck_type?`<span>${esc(r.truck_type)}</span>`:""}</div>
       <div class="tkc"><small>DAYS IN STAGE</small><b>${daysIn(r.stage_since)==null?"–":daysIn(r.stage_since)+" days"}</b></div>
-      <div class="tkc"><small>LAST HS TOUCH</small><b>${mdy(r.hs_modified)||"–"}</b></div>
       <div class="tkc"><small>EMAIL</small><b style="font-size:12px;">${esc(r.email||"–")}</b></div>
       <div class="tkc"><small>PHONE</small><b onclick="editPhone()" style="cursor:pointer;">${esc(r.phone||"tap to add")}</b></div>
+      <div class="tkc"><small>HS CONTACTS LOGGED</small><b>${esc(r.hs_contacts||"0")}</b></div>
+      <div class="tkc"><small>LAST HS TOUCH</small><b>${mdy(r.hs_modified)||"–"}</b></div>
+      ${r.lead_source?`<div class="tkc" style="grid-column:1/-1;"><small>LEAD SOURCE</small><b>${esc(r.lead_source)}</b></div>`:""}
     </div>
     <div class="sect">ONBOARDING CHECKLIST — TAP WHAT'S DONE</div>
     <div class="steps">${STEPS.map(([k,l,hint])=>{

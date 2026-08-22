@@ -189,6 +189,10 @@ function migrate(d) {
     phone TEXT DEFAULT '',
     email TEXT DEFAULT '',
     hs_owner TEXT DEFAULT '',                -- recruiter (Tony/Elisa/Matthew/Grace)
+    trucks TEXT DEFAULT '',                   -- # of trucks the lead runs (HubSpot)
+    truck_type TEXT DEFAULT '',              -- Round Bottoms / Tri-Axles
+    lead_source TEXT DEFAULT '',             -- where the lead came from
+    hs_contacts TEXT DEFAULT '',             -- # times contacted in HubSpot
     hs_modified TEXT DEFAULT '',
     stage_since TEXT DEFAULT '',             -- first time WE saw it in the current stage
     local_status TEXT DEFAULT '',            -- ''|graduated|paused (local, until HS write-back)
@@ -247,6 +251,10 @@ function migrate(d) {
   } catch (e) { console.error('[cactus-tracker] dispatch_state migration failed:', e.message); }
   // additive migrations for DBs created before these columns existed
   addCol(d, 'activity_log', 'revenue', 'REAL DEFAULT 0'); // 💰 freight ganado ese día (Tony)
+  addCol(d, 'recruits', 'trucks', "TEXT DEFAULT ''");      // recruiting: datos del lead (HubSpot)
+  addCol(d, 'recruits', 'truck_type', "TEXT DEFAULT ''");
+  addCol(d, 'recruits', 'lead_source', "TEXT DEFAULT ''");
+  addCol(d, 'recruits', 'hs_contacts', "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'rip_suggested', 'INTEGER DEFAULT 0');
   addCol(d, 'trucks', 'rip_evidence', "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'parked_city', "TEXT DEFAULT ''");

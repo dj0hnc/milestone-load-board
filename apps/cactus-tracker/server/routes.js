@@ -640,16 +640,18 @@ function createRouter({ config, newmile, log }) {
       if (prev) {
         run(`UPDATE recruits SET pipeline=?, stage=?, stage_label=?, company=?, contact=?,
              phone=CASE WHEN ?<>'' THEN ? ELSE phone END, email=CASE WHEN ?<>'' THEN ? ELSE email END,
-             hs_owner=?, hs_modified=?, synced_at=?${since ? ', stage_since=?' : ''} WHERE deal_id=?`,
+             hs_owner=?, trucks=?, truck_type=?, lead_source=?, hs_contacts=?, hs_modified=?, synced_at=?${since ? ', stage_since=?' : ''} WHERE deal_id=?`,
           ...[String(d.pipeline || ''), String(d.stage || ''), String(d.stage_label || ''), String(d.company || '').slice(0, 80), String(d.contact || '').slice(0, 60),
             String(d.phone || ''), String(d.phone || ''), String(d.email || ''), String(d.email || ''),
-            String(d.hs_owner || ''), String(d.hs_modified || ''), ts, ...(since ? [since] : []), id]);
+            String(d.hs_owner || ''), String(d.trucks || ''), String(d.truck_type || ''), String(d.lead_source || ''), String(d.hs_contacts || ''),
+            String(d.hs_modified || ''), ts, ...(since ? [since] : []), id]);
         updated++;
       } else {
-        run(`INSERT INTO recruits (deal_id, pipeline, stage, stage_label, company, contact, phone, email, hs_owner, hs_modified, stage_since, synced_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        run(`INSERT INTO recruits (deal_id, pipeline, stage, stage_label, company, contact, phone, email, hs_owner, trucks, truck_type, lead_source, hs_contacts, hs_modified, stage_since, synced_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           id, String(d.pipeline || ''), String(d.stage || ''), String(d.stage_label || ''), String(d.company || '').slice(0, 80), String(d.contact || '').slice(0, 60),
-          String(d.phone || ''), String(d.email || ''), String(d.hs_owner || ''), String(d.hs_modified || ''), ts, ts);
+          String(d.phone || ''), String(d.email || ''), String(d.hs_owner || ''), String(d.trucks || ''), String(d.truck_type || ''), String(d.lead_source || ''), String(d.hs_contacts || ''),
+          String(d.hs_modified || ''), ts, ts);
         created++;
       }
     }
