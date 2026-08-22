@@ -715,6 +715,9 @@ function matchStatus(t){
     case "": return true;
     case "open": return t.state==="p"&&!isOffNow(t);
     case "cov": return t.state==="a";
+    case "asg": return !!(t.nm_confirmed||(t.nm_dest&&t.nm_dest.length)); // asignados en NewMile
+    case "wrk": return (t.loads_today||0)>0;                              // sí trabajaron (cargas)
+    case "asgnw": return !!(t.nm_confirmed||(t.nm_dest&&t.nm_dest.length))&&(t.loads_today||0)===0; // asignados pero SIN trabajar (llamarles)
     case "off": return isOffNow(t);
     case "rip": return !!t.rip_rap;
     case "star": return !!t.star;
@@ -740,17 +743,22 @@ function matchTypeSel(t){
   return true;
 }
 function renderSeg(list){
-  const c={all:0,open:0,cov:0,off:0,rip:0,star:0};
+  const c={all:0,open:0,cov:0,asg:0,wrk:0,asgnw:0,off:0,rip:0,star:0};
   for(const t of list){
     if(t.is_new)continue;
     c.all++;
     if(t.state==="a")c.cov++;
     else if(isOffNow(t))c.off++;
     else c.open++;
+    const assigned=t.nm_confirmed||(t.nm_dest&&t.nm_dest.length);
+    const worked=(t.loads_today||0)>0;
+    if(assigned)c.asg++;
+    if(worked)c.wrk++;
+    if(assigned&&!worked)c.asgnw++;
     if(t.rip_rap)c.rip++;
     if(t.star)c.star++;
   }
-  const segs=[["","ALL",c.all,""],["open","OPEN",c.open,""],["cov","COVERED",c.cov,""],["off","OFF",c.off,"off-seg"],["rip","RIP",c.rip,"rip"],["star","⭐ STAR",c.star,"star-seg"]];
+  const segs=[["","ALL",c.all,""],["open","OPEN",c.open,""],["cov","COVERED",c.cov,""],["asg","📋 ASSIGNED",c.asg,""],["wrk","🟢 WORKED",c.wrk,""],["asgnw","⏳ NOT YET",c.asgnw,"off-seg"],["off","OFF",c.off,"off-seg"],["rip","RIP",c.rip,"rip"],["star","⭐ STAR",c.star,"star-seg"]];
   $("segStatus").innerHTML=segs.map(s=>`<button class="${s[3]} ${statusFilter===s[0]?"on":""}" onclick="setStatus('${s[0]}')">${s[1]}<span>${s[2]}</span></button>`).join("");
 }
 function setStatus(v){statusFilter=v;render();}
