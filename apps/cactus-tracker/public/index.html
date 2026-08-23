@@ -97,6 +97,10 @@ h1 span{color:var(--gold);}
 .group.closed h2{opacity:.75;border-bottom-style:dashed;}
 .group.closed .grid{display:none;}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;}
+/* tamaño de cuadritos POR DISPOSITIVO (localStorage ct_size): S=más cuadritos, L=más grandes */
+body.sz-s .grid{grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:8px;}
+body.sz-l .grid{grid-template-columns:repeat(auto-fill,minmax(252px,1fr));gap:12px;}
+body.sz-l .chip .num{font-size:29px;}
 .chip{background:var(--card);border:2px solid #dde1ea;border-radius:12px;padding:10px 12px;cursor:pointer;user-select:none;position:relative;box-shadow:0 1px 3px rgba(0,0,0,.07);transition:transform .05s;min-height:78px;}
 .chip:active{transform:scale(.97);}
 .chip .top{display:flex;justify-content:space-between;align-items:flex-start;gap:6px;padding-right:50px;}
@@ -132,8 +136,8 @@ h1 span{color:var(--gold);}
 .chip .ripflag{position:absolute;left:0;top:0;bottom:0;width:6px;border-radius:10px 0 0 10px;background:var(--blue);}
 .btn-down{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:14px;font-weight:700;cursor:pointer;line-height:1;}
 .btn-down:hover{border-color:var(--red);color:var(--red);}
-/* carril superior-derecho, separados 32px: ✕ down (6) · NW (38) · ✎ edit (70) — sin encimarse */
-.btn-edit{position:absolute;top:6px;right:70px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:13px;cursor:pointer;line-height:1;}
+/* ✎ EDIT vive ABAJO junto al 📞 (arriba-derecha solo queda ✕ + NW, para no pisar la traila) */
+.btn-edit{position:absolute;bottom:8px;left:104px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:13px;cursor:pointer;line-height:1;}
 .btn-edit:hover{border-color:var(--gold);color:var(--gold);}
 /* 📞 + ⚡ live in the BOTTOM-LEFT lane (the top row belongs to the trailer chips — they were
    overlapping on phones). Bottom-right stays reserved for ⟳/📷. Every chip reserves the lane. */
@@ -189,10 +193,13 @@ h1 span{color:var(--gold);}
 .chip.s-off .offmark{position:absolute;top:-9px;left:-9px;width:26px;height:26px;border-radius:50%;background:#c98a2f;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 1px 4px rgba(0,0,0,.3);}
 .statusbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:12px;color:var(--mut);}
 /* SYNC dentro del header (navy): texto claro, borde arriba, y su barra de progreso al lado */
-.statusbar.hdr{margin:8px 0 0;padding:8px 0 10px;border-top:1px solid rgba(255,255,255,.09);color:#c6cddd;}
+.statusbar.hdr{margin:4px 0 0;padding:4px 0 5px;border-top:1px solid rgba(255,255,255,.09);color:#c6cddd;font-size:11px;gap:8px;}
 .statusbar.hdr #lastSync{color:#c6cddd;}
-.statusbar.hdr .btn-sync{background:var(--gold);color:var(--navy);}
-.progress.hdr{flex:1;min-width:120px;height:8px;margin:0;background:rgba(255,255,255,.14);}
+.statusbar.hdr .btn-sync{background:var(--gold);color:var(--navy);padding:3px 11px;font-size:12px;}
+.progress.hdr{flex:1;min-width:80px;height:4px;margin:0;background:rgba(255,255,255,.14);}
+/* la barra de progreso solo estorba cuando NO hay sync — ocúltala salvo mientras sincroniza */
+.statusbar.hdr .progress.hdr{display:none;}
+.statusbar.hdr.syncing .progress.hdr{display:block;}
 .statusbar .dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:#b02a2a;margin-right:4px;}
 .statusbar .dot.on{background:var(--green);}
 .btn-sync{background:var(--navy);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-family:'Barlow Condensed';font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer;text-transform:uppercase;}
@@ -264,10 +271,10 @@ h1 span{color:var(--sand);}
 .btn-down,.btn-edit,.btn-loc,.btn-cam{border:1px solid var(--line);background:#FAF9F6;color:#A6A29A;border-radius:9px;transition:all .12s;}
 .btn-down{top:8px;right:8px;}
 .btn-nw{top:8px;right:40px;}
-.btn-edit{top:8px;right:72px;}
-.btn-call{bottom:8px;left:40px;}
 .btn-zap{bottom:8px;left:8px;}
+.btn-call{bottom:8px;left:40px;}
 .btn-note{bottom:8px;left:72px;}
+.btn-edit{bottom:8px;left:104px;}
 .btn-loc{bottom:8px;right:8px;}
 .btn-cam{bottom:8px;right:40px;}
 /* los botones de esquina (📷 ⟳) flotan sobre el cuadrito: cuando el texto se envuelve se
@@ -433,6 +440,7 @@ body.dark .theme-btn{border-color:var(--gold);}
     <a class="xlink" href="recruit.html" title="Recruiting — the subhauler onboarding cockpit">🤝 RECRUIT</a>
     <a class="xlink" href="/full" target="_blank" title="Open the Load Board">📋 BOARD</a>
     <button class="xlink" style="background:transparent;cursor:pointer;" onclick="copyTony()" title="Copy 'available but not planned' — ready to paste to Tony">🤠 TONY</button>
+    <button class="theme-btn" id="sizeBtn" onclick="cycleSize()" title="Chip size for THIS device (small / medium / large)">▪▪</button>
     <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Light/dark theme">🌙</button>
   </div>
   <div class="hrow2">
@@ -561,7 +569,10 @@ const $=id=>document.getElementById(id);
 // 🌙 tema por dispositivo — claro (default de siempre) u oscuro Load Board
 function applyTheme(){const d=localStorage.getItem("ct_theme")==="dark";document.body.classList.toggle("dark",d);const b=$("themeBtn");if(b)b.textContent=d?"☀️":"🌙";}
 function toggleTheme(){localStorage.setItem("ct_theme",localStorage.getItem("ct_theme")==="dark"?"light":"dark");applyTheme();}
-applyTheme();
+// tamaño de cuadritos POR DISPOSITIVO (no global): S=más cuadritos · M=normal · L=más grandes
+function applySize(){const s=localStorage.getItem("ct_size")||"m";document.body.classList.remove("sz-s","sz-l");if(s==="s")document.body.classList.add("sz-s");if(s==="l")document.body.classList.add("sz-l");const b=$("sizeBtn");if(b){b.textContent=s==="s"?"▪":s==="l"?"◼":"▪▪";b.title=("Chip size (this device): "+(s==="s"?"SMALL — more trucks":s==="l"?"LARGE":"MEDIUM")+" · tap to change");}}
+function cycleSize(){const s=localStorage.getItem("ct_size")||"m";const nx=s==="m"?"s":s==="s"?"l":"m";localStorage.setItem("ct_size",nx);applySize();}
+applyTheme();applySize();
 const CACHE_KEY="cactus-tracker-cache-v1";
 const QUEUE_KEY="cactus-tracker-queue-v1";
 
@@ -1345,6 +1356,7 @@ function renderStatusbar(){
   $("nmTxt").innerHTML=nm.connected?("NewMile: "+esc(nm.user||"connected")):`NewMile disconnected — <a class="connect" href="${API}/api/newmile/connect">connect</a>`;
   const last=m.last_sync_activity||m.last_sync_roster;
   $("lastSync").textContent=(m.syncing?"⟳ updating…":"last sync: "+fmtTime(last))+(m.version?" · v"+m.version:"");
+  const sb=$("statusbar"); if(sb)sb.classList.toggle("syncing",!!m.syncing);   // barra de progreso solo mientras sincroniza
   // el server disparó un sync en segundo plano al abrir → recargar en cuanto acabe
   if(m.syncing&&!window._syncPoll){window._syncPoll=setTimeout(()=>{window._syncPoll=null;fetchBoard();},12000);}
 }
