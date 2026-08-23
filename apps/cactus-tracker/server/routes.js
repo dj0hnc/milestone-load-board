@@ -944,8 +944,39 @@ function createRouter({ config, newmile, log }) {
           logChange(e._row.org_id, e._row.number, 'nm_assign', '', 'order ' + order_id + (load_limit ? ' x' + load_limit : ''), who);
         }
       }
+      // SECUENCIA elegida (opcional): coloca SOLO la asignación nueva en la corrida pedida del
+      // troke (1 = primera). Mismo patrón seguro del board (placeNew): las filas existentes
+      // conservan su orden relativo, nada más se inserta la nueva en su lugar. Solo aplica en
+      // asignación de UN troke; filas ya con cargas no se mueven (no cuentan para la posición).
+      let placedAt = null;
+      const position = Number((req.body || {}).position) || 0;
+      if (position > 0 && confirmed && created.length === 1 && entries.length === 1) {
+        try {
+          const tid = entries[0].truck_id, newAid = Number(created[0].id);
+          const REO = ['pending', 'draft', 'active', 'missing_driver', 'pending_removal'];
+          let rows = [];
+          for (const st of REO) {
+            const r2 = await newmile.callTool('list_resources', { resource_type: 'order_assignment', filters: { truck_id: tid, assignment_status: st, page_size: 100 } });
+            rows = rows.concat((r2 && (r2.order_assignments || r2.results || r2.rows)) || []);
+          }
+          const ro = rows.filter(r => (r.load_count || 0) === 0 && REO.indexOf(String(r.assignment_status || '').toLowerCase()) >= 0)
+            .sort((a, b) => ((a.ordinal || 0) - (b.ordinal || 0)));
+          const newRow = ro.find(r => Number(r.id) === newAid);
+          const olds = ro.filter(r => Number(r.id) !== newAid);
+          if (newRow && olds.length) {
+            const idx = Math.min(Math.max(position - 1, 0), olds.length);
+            const res2 = olds.slice(); res2.splice(idx, 0, newRow);
+            const newIds = res2.map(r => r.id), curIds = ro.map(r => r.id);
+            if (newIds.join(',') !== curIds.join(',')) {
+              await newmile.callUtility('reorder_assignments', { truck_id: tid, assignment_ids: newIds });
+              placedAt = position;
+              say(`assign: ${entries[0]._row.number} colocado como corrida #${position} (order ${order_id})`);
+            } else placedAt = position; // ya estaba donde se pidió
+          }
+        } catch (e) { warnings = (warnings || []).concat(['sequence placement failed (assignment created OK): ' + (e.message || e)]); }
+      }
       delete ordersCache[day];
-      res.json({ ok: true, pushed: created.length || entries.length, confirmed, warnings, failed });
+      res.json({ ok: true, pushed: created.length || entries.length, confirmed, warnings, failed, placedAt });
     } catch (e) {
       res.status(500).json({ error: String(e.message || e) });
     }

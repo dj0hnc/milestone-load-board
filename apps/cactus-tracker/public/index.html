@@ -1614,45 +1614,77 @@ async function openSendTruck(org,num){
     renderSendTruck(org,num);
   }catch(e){openModal(`<h3>🚀 Send to order</h3><p style="font-size:14px;color:var(--red);">Could not load orders: ${esc(e.message)}</p><div class="actions"><button class="b-cancel" onclick="closeModal()">Close</button></div>`);}
 }
-function renderSendTruck(org,num){
+/* ⚡ ASSIGN, nivel Load Board: búsqueda, órdenes del día vistas COMPLETAS (needs/quién ya
+   está/pickup→dropoff/hora), cargas por asignación, y si el troke ya corre otras órdenes ese
+   día, selector de CORRIDA (1ª, 2ª… última) que coloca la nueva en NewMile con placeNew. */
+let _stSel=null, _stQuery="";
+function _stRuns(t){ // corridas SIN cargas del troke este día (las que aún se pueden ordenar)
+  const os=((_orders&&_orders.orders)||[]);
+  const runs=[];
+  os.forEach(o=>(o.assigned||[]).forEach(a=>{ if(a.org===t.org_id&&a.number===t.number)runs.push({order:o,a}); }));
+  return runs;
+}
+function stSearch(v){ _stQuery=String(v||"").toLowerCase(); renderSendTruck(window._stOrg,window._stNum,true); }
+function stPick(oid){ _stSel=(_stSel===oid?null:oid); renderSendTruck(window._stOrg,window._stNum,true); }
+function renderSendTruck(org,num,keepQuery){
   const t=truckOf(org,num);if(!t)return;
-  const os=[...((_orders&&_orders.orders)||[])].filter(o=>!/cancel/i.test(o.status||""));
+  window._stOrg=org; window._stNum=num;
+  if(!keepQuery){_stSel=null;_stQuery="";}
+  const all=[...((_orders&&_orders.orders)||[])].filter(o=>!/cancel/i.test(o.status||""));
   const gapOf=o=>o.planned!=null?Math.max(0,o.planned-o.assigned.length):null;
-  // con hueco primero (más faltantes arriba); luego las demás por si quiere reforzar una
-  os.sort((a,b)=>((gapOf(b)||0)-(gapOf(a)||0))||(a.name>b.name?1:-1));
-  const onIt=os.filter(o=>(o.assigned||[]).some(a=>a.org===t.org_id&&a.number===t.number));
-  openModal(`<h3>🚀 ${esc(dnum(t))} — where to?</h3>
-    <div style="font-size:12.5px;color:var(--stone);margin-bottom:8px;">${esc(t.driver)||"⚠ no driver"}${trlTxt(t)?" · "+esc(trlTxt(t)):""} · ${esc(areaLbl(t.area||"(SIN YARD)"))} · wk ${t.loads_week||0} loads</div>
-    ${onIt.length?`<div style="font-size:12.5px;color:#2456a6;font-weight:700;margin-bottom:8px;">already on: ${onIt.map(o=>esc(o.customer||o.name)).join(", ")}</div>`:""}
-    ${os.length?"":`<p style="color:var(--mut);font-size:14px;">No NewMile orders for this day yet.</p>`}
-    <div style="max-height:52vh;overflow:auto;">
-    ${os.map(o=>{const gap=gapOf(o);
-      return `<div onclick="sendTruckTo(${o.id},'${t.org_id}','${esc(t.number)}')" style="border:1.5px solid ${gap?"#c98a2f":"var(--line)"};background:${gap?"var(--warm)":"var(--card)"};border-radius:12px;padding:10px 12px;margin-bottom:8px;cursor:pointer;">
+  all.sort((a,b)=>((gapOf(b)||0)-(gapOf(a)||0))||(a.name>b.name?1:-1));
+  const q=_stQuery.trim();
+  const os=q?all.filter(o=>((o.customer||"")+" "+(o.name||"")+" "+(o.material||"")+" "+(o.pickup||"")+" "+(o.dropoff||"")).toLowerCase().includes(q)):all;
+  const myRuns=_stRuns(t);                                  // ya corre estas órdenes este día
+  const pendRuns=myRuns.filter(r=>(r.a.loads||0)===0);      // las que aún no cargan (ordenables)
+  const sel=_stSel!=null?os.find(o=>o.id===_stSel)||all.find(o=>o.id===_stSel):null;
+  const hhmm=x=>{try{const d=new Date(x);return isNaN(d)?"":d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});}catch(e){return "";}};
+  openModal(`<h3>⚡ ${esc(dnum(t))} — assign to an order · ${mdy(date)}</h3>
+    <div style="font-size:12.5px;color:var(--stone);margin-bottom:6px;">${esc(t.driver)||"⚠ no driver"}${trlTxt(t)?" · "+esc(trlTxt(t)):""} · ${esc(areaLbl(t.area||"(NO YARD)"))} · wk ${t.loads_week||0} loads${t.rev_week?" · "+money(t.rev_week):""}</div>
+    ${myRuns.length?`<div style="font-size:12px;background:var(--blue-bg);color:var(--blue);border-radius:10px;padding:7px 10px;margin-bottom:8px;"><b>Already running this day:</b> ${myRuns.map((r,i)=>esc(r.order.customer||r.order.name)+((r.a.loads||0)>0?` (${r.a.loads} loads done)`:` (${r.a.load_limit!=null?"x"+r.a.load_limit:"open"})`)).join(" → ")}</div>`:""}
+    <input type="text" id="stSearch" placeholder="🔍 Search customer / material / dropoff…" value="${esc(_stQuery)}" oninput="stSearch(this.value)" style="width:100%;margin-bottom:8px;">
+    ${os.length?"":`<p style="color:var(--mut);font-size:14px;">${q?"No orders match \""+esc(q)+"\".":"No NewMile orders for this day yet."}</p>`}
+    <div style="max-height:${sel?"34vh":"46vh"};overflow:auto;">
+    ${os.map(o=>{const gap=gapOf(o);const mine=(o.assigned||[]).some(a=>a.org===t.org_id&&a.number===t.number);const isSel=_stSel===o.id;
+      return `<div onclick="stPick(${o.id})" style="border:2px solid ${isSel?"var(--gold)":gap?"#c98a2f":"var(--line)"};background:${isSel?"var(--warm)":gap?"var(--warm)":"var(--card)"};border-radius:12px;padding:9px 11px;margin-bottom:7px;cursor:pointer;${isSel?"box-shadow:0 0 0 2px var(--gold);":""}">
         <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
-          <b style="font-size:14.5px;">${esc(o.customer||o.name)}</b>
+          <b style="font-size:14.5px;">${esc(o.customer||o.name)}</b>${mine?`<span style="font-size:11px;font-weight:800;color:var(--blue);">· HE'S ON IT</span>`:""}
           <span style="margin-left:auto;font-weight:800;font-size:13px;color:${gap?"var(--gold-d)":"var(--green)"};">${o.assigned.length}${o.planned!=null?"/"+o.planned:""}${gap?` · NEEDS ${gap}`:" · full"}</span>
         </div>
-        <div style="font-size:12px;color:var(--stone);margin-top:2px;">${esc(o.material)}${o.qty!=null?` · ${o.qty} ${esc(o.unit)}`:""}${o.dropoff?` · → ${esc(o.dropoff)}`:""}</div>
+        <div style="font-size:12px;color:var(--stone);margin-top:2px;">${esc(o.material)}${o.qty!=null?` · ${o.qty} ${esc(o.unit)}`:""}${o.earliest?` · 🕐 ${hhmm(o.earliest)}`:""}</div>
+        <div style="font-size:11.5px;color:var(--mut);margin-top:1px;">${o.pickup?esc(o.pickup):""}${o.pickup&&o.dropoff?" → ":""}${o.dropoff?esc(o.dropoff):""}</div>
+        ${(o.assigned||[]).length?`<div style="font-size:11px;color:var(--mut);margin-top:3px;">🚛 ${o.assigned.map(a=>esc(a.truck_number)+(a.load_limit!=null?"x"+a.load_limit:"")+((a.loads||0)>0?"·"+a.loads+"✓":"")).join(" · ")}</div>`:""}
       </div>`;}).join("")}
     </div>
-    <div class="row2" style="margin-top:8px;"><div><label>Loads (optional)</label><input type="number" id="sendLds" placeholder="x3" min="1" style="width:100%;"></div><div></div></div>
+    ${sel?`<div style="border-top:2px solid var(--gold);margin-top:6px;padding-top:8px;">
+      <div style="font-weight:800;font-size:13.5px;margin-bottom:6px;">→ ${esc(sel.customer||sel.name)}</div>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+        <div><label style="font-size:11px;color:var(--mut);">Loads (blank = open)</label><input type="number" id="sendLds" placeholder="open" min="1" style="width:90px;" value="${window._stLds||""}" oninput="window._stLds=this.value"></div>
+        ${pendRuns.length?`<div><label style="font-size:11px;color:var(--mut);">Run order (this truck)</label><select id="sendPos" style="min-width:130px;">${Array.from({length:pendRuns.length+1},(_,i)=>{const n=i+1;const last=n===pendRuns.length+1;return `<option value="${last?"":n}" ${last?"selected":""}>${last?"Last (natural)":n===1?"1st — run it FIRST":n+"º"}</option>`;}).join("")}</select></div>`:""}
+        <button onclick="sendTruckTo(${sel.id},'${t.org_id}','${esc(t.number)}')" style="margin-left:auto;background:var(--green);color:#fff;border:none;border-radius:12px;padding:11px 20px;font-weight:800;font-size:14px;cursor:pointer;">🚀 ASSIGN${pendRuns.length?" + place":""}</button>
+      </div>
+    </div>`:`<div style="font-size:11.5px;color:var(--mut);margin-top:6px;">Tap an order to set loads${myRuns.length?" & run order":""} and assign.</div>`}
     <div class="actions"><button class="b-cancel" onclick="closeModal()">Cancel</button></div>`);
+  if(q){const si=$("stSearch");if(si){si.focus();si.setSelectionRange(si.value.length,si.value.length);}}
 }
 async function sendTruckTo(orderId,org,num){
   ensureWho();
   const t=truckOf(org,num);
   const o=((_orders&&_orders.orders)||[]).find(x=>x.id===orderId)||{};
   const lds=$("sendLds")?$("sendLds").value:"";
-  if(!confirm(`PUSH ${dnum(t)} → "${o.customer||o.name}" in NewMile?${lds?` (${lds} loads)`:""}`))return;
-  openModal(`<h3>🚀 Pushing ${esc(dnum(t))}…</h3><p style="color:var(--mut);font-size:14px;">creating + confirming the assignment…</p>`);
+  const posEl=$("sendPos"); const pos=posEl&&posEl.value?parseInt(posEl.value,10):0;
+  if(!confirm(`PUSH ${dnum(t)} → "${o.customer||o.name}" in NewMile?${lds?` (${lds} loads)`:""}${pos?` · run #${pos}`:""}`))return;
+  window._stLds="";
+  openModal(`<h3>🚀 Pushing ${esc(dnum(t))}…</h3><p style="color:var(--mut);font-size:14px;">creating + confirming${pos?" + placing as run #"+pos:""}…</p>`);
   try{
     const r=await fetch(`${API}/api/orders/assign`,{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({order_id:orderId,date,trucks:[{org,number:num}],load_limit:lds||undefined,by:WHO})});
+      body:JSON.stringify({order_id:orderId,date,trucks:[{org,number:num}],load_limit:lds||undefined,position:pos||undefined,by:WHO})});
     const j=await r.json().catch(()=>({}));
     if(!r.ok)throw new Error(j.error||("HTTP "+r.status));
     if(j.failed&&j.failed.length)throw new Error(j.failed[0].number+": "+j.failed[0].reason);
     await fetchBoard();
-    openModal(`<h3>🚀 Done</h3><p style="font-size:14px;">✅ ${esc(dnum(t))} → <b>${esc(o.customer||o.name)}</b>${j.confirmed?" — CONFIRMED, the driver can see it":" — left as DRAFT, confirm in NewMile"}</p>
+    const warn=(j.warnings&&j.warnings.length)?`<p style="font-size:12px;color:#a8622f;">⚠ ${esc(j.warnings.join(" · "))}</p>`:"";
+    openModal(`<h3>🚀 Done</h3><p style="font-size:14px;">✅ ${esc(dnum(t))} → <b>${esc(o.customer||o.name)}</b>${j.confirmed?" — CONFIRMED, the driver can see it":" — left as DRAFT, confirm in NewMile"}${j.placedAt?` · placed as run #${j.placedAt}`:""}</p>${warn}
       <div class="actions"><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
   }catch(e){
     openModal(`<h3>🚀 Push failed</h3><p style="font-size:14px;color:var(--red);">${esc(e.message)}</p><p style="font-size:13px;color:var(--mut);">Nothing was marked locally.</p>
