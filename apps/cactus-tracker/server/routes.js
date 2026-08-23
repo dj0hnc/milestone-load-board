@@ -31,7 +31,7 @@ function createRouter({ config, newmile, log }) {
   const PIN = process.env.ACCESS_PIN || config.accessPin || '';
   const crypto = require('crypto');
   const pinCookie = PIN ? crypto.createHash('sha256').update('cactus|' + PIN).digest('hex').slice(0, 40) : '';
-  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
+  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/board-status', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
   if (PIN) {
     router.use((req, res, next) => {
       if (OPEN_PATHS.includes(req.path)) return next();
@@ -1112,6 +1112,30 @@ function createRouter({ config, newmile, log }) {
       samsara_summary: (() => { try { return JSON.parse(metaGet('last_sync_samsara_summary') || 'null'); } catch (e) { return null; } })(),
       hos_trucks: get(`SELECT COUNT(*) AS n FROM trucks WHERE hos_at != '' AND hos_at IS NOT NULL`).n
     });
+  });
+
+  // ---------- BOARD → TRACKER status mirror ----------
+  // El Load Board escribe aquí cuando el dispatcher marca un troke shop/off/ok, para que la MISMA
+  // info viva en el tracker (el tracker→board ya funciona por el feed /states). Open + states-key
+  // (como el import de recruiting). Mapea: board off→down, shop→shop, ok→ok. Sin loop: el board
+  // solo LEE los estados del tracker, nunca al revés desde un estado nacido en el tracker.
+  router.post('/api/board-status', (req, res) => {
+    if (String((req.query || {}).key || (req.body || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    const b = req.body || {};
+    const num = normNum(b.number || b.num);
+    if (!num) return res.status(400).json({ error: 'number required' });
+    const bs = String(b.status || 'ok').toLowerCase();
+    const status = bs === 'shop' ? 'shop' : (bs === 'off' || bs === 'down') ? 'down' : 'ok';
+    // encontrar el troke por número (el board no manda org); no-archivados primero
+    const row = get('SELECT org_id, number, status FROM trucks WHERE UPPER(number) = UPPER(?) AND archived = 0 ORDER BY is_sub ASC LIMIT 1', num)
+             || get('SELECT org_id, number, status FROM trucks WHERE UPPER(number) = UPPER(?) LIMIT 1', num);
+    if (!row) return res.json({ ok: true, matched: false });   // troke no está en el tracker — no es error
+    if (row.status === status && !b.reason) return res.json({ ok: true, matched: true, unchanged: true });
+    run('UPDATE trucks SET status = ?, status_note = CASE WHEN ? <> \'\' THEN ? ELSE status_note END, updated_at = ? WHERE org_id = ? AND number = ?',
+      status, String(b.reason || ''), String(b.reason || '').slice(0, 300), nowISO(), row.org_id, row.number);
+    logChange(row.org_id, row.number, 'status', row.status || '', status + (b.reason ? (' — ' + b.reason) : '') + ' (from board)', String(b.by || 'board'));
+    say(`board→tracker: ${row.number} → ${status}${b.reason ? ' (' + b.reason + ')' : ''}`);
+    res.json({ ok: true, matched: true, org: row.org_id, number: row.number, status });
   });
 
   router.get('/recruit', (req, res) => res.redirect(req.baseUrl + '/recruit.html'));

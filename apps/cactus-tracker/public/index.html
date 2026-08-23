@@ -132,7 +132,8 @@ h1 span{color:var(--gold);}
 .chip .ripflag{position:absolute;left:0;top:0;bottom:0;width:6px;border-radius:10px 0 0 10px;background:var(--blue);}
 .btn-down{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:14px;font-weight:700;cursor:pointer;line-height:1;}
 .btn-down:hover{border-color:var(--red);color:var(--red);}
-.btn-edit{position:absolute;top:6px;right:36px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:13px;cursor:pointer;line-height:1;}
+/* carril superior-derecho, separados 32px: ✕ down (6) · NW (38) · ✎ edit (70) — sin encimarse */
+.btn-edit{position:absolute;top:6px;right:70px;width:26px;height:26px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:13px;cursor:pointer;line-height:1;}
 .btn-edit:hover{border-color:var(--gold);color:var(--gold);}
 /* 📞 + ⚡ live in the BOTTOM-LEFT lane (the top row belongs to the trailer chips — they were
    overlapping on phones). Bottom-right stays reserved for ⟳/📷. Every chip reserves the lane. */
@@ -187,6 +188,11 @@ h1 span{color:var(--gold);}
 .chip.s-off .drv{color:#a8874a;}
 .chip.s-off .offmark{position:absolute;top:-9px;left:-9px;width:26px;height:26px;border-radius:50%;background:#c98a2f;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 1px 4px rgba(0,0,0,.3);}
 .statusbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:12px;color:var(--mut);}
+/* SYNC dentro del header (navy): texto claro, borde arriba, y su barra de progreso al lado */
+.statusbar.hdr{margin:8px 0 0;padding:8px 0 10px;border-top:1px solid rgba(255,255,255,.09);color:#c6cddd;}
+.statusbar.hdr #lastSync{color:#c6cddd;}
+.statusbar.hdr .btn-sync{background:var(--gold);color:var(--navy);}
+.progress.hdr{flex:1;min-width:120px;height:8px;margin:0;background:rgba(255,255,255,.14);}
 .statusbar .dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:#b02a2a;margin-right:4px;}
 .statusbar .dot.on{background:var(--green);}
 .btn-sync{background:var(--navy);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-family:'Barlow Condensed';font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer;text-transform:uppercase;}
@@ -257,11 +263,11 @@ h1 span{color:var(--sand);}
 /* Corner buttons — ghost, refined, evenly pitched (only edit + down here now) */
 .btn-down,.btn-edit,.btn-loc,.btn-cam{border:1px solid var(--line);background:#FAF9F6;color:#A6A29A;border-radius:9px;transition:all .12s;}
 .btn-down{top:8px;right:8px;}
-.btn-edit{top:8px;right:40px;}
+.btn-nw{top:8px;right:40px;}
+.btn-edit{top:8px;right:72px;}
 .btn-call{bottom:8px;left:40px;}
 .btn-zap{bottom:8px;left:8px;}
 .btn-note{bottom:8px;left:72px;}
-.btn-nw{top:8px;right:40px;}
 .btn-loc{bottom:8px;right:8px;}
 .btn-cam{bottom:8px;right:40px;}
 /* los botones de esquina (📷 ⟳) flotan sobre el cuadrito: cuando el texto se envuelve se
@@ -434,6 +440,14 @@ body.dark .theme-btn{border-color:var(--gold);}
     <div class="days" id="days"></div>
   </div>
   <div class="workbar" id="workbar"></div>
+  <!-- SYNC en el HEADER (sticky): botón + estado + progreso siempre visibles, nunca se pierden al scroll -->
+  <div class="statusbar hdr" id="statusbar">
+    <span><span class="dot" id="nmDot"></span><span id="nmTxt">NewMile…</span></span>
+    <span id="lastSync"></span>
+    <button class="btn-sync" id="btnSync" onclick="syncNow()">⟳ Sync now</button>
+    <span id="netTxt"></span>
+    <div class="progress hdr"><i id="prog"></i></div>
+  </div>
 </header>
 
 <div class="wrap">
@@ -443,14 +457,6 @@ body.dark .theme-btn{border-color:var(--gold);}
       <button id="fClear" onclick="clearSearch()" style="display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);width:26px;height:26px;border-radius:50%;border:none;background:#cdd3df;color:#4a5164;font-size:14px;font-weight:700;cursor:pointer;line-height:1;">✕</button>
     </div>
   </div>
-  <div class="statusbar">
-    <span><span class="dot" id="nmDot"></span><span id="nmTxt">NewMile…</span></span>
-    <span id="lastSync"></span>
-    <button class="btn-sync" id="btnSync" onclick="syncNow()">⟳ Sync now</button>
-    <span id="netTxt"></span>
-  </div>
-
-  <div class="progress"><i id="prog"></i></div>
 
   <div id="banners"></div>
 
