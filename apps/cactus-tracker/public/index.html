@@ -392,6 +392,24 @@ html{overflow-x:hidden;}
   h1{font-size:14.5px;}
 }
 
+/* ---- iOS PWA (2026-08-23): con status-bar translúcida la página se dibuja BAJO el reloj/
+   batería del iPhone y pisaban los botones del header. El header respeta el safe-area, y en
+   cel la fila de botones se DESLIZA de lado (nada se encima ni se esconde). */
+header{padding-top:calc(14px + env(safe-area-inset-top,0px));}
+@media (max-width:640px){
+  header{padding-top:calc(8px + env(safe-area-inset-top,0px));}
+  .hrow{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;
+    -webkit-mask-image:linear-gradient(90deg,#000 92%,transparent);mask-image:linear-gradient(90deg,#000 92%,transparent);}
+  .hrow::-webkit-scrollbar{display:none;}
+  .hrow>*{flex-shrink:0;}
+  h1{flex:0 0 auto;max-width:38vw;}
+  .xlink{font-size:12px;padding:4px 9px;white-space:nowrap;}
+  .statusbar.hdr{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+  .statusbar.hdr::-webkit-scrollbar{display:none;}
+  .statusbar.hdr>*{flex-shrink:0;}
+  .workbar{padding-left:10px;padding-right:10px;}
+}
+
 /* ===== 🌙 SKIN LOAD BOARD — navy + oro, el mismo ADN del board. Switch en el header,
    se recuerda por dispositivo (localStorage). El tema claro queda intacto por default. ===== */
 body.dark{
