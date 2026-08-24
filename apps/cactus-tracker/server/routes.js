@@ -386,10 +386,20 @@ function createRouter({ config, newmile, log }) {
     if (String(req.query.key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
     const today = todayCT();
     const trucks = all(`SELECT t.org_id, t.number, t.display_number, t.division, t.driver, t.status, t.status_note,
-                               t.note, t.return_date, t.rest_days, t.updated_at
+                               t.note, t.return_date, t.rest_days, t.updated_at,
+                               t.hos_drive_ms, t.hos_cycle_ms, t.hos_at
                         FROM trucks t JOIN orgs o ON o.id = t.org_id WHERE o.enabled = 1 AND t.archived = 0`);
     const states = new Map(all('SELECT org_id, number, state FROM dispatch_state WHERE date = ?', today)
       .map(r => [r.org_id + '|' + r.number, r.state]));
+    // 💰 dinero freight de HOY y de la SEMANA (Lun-Sáb) por troke — para los chips del board
+    const wk = weekDatesCT(today);
+    const revs = new Map();
+    for (const r of all(`SELECT org_id, number,
+                                ROUND(SUM(CASE WHEN load_date = ? THEN revenue ELSE 0 END), 0) AS rd,
+                                ROUND(SUM(revenue), 0) AS rw
+                         FROM activity_log WHERE load_date >= ? AND load_date <= ? GROUP BY org_id, number`, today, wk.Mon, wk.Sat)) {
+      revs.set(r.org_id + '|' + r.number, { rd: r.rd || 0, rw: r.rw || 0 });
+    }
     const offs = new Map();
     for (const o of all('SELECT org_id, number, from_date, to_date, reason FROM time_off WHERE from_date <= ? AND to_date >= ?', today, today)) {
       offs.set(o.org_id + '|' + o.number, `${o.reason} ${o.from_date}→${o.to_date}`);
@@ -406,7 +416,12 @@ function createRouter({ config, newmile, log }) {
         returnDate: t.return_date || '', restDays: t.rest_days || '',
         timeOff: offs.get(t.org_id + '|' + t.number) || null,
         todayState: st === 'a' ? 'assigned' : st === 'd' ? 'x' : st === 'n' ? 'nowork' : st === 'p' ? 'pending' : null,
-        updatedAt: t.updated_at || null
+        updatedAt: t.updated_at || null,
+        // ⏱ HOS frescas (<20h) + 💰 freight hoy/semana — el board las pinta en sus chips
+        hosLeftMs: (t.hos_at && (Date.now() - Date.parse(t.hos_at)) < 20 * 3600e3) ? (t.hos_drive_ms != null ? t.hos_drive_ms : null) : null,
+        hosCycleMs: (t.hos_at && (Date.now() - Date.parse(t.hos_at)) < 20 * 3600e3) ? (t.hos_cycle_ms != null ? t.hos_cycle_ms : null) : null,
+        revDay: (revs.get(t.org_id + '|' + t.number) || {}).rd || 0,
+        revWeek: (revs.get(t.org_id + '|' + t.number) || {}).rw || 0
       };
     }
     res.setHeader('Cache-Control', 'no-store');
