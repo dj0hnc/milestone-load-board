@@ -344,8 +344,11 @@ h1 span{color:var(--sand);}
 
 /* ---- MOBILE: el board vive en el cel — nada se desborda, el header no se come la
    pantalla, y flotas/días se deslizan de lado en vez de envolverse en 3 renglones. */
-/* overflow-x SOLO en html: en body mataría el position:sticky del header */
-html{overflow-x:hidden;}
+/* overflow-x SOLO en html: en body mataría el position:sticky del header.
+   iOS FIX (2026-08-24, "se esconde la parte de arriba en el cel"): overflow-x:hidden en html
+   ROMPE el sticky en iOS Safari (el header se iba con el scroll). overflow-x:clip NO crea
+   scroll-container → el sticky vive; hidden queda de fallback para browsers viejos. */
+html{overflow-x:hidden;overflow-x:clip;}
 .days{max-width:100%;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
 .days::-webkit-scrollbar{display:none;}
 .days .day{flex-shrink:0;}
@@ -448,6 +451,43 @@ body.dark .restdays label{border-color:#33507a;color:#e8ecf3;}
 body.dark footer{color:#5d6578;}
 body.dark .day{border-color:#33507a;}
 body.dark .theme-btn{border-color:var(--gold);}
+
+/* ===== 👷‍♀️ MILEY — panel de chat (flota & gente). Desktop: tarjeta flotante abajo-derecha;
+   cel: hoja completa con safe-area. El historial vive en el server (no se pierde). */
+#mileyPanel{display:none;position:fixed;right:16px;bottom:16px;width:400px;max-width:calc(100vw - 32px);height:min(640px,calc(100dvh - 90px));z-index:90;background:#fff;border:1.5px solid var(--gold,#C8991F);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.35);flex-direction:column;overflow:hidden;}
+#mileyPanel.open{display:flex;}
+.ml-head{background:var(--navy,#1C2333);color:#fff;padding:10px 12px;display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.ml-head b{font-family:'Barlow Condensed';font-size:17px;letter-spacing:.6px;}
+.ml-head small{color:#C8991F;font-size:11px;font-weight:700;letter-spacing:.5px;}
+.ml-head button{border:1px solid rgba(255,255,255,.25);background:transparent;color:#fff;border-radius:8px;padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;}
+.ml-head button:active{background:rgba(255,255,255,.12);}
+#mlFeed{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:9px;background:#f4f2ec;-webkit-overflow-scrolling:touch;}
+.ml-b{max-width:88%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word;}
+.ml-b.me{align-self:flex-end;background:var(--navy,#1C2333);color:#fff;border-bottom-right-radius:4px;}
+.ml-b.ai{align-self:flex-start;background:#fff;border:1.5px solid #e3ddcc;border-bottom-left-radius:4px;color:#2b2f3a;}
+.ml-b.sys{align-self:center;background:transparent;color:#8f8a79;font-size:12px;padding:2px 6px;text-align:center;}
+.ml-b.tool{align-self:flex-start;background:#efe9d8;border:1px dashed #cbbd93;color:#6d6146;font-size:12px;padding:5px 10px;border-radius:10px;}
+.ml-b .hx{cursor:pointer;border:1.5px solid #d8d2c0;background:#fff;border-radius:10px;padding:8px 10px;margin:3px 0;display:block;text-align:left;width:100%;font-size:13px;}
+.ml-in{display:flex;gap:7px;padding:10px;border-top:1.5px solid #e3ddcc;background:#fff;flex-shrink:0;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));}
+.ml-in textarea{flex:1;border:1.5px solid #cdd3df;border-radius:12px;padding:9px 12px;font-family:'Barlow';font-size:16px;resize:none;height:44px;max-height:110px;}
+.ml-in button{border:none;background:var(--gold,#C8991F);color:#1C2333;border-radius:12px;padding:0 16px;font-family:'Barlow Condensed';font-weight:800;font-size:15px;letter-spacing:.5px;cursor:pointer;flex-shrink:0;}
+.ml-in button:disabled{opacity:.5;}
+.ml-think{align-self:flex-start;color:#8f8a79;font-size:13px;}
+.ml-think i{display:inline-block;animation:mlb 1s infinite;}
+.ml-think i:nth-child(2){animation-delay:.18s}.ml-think i:nth-child(3){animation-delay:.36s}
+@keyframes mlb{0%,100%{opacity:.25}50%{opacity:1}}
+@media (max-width:640px){
+  #mileyPanel{right:0;bottom:0;left:0;width:100%;max-width:100%;height:100dvh;border-radius:0;border:none;}
+  .ml-head{padding-top:calc(10px + env(safe-area-inset-top,0px));}
+}
+body.dark #mileyPanel{background:#141a29;border-color:var(--gold);}
+body.dark #mlFeed{background:#0f1420;}
+body.dark .ml-b.ai{background:#1d2537;border-color:#33507a;color:#e8ecf3;}
+body.dark .ml-b.me{background:#2a3a5c;}
+body.dark .ml-b.tool{background:#1a2233;border-color:#3a4a6a;color:#9aa5c0;}
+body.dark .ml-b .hx{background:#1d2537;border-color:#33507a;color:#e8ecf3;}
+body.dark .ml-in{background:#141a29;border-color:#33507a;}
+body.dark .ml-in textarea{background:#0f1420;border-color:#33507a;color:#e8ecf3;}
 </style>
 </head>
 <body>
@@ -458,6 +498,7 @@ body.dark .theme-btn{border-color:var(--gold);}
     <a class="xlink" id="recruitLink" href="recruit.html" style="display:none;" title="Recruiting — the subhauler onboarding cockpit">🤝 RECRUIT</a>
     <a class="xlink" href="/full" target="_blank" title="Open the Load Board">📋 BOARD</a>
     <button class="xlink" style="background:transparent;cursor:pointer;" onclick="copyTony()" title="Copy 'available but not planned' — ready to paste to Tony">🤠 TONY</button>
+    <button class="xlink" id="mileyBtn" style="background:transparent;cursor:pointer;border-color:var(--gold);color:var(--gold);" onclick="openMiley()" title="Miley — the fleet &amp; people AI: dictate call notes, truck briefings, who's available, recruiting">👷‍♀️ MILEY</button>
     <button class="theme-btn" id="sizeBtn" onclick="cycleSize()" title="Chip size for THIS device (small / medium / large)">▪▪</button>
     <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Light/dark theme">🌙</button>
   </div>
@@ -523,6 +564,23 @@ body.dark .theme-btn{border-color:var(--gold);}
 
 <div class="modal-bg" id="modalBg" onclick="if(event.target===this)closeModal()">
   <div class="modal" id="modalBody"></div>
+</div>
+
+<!-- 👷‍♀️ MILEY — fleet & people AI. El loop de tools corre AQUÍ (mismo patrón probado del
+     board); el server solo hace proxy a Anthropic. Historial en el server, por usuario. -->
+<div id="mileyPanel">
+  <div class="ml-head">
+    <b>👷‍♀️ MILEY</b><small>FLEET &amp; PEOPLE</small>
+    <span style="flex:1"></span>
+    <button onclick="mlNewChat()" title="Start a fresh conversation">＋ New</button>
+    <button onclick="mlHistory()" title="Your saved conversations (server — never lost)">🕘</button>
+    <button onclick="closeMiley()">✕</button>
+  </div>
+  <div id="mlFeed"></div>
+  <div class="ml-in">
+    <textarea id="mlText" placeholder="Talk to Miley… (‘anótale al 720 que…’, ‘who’s free in Powderly?’)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();mlSend();}"></textarea>
+    <button id="mlSendBtn" onclick="mlSend()">SEND</button>
+  </div>
 </div>
 
 <script>
@@ -2183,6 +2241,264 @@ function applyFlag(org,num,source,action){
   if(source==="samsara")t.samsara_flag="";else t.detected_flag="";
   queuePush({path:`/api/truck/${t.org_id}/${encodeURIComponent(num)}/flag`,body:{source,action}});
   closeModal();render();
+}
+
+// ---------- 👷‍♀️ MILEY — fleet & people AI ("échale a todo", 2026-08-24) ----------
+// Los 5 poderes: 1) dictar notas a la bitácora  2) briefing instantáneo de un troke
+// 3) ¿quién anda libre? (estados+HOS+equidad)  4) copiloto de recruiting (gate Juan/Tony)
+// 5) marcar NW/X/status por voz — TODA escritura confirma en pantalla y firma con whoAmI().
+// El loop de tools corre aquí (patrón probado del board); /api/ai/chat solo hace proxy.
+let mlMsgs=[];            // conversación viva (formato Anthropic, con tool_use/tool_result)
+let mlChatId=null;        // id de la conversación (historial en el server — nunca se pierde)
+let mlBusy=false;
+const ML_TOOLS=[
+ {name:"find_available",description:"Trucks free to work the VIEWED day: pending (no mark), not X/NW, not shop/down/vacation, not resting. Sorted hungriest-first (most days without a load). Use for 'who's available / quién anda libre'.",input_schema:{type:"object",properties:{area:{type:"string",description:"filter: yard/area substring, e.g. POWDERLY"},trailer:{type:"string",description:"filter: trailer type substring, e.g. SD, AL-ED, BD"}}}},
+ {name:"truck_info",description:"Full live dossier of ONE truck: driver, phone, status, today's mark, NewMile assignment, loads, money, HOS, GPS location, note.",input_schema:{type:"object",properties:{number:{type:"string",description:"truck number, e.g. 720 or KT105"}},required:["number"]}},
+ {name:"truck_history",description:"The call log of a truck — everything ever discussed with this driver, newest first (author + date). Use before advising about a driver.",input_schema:{type:"object",properties:{number:{type:"string"},limit:{type:"number",description:"entries, default 12"}},required:["number"]}},
+ {name:"earnings",description:"Weekly freight-money ranking across the fleet (who earned most / least this week). Use for fairness calls.",input_schema:{type:"object",properties:{order:{type:"string",enum:["top","low"],description:"top = highest earners, low = lowest"},limit:{type:"number",description:"default 8"}}}},
+ {name:"recruit_brief",description:"Recruiting desk (Juan & Tony only): subhauler deals by stage with company, trucks, follow-up date (overdue flagged) and last note. Others get a restricted message.",input_schema:{type:"object",properties:{}}},
+ {name:"add_call_note",description:"WRITE — save a note to a truck's call log (the dispatcher dictates: 'anótale al 720 que…'). Shows a confirm card; signed with the dispatcher's name.",input_schema:{type:"object",properties:{number:{type:"string"},text:{type:"string",description:"the note, cleaned up (fix dictation typos, keep meaning)"},kind:{type:"string",enum:["call","note"],description:"call = talked to driver (default), note = general note"}},required:["number","text"]}},
+ {name:"mark_day",description:"WRITE — mark a truck for the VIEWED day: covered (assigned ✓), down (X), nowork (NW — has a reason not to work), or pending (clear the mark). Confirms first.",input_schema:{type:"object",properties:{number:{type:"string"},mark:{type:"string",enum:["covered","down","nowork","pending"]}},required:["number","mark"]}},
+ {name:"set_status",description:"WRITE — change a truck's standing status: ok, shop, down, no_driver, vacation, deleased (+optional note, e.g. 'transmission, back Friday'). Confirms first.",input_schema:{type:"object",properties:{number:{type:"string"},status:{type:"string",enum:["ok","shop","down","no_driver","vacation","deleased"]},note:{type:"string"}},required:["number","status"]}},
+ {name:"recruit_note",description:"WRITE (Juan & Tony) — save a follow-up note on a recruiting deal, matched by company name. Confirms first.",input_schema:{type:"object",properties:{company:{type:"string",description:"company name or part of it"},text:{type:"string"}},required:["company","text"]}},
+ {name:"recruit_followup",description:"WRITE (Juan & Tony) — set the next follow-up date on a recruiting deal (YYYY-MM-DD). Confirms first.",input_schema:{type:"object",properties:{company:{type:"string"},date:{type:"string",description:"YYYY-MM-DD"}},required:["company","date"]}}
+];
+function mlFindTruck(num){
+  const q=String(num||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+  if(!q||!board)return null;
+  const ts=board.trucks||[];
+  const norm=s=>String(s||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+  return ts.find(t=>norm(t.number)===q)||ts.find(t=>norm(dnum(t))===q)||ts.find(t=>norm(t.number).endsWith(q))||null;
+}
+function mlBrief(t){
+  const off=offOf(t);
+  return {number:dnum(t),org:t.org_id,driver:t.driver||null,phone:t.phone||null,area:t.area||null,
+    trailer:trlTxt(t)||null,status:t.status||"ok",status_note:t.status_note||undefined,
+    day_mark:t.state==="a"?"covered":t.state==="d"?"X-down":t.state==="n"?"no-work":"pending",
+    assigned_in_newmile:!!(t.nm_confirmed||(t.nm_dest&&t.nm_dest.length)),
+    destinations:(t.nm_dest||[]).map(d=>[d.c||d.n,d.d||d.m].filter(Boolean).join("→")).join(" + ")||undefined,
+    loads_today:t.loads_today||0,loads_week:t.loads_week||0,
+    days_since_last_load:t.days_since_last_load!=null?t.days_since_last_load:undefined,
+    earned_day:t.rev_day||0,earned_week:t.rev_week||0,
+    hos_drive_left:hosFresh(t)?hosFmt(hosLeftEff(t)):undefined,hos_cycle_left:hosFresh(t)?hosFmt(hosCycleEff(t)):undefined,
+    location:t.parked_city||undefined,moving:t.moving?true:undefined,
+    resting_today:restsToday(t)||undefined,time_off:off?(off.reason+" "+off.from_date+"→"+off.to_date):undefined,
+    note:t.note||undefined,star_driver:t.star?true:undefined};
+}
+let _mlRec=null; // cache 60s del recruit board (y su 403 si no eres Juan/Tony)
+async function mlRecruits(){
+  if(_mlRec&&Date.now()-_mlRec.at<60000)return _mlRec;
+  try{
+    const r=await fetch(`${API}/api/recruit/board`);
+    if(r.status===403){_mlRec={at:Date.now(),restricted:true};return _mlRec;}
+    const j=await r.json();
+    _mlRec={at:Date.now(),list:j.recruits||[]};
+  }catch(e){_mlRec={at:Date.now(),error:String(e.message||e)};}
+  return _mlRec;
+}
+function mlMatchRecruit(list,company){
+  const q=String(company||"").toLowerCase().trim();
+  const hits=list.filter(r=>String(r.company||"").toLowerCase().includes(q)||String(r.contact||"").toLowerCase().includes(q));
+  return hits;
+}
+async function mlExec(name,inp){
+  inp=inp||{};
+  if(!board)return {error:"board not loaded yet — try again in a second"};
+  try{
+    if(name==="find_available"){
+      let ts=(board.trucks||[]).filter(t=>t.state==="p"&&!isOffNow(t)&&!t.archived);
+      if(inp.area)ts=ts.filter(t=>String(t.area||"").toUpperCase().includes(String(inp.area).toUpperCase()));
+      if(inp.trailer)ts=ts.filter(t=>trlTxt(t).toUpperCase().includes(String(inp.trailer).toUpperCase()));
+      ts.sort((a,b)=>(b.days_since_last_load||0)-(a.days_since_last_load||0));
+      return {viewed_date:date,count:ts.length,trucks:ts.slice(0,30).map(mlBrief),note:ts.length>30?"showing first 30 (hungriest first)":undefined};
+    }
+    if(name==="truck_info"){
+      const t=mlFindTruck(inp.number);
+      return t?mlBrief(t):{error:"truck '"+inp.number+"' not found in this tab ("+ORG+") — maybe another fleet tab"};
+    }
+    if(name==="truck_history"){
+      const t=mlFindTruck(inp.number);
+      if(!t)return {error:"truck '"+inp.number+"' not found"};
+      const r=await fetch(`${API}/api/truck/${encodeURIComponent(t.org_id)}/${encodeURIComponent(t.number)}/calls`);
+      const j=await r.json();
+      const n=Math.min(Number(inp.limit)||12,40);
+      return {truck:dnum(t),driver:t.driver||null,entries:(j.calls||[]).slice(0,n).map(c=>({when:String(c.ts).slice(0,16).replace("T"," "),by:c.author,kind:c.kind,text:c.text}))};
+    }
+    if(name==="earnings"){
+      const ts=(board.trucks||[]).filter(t=>!t.archived&&(t.rev_week||0)>0);
+      ts.sort((a,b)=>(inp.order==="low"?1:-1)*((b.rev_week||0)-(a.rev_week||0)));
+      return {week_ranking:ts.slice(0,Math.min(Number(inp.limit)||8,25)).map(t=>({number:dnum(t),driver:t.driver||null,earned_week:t.rev_week||0,earned_day:t.rev_day||0,loads_week:t.loads_week||0}))};
+    }
+    if(name==="recruit_brief"){
+      const rec=await mlRecruits();
+      if(rec.restricted)return {restricted:true,message:"Recruiting is Juan & Tony only — this user is not allowed to see it."};
+      if(rec.error)return {error:rec.error};
+      const today=board.today;
+      return {deals:rec.list.map(r=>({company:r.company,contact:r.contact||undefined,phone:r.phone||undefined,stage:r.stage_label||r.stage,trucks:r.trucks||undefined,truck_type:r.truck_type||undefined,lead_source:r.lead_source||undefined,follow_up:r.next_follow||undefined,follow_up_overdue:(r.next_follow&&r.next_follow<today)||undefined,days_in_stage:r.stage_since?Math.round((Date.now()-Date.parse(r.stage_since))/86400e3):undefined,last_note:r.last_note?(String(r.last_note.ts).slice(0,10)+" ("+r.last_note.author+"): "+r.last_note.text):undefined}))};
+    }
+    // ---- ESCRITURAS: confirmar SIEMPRE, firmar con whoAmI() ----
+    if(name==="add_call_note"){
+      const t=mlFindTruck(inp.number);
+      if(!t)return {error:"truck '"+inp.number+"' not found"};
+      const text=String(inp.text||"").trim().slice(0,500);
+      if(!text)return {error:"empty note"};
+      if(!confirm("📝 Save to "+dnum(t)+"'s call log?\n\n“"+text+"”\n\nsigned: "+(whoAmI()||"?")))return {cancelled:true,message:"dispatcher cancelled the confirm card"};
+      const r=await fetch(`${API}/api/truck/${encodeURIComponent(t.org_id)}/${encodeURIComponent(t.number)}/calls`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({author:whoAmI(),text,kind:inp.kind==="note"?"note":"call"})});
+      const j=await r.json();
+      if(!j.ok)return {error:j.error||"save failed"};
+      t.last_call={ts:j.call.ts,author:whoAmI(),kind:inp.kind==="note"?"note":"call",text};
+      render();
+      return {saved:true,truck:dnum(t),text};
+    }
+    if(name==="mark_day"){
+      const t=mlFindTruck(inp.number);
+      if(!t)return {error:"truck '"+inp.number+"' not found"};
+      const map={covered:"a",down:"d",nowork:"n",pending:"p"};
+      const s=map[inp.mark];
+      if(!s)return {error:"bad mark"};
+      const lbl={a:"✓ COVERED",d:"✕ X (down)",n:"NW (no work)",p:"clear → pending"}[s];
+      if(!confirm("Mark "+dnum(t)+" as "+lbl+" for "+date+"?"))return {cancelled:true,message:"dispatcher cancelled"};
+      setSt(t,s);
+      return {saved:true,truck:dnum(t),mark:inp.mark,date};
+    }
+    if(name==="set_status"){
+      const t=mlFindTruck(inp.number);
+      if(!t)return {error:"truck '"+inp.number+"' not found"};
+      if(!STATUS_LBL[inp.status]&&inp.status!=="ok")return {error:"bad status"};
+      const note=String(inp.note||"").trim().slice(0,120);
+      if(!confirm("Set "+dnum(t)+" status → "+(STATUS_LBL[inp.status]||inp.status).toUpperCase()+(note?"\nnote: "+note:"")+" ?"))return {cancelled:true,message:"dispatcher cancelled"};
+      ensureWho();
+      t.status=inp.status; if(note)t.status_note=note;
+      queuePush({path:`/api/truck/${t.org_id}/${encodeURIComponent(t.number)}`,body:{status:inp.status,...(note?{status_note:note}:{}),by:WHO}});
+      render();
+      return {saved:true,truck:dnum(t),status:inp.status,note:note||undefined};
+    }
+    if(name==="recruit_note"||name==="recruit_followup"){
+      const rec=await mlRecruits();
+      if(rec.restricted)return {restricted:true,message:"Recruiting is Juan & Tony only."};
+      if(rec.error)return {error:rec.error};
+      const hits=mlMatchRecruit(rec.list,inp.company);
+      if(!hits.length)return {error:"no recruiting deal matches '"+inp.company+"'"};
+      if(hits.length>1)return {ambiguous:hits.slice(0,6).map(r=>r.company),message:"more than one match — ask the dispatcher which one"};
+      const d=hits[0];
+      if(name==="recruit_note"){
+        const text=String(inp.text||"").trim().slice(0,500);
+        if(!text)return {error:"empty note"};
+        if(!confirm("🤝 Save note on "+d.company+"?\n\n“"+text+"”"))return {cancelled:true,message:"dispatcher cancelled"};
+        const r=await fetch(`${API}/api/recruit/${d.deal_id}/notes`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({author:whoAmI(),text,kind:"note"})});
+        const j=await r.json();
+        return j.ok?{saved:true,company:d.company,text}:{error:j.error||"save failed"};
+      }
+      const dt=String(inp.date||"").slice(0,10);
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(dt))return {error:"date must be YYYY-MM-DD"};
+      if(!confirm("🗓 Set follow-up on "+d.company+" → "+dt+"?"))return {cancelled:true,message:"dispatcher cancelled"};
+      const r=await fetch(`${API}/api/recruit/${d.deal_id}/set`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({next_follow:dt})});
+      const j=await r.json();
+      _mlRec=null;
+      return j.ok?{saved:true,company:d.company,follow_up:dt}:{error:j.error||"save failed"};
+    }
+    return {error:"unknown tool "+name};
+  }catch(e){return {error:String(e.message||e)};}
+}
+function mlCtx(){
+  const ts=(board&&board.trucks)||[];
+  const w=(board&&board.working)||{};
+  const avail=ts.filter(t=>t.state==="p"&&!isOffNow(t)&&!t.archived);
+  const hosLow=ts.filter(t=>hosFresh(t)&&hosLeftEff(t)!=null&&hosH(hosLeftEff(t))<4).slice(0,12).map(t=>dnum(t)+": "+hosFmt(hosLeftEff(t))+" left");
+  const nw=ts.filter(t=>t.state==="n").slice(0,15).map(dnum), xd=ts.filter(t=>t.state==="d").slice(0,15).map(dnum);
+  return JSON.stringify({me:whoAmI()||null,viewing_date:date,today:board?board.today:null,
+    tab:ORG+"/"+(division||""),recruit_access:!!(board&&board.recruitAllowed),
+    counts:{trucks_in_tab:ts.length,available_now:avail.length,working_all_fleets:w.total,x_down:w.x,no_work:w.nw},
+    hos_low_today:hosLow,marked_nw:nw,marked_x:xd,
+    tip:"snapshot only — use tools for live detail"});
+}
+function mlEsc(s){return esc(s).replace(/\*\*(.+?)\*\*/g,"<b>$1</b>");}
+function mlBubble(cls,html){const f=$("mlFeed");const d=document.createElement("div");d.className="ml-b "+cls;d.innerHTML=html;f.appendChild(d);f.scrollTop=f.scrollHeight;return d;}
+function mlRenderAll(){
+  const f=$("mlFeed");f.innerHTML="";
+  if(!mlMsgs.length){mlBubble("sys","👷‍♀️ Miley here — fleet &amp; people.<br>Try: <i>“anótale al 720 que trae la llanta baja”</i> · <i>“who's free in Powderly with hours?”</i> · <i>“¿qué se ha hablado con el 1033?”</i> · <i>“recruiting: who needs a follow-up?”</i>");return;}
+  for(const m of mlMsgs){
+    if(m.role==="user"){
+      if(typeof m.content==="string")mlBubble("me",mlEsc(m.content));
+      // tool_results no se pintan (ruido) — la respuesta de Miley ya los cuenta
+    }else{
+      const blocks=Array.isArray(m.content)?m.content:[{type:"text",text:String(m.content||"")}];
+      for(const b of blocks){
+        if(b.type==="text"&&b.text.trim())mlBubble("ai",mlEsc(b.text.trim()));
+        if(b.type==="tool_use")mlBubble("tool","🔧 "+esc(b.name));
+      }
+    }
+  }
+}
+async function mlSave(){
+  const who=whoAmI(); if(!who||!mlMsgs.length)return;
+  if(!mlChatId)mlChatId="c"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+  const first=mlMsgs.find(m=>m.role==="user"&&typeof m.content==="string");
+  try{await fetch(`${API}/api/ai/chats`,{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({id:mlChatId,author:who,title:first?String(first.content).slice(0,80):"(chat)",messages:mlMsgs})});}catch(e){}
+}
+async function mlSend(){
+  if(mlBusy)return;
+  const inp=$("mlText");const q=(inp.value||"").trim();if(!q)return;
+  ensureWho();
+  inp.value="";
+  mlMsgs.push({role:"user",content:q});
+  mlBubble("me",mlEsc(q));
+  mlBusy=true;$("mlSendBtn").disabled=true;
+  const think=mlBubble("ml-think ml-b sys","👷‍♀️ <i>●</i><i>●</i><i>●</i>");
+  try{
+    for(let round=0;round<6;round++){
+      const r=await fetch(`${API}/api/ai/chat`,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({messages:mlMsgs,context:mlCtx(),tools:ML_TOOLS})});
+      const j=await r.json();
+      if(j.error){mlBubble("ai","⚠️ "+esc(j.error));break;}
+      mlMsgs.push({role:"assistant",content:j.content});
+      const uses=(j.content||[]).filter(c=>c.type==="tool_use");
+      for(const b of (j.content||[]))if(b.type==="text"&&b.text.trim())mlBubble("ai",mlEsc(b.text.trim()));
+      if(j.stop_reason!=="tool_use"||!uses.length)break;
+      const results=[];
+      for(const u of uses){
+        mlBubble("tool","🔧 "+esc(u.name)+"…");
+        const out=await mlExec(u.name,u.input);
+        results.push({type:"tool_result",tool_use_id:u.id,content:JSON.stringify(out).slice(0,9000)});
+      }
+      mlMsgs.push({role:"user",content:results});
+    }
+  }catch(e){mlBubble("ai","⚠️ "+esc(e.message||String(e)));}
+  finally{think.remove();mlBusy=false;$("mlSendBtn").disabled=false;mlSave();inp.focus();}
+}
+function openMiley(){ensureWho();$("mileyPanel").classList.add("open");mlRenderAll();setTimeout(()=>{const i=$("mlText");if(i&&window.innerWidth>640)i.focus();},50);}
+function closeMiley(){$("mileyPanel").classList.remove("open");}
+function mlNewChat(){mlMsgs=[];mlChatId=null;mlRenderAll();}
+async function mlHistory(){
+  const who=whoAmI();if(!who)return;
+  const f=$("mlFeed");f.innerHTML="<div class='ml-b sys'>Loading your conversations…</div>";
+  try{
+    const r=await fetch(`${API}/api/ai/chats?author=${encodeURIComponent(who)}`);
+    const j=await r.json();
+    f.innerHTML="";
+    if(!(j.chats||[]).length){mlBubble("sys","No saved conversations yet — they auto-save as you talk.");mlBubble("sys","<button class='hx' onclick='mlNewChat()'>← back</button>");return;}
+    mlBubble("sys","🕘 <b>Your conversations</b> (saved on the server — tap to continue)");
+    for(const c of j.chats){
+      mlBubble("sys",`<button class="hx" onclick="mlLoadChat('${esc(c.id)}')"><b>${esc(c.title||"(chat)")}</b><br><small style="color:var(--mut)">${esc(String(c.ts).slice(0,16).replace("T"," "))}</small></button><a href="#" style="font-size:11px;color:var(--red)" onclick="mlDelChat('${esc(c.id)}');return false;">delete</a>`);
+    }
+    mlBubble("sys","<button class='hx' onclick='mlRenderAll()'>← back to current chat</button>");
+  }catch(e){f.innerHTML="";mlBubble("ai","⚠️ could not load history: "+esc(e.message||String(e)));}
+}
+async function mlLoadChat(id){
+  try{
+    const r=await fetch(`${API}/api/ai/chats/${encodeURIComponent(id)}`);
+    const j=await r.json();
+    if(!j.ok)throw new Error(j.error||"not found");
+    mlMsgs=j.chat.messages||[];mlChatId=j.chat.id;
+    mlRenderAll();
+  }catch(e){mlBubble("ai","⚠️ "+esc(e.message||String(e)));}
+}
+async function mlDelChat(id){
+  if(!confirm("Delete this conversation forever?"))return;
+  try{await fetch(`${API}/api/ai/chats/${encodeURIComponent(id)}/delete`,{method:"POST"});}catch(e){}
+  if(mlChatId===id)mlNewChat();
+  mlHistory();
 }
 
 // ---------- boot ----------

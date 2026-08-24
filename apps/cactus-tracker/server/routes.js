@@ -19,7 +19,7 @@ const EDITABLE = ['note', 'status', 'status_note', 'return_date', 'rest_days', '
 
 function createRouter({ config, newmile, log }) {
   const router = express.Router();
-  router.use(express.json());
+  router.use(express.json({ limit: '2mb' })); // Miley: conversaciones con tool_results crecen >100kb
   const say = log || (() => {});
 
   // ---------- candado opcional con PIN ----------
@@ -1262,6 +1262,52 @@ function createRouter({ config, newmile, log }) {
   }
   router.get('/recruit', recruitGatePage, (req, res) => res.redirect(req.baseUrl + '/recruit.html'));
   router.get('/recruit.html', recruitGatePage, (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'recruit.html')));
+
+  // ---------- 🤖 MILEY sabor tracker (2026-08-24, "échale a todo") ----------
+  // Proxy fino a Anthropic (server/ai.js). PROTEGIDO por el PIN de sesión (no está en
+  // OPEN_PATHS). El agent-loop vive en el front (mismo patrón probado del board): los tools
+  // de LECTURA pegan a las APIs del tracker con la cookie del usuario — recruiting incluido,
+  // que ya viene gateado por identidad (un no-permitido recibe 403 y Miley lo dice tal cual).
+  // Los tools de ESCRITURA siempre confirman en pantalla y firman con la identidad NewMile.
+  const miley = require('./ai');
+  router.post('/api/ai/chat', async (req, res) => {
+    const b = req.body || {};
+    if (!miley.ready()) return res.json({ error: 'Miley is asleep on this machine (no API key)' });
+    const r = await miley.chat(Array.isArray(b.messages) ? b.messages : [], String(b.context || ''), Array.isArray(b.tools) ? b.tools : null);
+    res.json(r);
+  });
+  // 🗂 HISTORIAL de Miley (Juan: "no quisiera perder mis conversaciones"): vive en el SERVER,
+  // no en el teléfono — sobrevive cambios de dispositivo. Cada quien ve las suyas (por author).
+  // El front auto-guarda la conversación tras cada respuesta (upsert por id).
+  router.get('/api/ai/chats', (req, res) => {
+    const a = String(req.query.author || '').slice(0, 40);
+    if (!a) return res.json({ ok: true, chats: [] });
+    res.json({ ok: true, chats: all('SELECT id, ts, title FROM ai_chats WHERE author = ? ORDER BY ts DESC LIMIT 50', a) });
+  });
+  router.get('/api/ai/chats/:id', (req, res) => {
+    const r = get('SELECT id, ts, author, title, messages FROM ai_chats WHERE id = ?', String(req.params.id).slice(0, 60));
+    if (!r) return res.status(404).json({ error: 'not found' });
+    try { r.messages = JSON.parse(r.messages); } catch (e) { r.messages = []; }
+    res.json({ ok: true, chat: r });
+  });
+  router.post('/api/ai/chats', (req, res) => {
+    const b = req.body || {};
+    const id = String(b.id || '').slice(0, 60), author = String(b.author || '').slice(0, 40);
+    const msgs = Array.isArray(b.messages) ? b.messages : null;
+    if (!id || !author || !msgs || !msgs.length) return res.status(400).json({ error: 'id + author + messages required' });
+    const title = String(b.title || '').slice(0, 80);
+    const json = JSON.stringify(msgs).slice(0, 400000); // tope sano: una conversación gigante no revienta la DB
+    if (get('SELECT id FROM ai_chats WHERE id = ?', id)) {
+      run('UPDATE ai_chats SET ts = ?, title = ?, messages = ? WHERE id = ?', nowISO(), title, json, id);
+    } else {
+      run('INSERT INTO ai_chats (id, ts, author, title, messages) VALUES (?,?,?,?,?)', id, nowISO(), author, title, json);
+    }
+    res.json({ ok: true });
+  });
+  router.post('/api/ai/chats/:id/delete', (req, res) => {
+    run('DELETE FROM ai_chats WHERE id = ?', String(req.params.id).slice(0, 60));
+    res.json({ ok: true });
+  });
 
   // ---------- static frontend ----------
   // el HTML nunca se cachea (cada deploy llega al instante al cel); los iconos sí

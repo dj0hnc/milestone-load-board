@@ -149,6 +149,14 @@ function migrate(d) {
     text TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_calls_truck ON calls(org_id, number, id);
+  CREATE TABLE IF NOT EXISTS ai_chats (    -- 🤖 MILEY: historial de conversaciones (Juan pidió
+    id TEXT PRIMARY KEY,                   -- no perderlas). Una fila por conversación, el JSON
+    ts TEXT NOT NULL,                      -- completo de mensajes; author = identidad NewMile
+    author TEXT DEFAULT '',                -- (o nombre tecleado) — cada quien ve las suyas.
+    title TEXT DEFAULT '',
+    messages TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_ai_chats_author ON ai_chats(author, ts);
   CREATE TABLE IF NOT EXISTS truck_days (  -- daily snapshot: how the truck WAS that day
     date TEXT NOT NULL,
     org_id TEXT NOT NULL,
