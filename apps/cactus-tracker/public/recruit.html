@@ -150,7 +150,7 @@ let STAGE_SEL="";
 function subs(){const rs=(DATA&&DATA.recruits)||[];return OWNER_ONLY?rs.filter(r=>(r.hs_owner||"").indexOf("Tony")===0):rs;}
 function toggleOwner(){OWNER_ONLY=!OWNER_ONLY;localStorage.setItem("rc_owner",OWNER_ONLY?"tony":"all");render();}
 function pickStage(l){STAGE_SEL=(STAGE_SEL===l)?"":l;render();}
-function author(){return localStorage.getItem("ct_author")||"";}
+function author(){return (DATA&&DATA.identity)||localStorage.getItem("ct_author")||"";}   // 🪪 login NewMile manda
 function changeAuthor(){
   const n=prompt("Your name? (shows on every note you save)",author());
   if(n&&n.trim()){localStorage.setItem("ct_author",n.trim().slice(0,40));paintWho();}

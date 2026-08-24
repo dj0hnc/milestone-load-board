@@ -455,7 +455,7 @@ body.dark .theme-btn{border-color:var(--gold);}
   <div class="hrow">
     <h1>MILESTONE TEXAS <span>TRACKER</span></h1>
     <div class="faltan-pill" id="faltanPill" onclick="toggleFaltan()">—</div>
-    <a class="xlink" href="recruit.html" title="Recruiting — the subhauler onboarding cockpit">🤝 RECRUIT</a>
+    <a class="xlink" id="recruitLink" href="recruit.html" style="display:none;" title="Recruiting — the subhauler onboarding cockpit">🤝 RECRUIT</a>
     <a class="xlink" href="/full" target="_blank" title="Open the Load Board">📋 BOARD</a>
     <button class="xlink" style="background:transparent;cursor:pointer;" onclick="copyTony()" title="Copy 'available but not planned' — ready to paste to Tony">🤠 TONY</button>
     <button class="theme-btn" id="sizeBtn" onclick="cycleSize()" title="Chip size for THIS device (small / medium / large)">▪▪</button>
@@ -576,7 +576,10 @@ function groupOf(t){
 
 // multi-usuario: cada quien pone su nombre una vez; viaja en cada cambio (auditoría)
 let WHO=localStorage.getItem("cactus-who")||"";
+// 🪪 IDENTIDAD del login NewMile (viene en board.identity): manda sobre nombres tecleados.
+function whoAmI(){ return (board&&board.identity)||localStorage.getItem("ct_author")||""; }
 function ensureWho(){
+  if(board&&board.identity){ WHO=board.identity; return; }
   if(WHO)return;
   const n=prompt("Who are you? (your name is stamped on every change you make)")||"";
   WHO=n.trim().slice(0,40);
@@ -1400,6 +1403,8 @@ function buildHeader(){
     `<button class="day" style="width:auto;padding:0 9px" onclick="openCal()" title="Jump to any date">📅</button>`+
     `<input type="date" id="calJump" style="position:absolute;width:1px;height:1px;opacity:0;" onchange="if(this.value)setDate(this.value)">`+
     (date!==board.today?`<button class="day" style="width:auto;padding:0 10px" onclick="setDate('${board.today}')" title="Back to today">TODAY</button>`:"");
+  // 🔒 RECRUIT solo aparece para Juan/Tony (identidad NewMile del board)
+  const rl=$("recruitLink"); if(rl)rl.style.display=(board&&board.recruitAllowed)?"":"none";
   // 🚛 números del día — mismos buckets que los reportes del board, TODAS las orgs
   const w=board&&board.working;
   $("workbar").innerHTML=!w?"":[
@@ -2030,7 +2035,7 @@ async function openNotesHist(org,num){
     <div style="font-size:12.5px;color:var(--mut);margin-bottom:6px;">${esc(t.driver||"(no driver)")} — everything ever written: 📞 calls · 📝 notes · ✎ chip-note edits · 🔧 status notes</div>
     <div id="nhFeed" class="cfeed" style="max-height:56vh;"><p style="color:var(--mut);font-size:13px;">Loading…</p></div>
     <div class="cnew"><input type="text" id="nhText" placeholder="Add a note…" maxlength="500" onkeydown="if(event.key==='Enter')saveHistNote('${t.org_id}','${esc(t.number)}')"><button onclick="saveHistNote('${t.org_id}','${esc(t.number)}')">SAVE</button></div>
-    <div style="font-size:11px;color:var(--mut);margin-top:6px;">signing as <b>${esc(localStorage.getItem("ct_author")||"— no name yet —")}</b> · <a href="#" onclick="changeAuthor();return false;">change</a></div>`);
+    <div style="font-size:11px;color:var(--mut);margin-top:6px;">signing as <b>${esc(whoAmI()||"— no name yet —")}</b> · <a href="#" onclick="changeAuthor();return false;">change</a></div>`);
   try{
     const [cr,hr]=await Promise.all([
       fetch(`${API}/api/truck/${encodeURIComponent(t.org_id)}/${encodeURIComponent(t.number)}/calls`).then(r=>r.json()),
@@ -2064,8 +2069,8 @@ function nhDayLbl(day){
   return wd+" · "+mdy(day);
 }
 async function saveHistNote(org,num){
-  let who=localStorage.getItem("ct_author")||"";
-  if(!who){changeAuthor();who=localStorage.getItem("ct_author")||"";if(!who)return;}
+  let who=whoAmI();
+  if(!who){changeAuthor();who=whoAmI();if(!who)return;}
   const inp=$("nhText");if(!inp)return;
   const text=(inp.value||"").trim();if(!text)return;
   inp.disabled=true;
@@ -2119,7 +2124,7 @@ function openCalls(org,num){
     <div style="font-family:'Barlow Condensed';font-weight:700;font-size:13px;letter-spacing:1px;color:var(--mut);margin:10px 0 6px;">📞 CALL LOG — EVERYTHING DISCUSSED WITH THIS DRIVER</div>
     <div id="cFeed" class="cfeed"><p style="color:var(--mut);font-size:13px;">Loading…</p></div>
     <div class="cnew"><input type="text" id="cText" placeholder="What was discussed / note…" maxlength="500" onkeydown="if(event.key==='Enter')saveCall('${t.org_id}','${esc(t.number)}')"><button onclick="saveCall('${t.org_id}','${esc(t.number)}')">SAVE</button></div>
-    <div style="font-size:11px;color:var(--mut);margin-top:6px;">signing as <b id="cWho">${esc(localStorage.getItem("ct_author")||"— no name yet —")}</b> · <a href="#" onclick="changeAuthor();return false;">change</a></div>`);
+    <div style="font-size:11px;color:var(--mut);margin-top:6px;">signing as <b id="cWho">${esc(whoAmI()||"— no name yet —")}</b> · <a href="#" onclick="changeAuthor();return false;">change</a></div>`);
   loadCalls(t.org_id,t.number);
 }
 async function loadCalls(org,num){
@@ -2137,8 +2142,8 @@ function changeAuthor(){
   if(n&&n.trim()){localStorage.setItem("ct_author",n.trim().slice(0,40));const w=$("cWho");if(w)w.textContent=n.trim().slice(0,40);}
 }
 async function saveCall(org,num){
-  let who=localStorage.getItem("ct_author")||"";
-  if(!who){changeAuthor();who=localStorage.getItem("ct_author")||"";if(!who)return;}
+  let who=whoAmI();
+  if(!who){changeAuthor();who=whoAmI();if(!who)return;}
   const inp=$("cText");if(!inp)return;
   const text=(inp.value||"").trim();if(!text)return;
   inp.disabled=true;

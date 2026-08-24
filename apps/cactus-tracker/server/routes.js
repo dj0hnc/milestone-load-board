@@ -48,6 +48,27 @@ function createRouter({ config, newmile, log }) {
     res.json({ ok: true });
   });
 
+  // ---------- 🪪 IDENTIDAD vía el login NewMile del BOARD (2026-08-24) ----------
+  // El usuario ya inició sesión de NewMile en el board (per-session). Como board y tracker
+  // comparten dominio, su cookie llega aquí también — se la reenviamos al board (localhost)
+  // y él nos dice QUIÉN es. Cache 5 min por cookie. Sin secretos compartidos: el board manda.
+  const _idCache = new Map();
+  async function identityOf(req) {
+    try {
+      const ck = String(req.headers.cookie || ''); if (!ck) return null;
+      const h = crypto.createHash('sha1').update(ck).digest('hex');
+      const c = _idCache.get(h); if (c && Date.now() - c.at < 5 * 60000) return c.name;
+      const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 1500);
+      const r = await fetch('http://127.0.0.1:8090/api/whoami', { headers: { cookie: ck }, signal: ctl.signal });
+      clearTimeout(to);
+      const j = r.ok ? await r.json() : null;
+      const name = (j && j.connected && j.name) ? String(j.name).slice(0, 40) : null;
+      _idCache.set(h, { at: Date.now(), name });
+      if (_idCache.size > 200) _idCache.clear();
+      return name;
+    } catch (e) { return null; }
+  }
+
   // Abrir la app ES el sync: si al pedir el board la actividad tiene más de 20 min,
   // se dispara un sync en segundo plano (el board responde al instante con lo que hay
   // y la UI se refresca sola cuando termina). Así no hace falta pinger ni cron: la
@@ -78,7 +99,8 @@ function createRouter({ config, newmile, log }) {
   // Vistas: un org real (CACTUS, KT), o virtual: ALL = todo junto, SUBS = todos los
   // subhaulers/ICs sin importar en qué org viven (los de Cactus North se quedan ahí
   // Y salen aquí — misma data, otra vista).
-  router.get('/api/board', (req, res) => {
+  router.get('/api/board', async (req, res) => {
+    const identity = await identityOf(req);   // 🪪 quién es este navegador (login NewMile del board)
     const orgId = normNum(req.query.org || 'CACTUS');
     const date = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : todayCT();
     const virtual = orgId === 'ALL' || orgId === 'SUBS';
@@ -232,6 +254,8 @@ function createRouter({ config, newmile, log }) {
         }
         return w;
       })(),
+      identity: identity,   // 🪪 nombre real (NewMile) — el front firma notas/marcas con él
+      recruitAllowed: recruitAllowed(identity),   // 🔒 el botón RECRUIT solo se enseña a Juan/Tony
       // huecos en las órdenes de NewMile de este día (calculado en cada sync de actividad)
       nm_gaps: (() => { try { return JSON.parse(metaGet('nm_gaps_' + date) || '[]'); } catch (e) { return []; } })(),
       week: weekDatesCT(date),
@@ -613,11 +637,22 @@ function createRouter({ config, newmile, log }) {
     res.json({ ok: true, call: { ts, author, kind, text } });
   });
 
+  // 🔒 gate de identidad para TODAS las APIs de recruit (menos los canales de máquina con
+  // states-key). Registrado ANTES de las rutas — Express respeta el orden. Funciones
+  // recruitAllowed/identityOf declaradas más abajo (hoisting de function declarations).
+  router.use('/api/recruit', async (req, res, next) => {
+    const p = req.path;
+    if (p === '/import' || p === '/pending' || p === '/pending/ack') return next();
+    if (recruitAllowed(await identityOf(req))) return next();
+    res.status(403).json({ error: 'restricted', hint: 'Recruiting is Juan & Tony only — sign in to NewMile on the Board' });
+  });
+
   // ---------- 🤝 RECRUITING (HubSpot Subhauler pipeline — Juan's onboarding cockpit) ----------
   // The tracker keeps a local mirror of the recruitment deals so the page is instant and
   // Juan's own layer (checklist, follow-ups, notes) lives HERE, not in HubSpot. The mirror
   // arrives through /api/recruit/import (below), pushed from the laptop.
-  router.get('/api/recruit/board', (req, res) => {
+  router.get('/api/recruit/board', async (req, res) => {
+    const identity = await identityOf(req);
     const recruits = all('SELECT * FROM recruits ORDER BY hs_modified DESC');
     const pend = all('SELECT deal_id, to_label, ts FROM recruit_moves WHERE applied = 0');
     const pendMap = {};
@@ -632,7 +667,7 @@ function createRouter({ config, newmile, log }) {
     for (const n of notes) noteMap[n.deal_id] = n;
     for (const c of counts) countMap[c.deal_id] = c.c;
     for (const r of recruits) { r.steps = stepMap[r.deal_id] || {}; r.last_note = noteMap[r.deal_id] || null; r.notes_count = countMap[r.deal_id] || 0; r.pending_move = pendMap[r.deal_id] || null; }
-    res.json({ ok: true, recruits, synced_at: metaGet('recruit_synced_at', '') });
+    res.json({ ok: true, recruits, identity, synced_at: metaGet('recruit_synced_at', '') });
   });
 
   // Import/refresh the mirror. OPEN (no PIN) but guarded by the states key — this is how
@@ -1211,7 +1246,22 @@ function createRouter({ config, newmile, log }) {
     res.json({ ok: true, matched: true, calls: all('SELECT ts, author, kind, text FROM calls WHERE org_id = ? AND number = ? ORDER BY id DESC LIMIT 100', row.org_id, row.number) });
   });
 
-  router.get('/recruit', (req, res) => res.redirect(req.baseUrl + '/recruit.html'));
+  // 🔒 RECRUIT ES PRIVADO (Juan 2026-08-24): solo Juan y Tony, identificados por SU login de
+  // NewMile en el board. Lista editable en meta `recruit_allow` (prefijos de nombre, comas).
+  // Sin identidad permitida: la página pide conectarse y las APIs regresan 403. Los canales
+  // de máquina (import/pending/ack) siguen con states-key, no aplican aquí.
+  function recruitAllowed(identity) {
+    if (!identity) return false;
+    const allow = String(metaGet('recruit_allow', 'juan,tony')).toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+    const id = String(identity).toLowerCase();
+    return allow.some(a => id.startsWith(a) || id.includes(a));
+  }
+  async function recruitGatePage(req, res, next) {
+    if (recruitAllowed(await identityOf(req))) return next();
+    res.status(403).type('html').send('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font-family:system-ui;background:#1C2333;color:#e8ecf3;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;padding:20px"><div><div style="font-size:44px">🔒</div><h2 style="margin:8px 0">Recruiting is private</h2><p style="color:#8f97ab;max-width:420px;margin:0 auto 10px">This area belongs to Juan &amp; Tony. Open the <a href="/full" style="color:#C8991F">Board</a>, sign in to NewMile with YOUR account, then come back.</p><p><a href="/cactus-tracker/" style="color:#C8991F">&#8592; Back to the tracker</a></p></div></body>');
+  }
+  router.get('/recruit', recruitGatePage, (req, res) => res.redirect(req.baseUrl + '/recruit.html'));
+  router.get('/recruit.html', recruitGatePage, (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'recruit.html')));
 
   // ---------- static frontend ----------
   // el HTML nunca se cachea (cada deploy llega al instante al cel); los iconos sí
