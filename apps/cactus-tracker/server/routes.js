@@ -31,7 +31,7 @@ function createRouter({ config, newmile, log }) {
   const PIN = process.env.ACCESS_PIN || config.accessPin || '';
   const crypto = require('crypto');
   const pinCookie = PIN ? crypto.createHash('sha256').update('cactus|' + PIN).digest('hex').slice(0, 40) : '';
-  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/board-status', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
+  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
   if (PIN) {
     router.use((req, res, next) => {
       if (OPEN_PATHS.includes(req.path)) return next();
@@ -1167,6 +1167,33 @@ function createRouter({ config, newmile, log }) {
     logChange(row.org_id, row.number, 'status', row.status || '', status + (b.reason ? (' — ' + b.reason) : '') + ' (from board)', String(b.by || 'board'));
     say(`board→tracker: ${row.number} → ${status}${b.reason ? ' (' + b.reason + ')' : ''}`);
     res.json({ ok: true, matched: true, org: row.org_id, number: row.number, status });
+  });
+
+  // ---------- BITÁCORA UNIFICADA (2026-08-24): una sola historia por troke ----------
+  // El board ESCRIBE sus notas aquí (board-note) y LEE la historia completa (board-calls) —
+  // así una llamada anotada en cualquiera de los dos vive en la misma bitácora (tabla calls).
+  // Ambos open + states-key, como el resto del canal board⇄tracker.
+  router.post('/api/board-note', (req, res) => {
+    if (String((req.query || {}).key || (req.body || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    const b = req.body || {};
+    const num = normNum(b.number || b.num);
+    const text = String(b.text || '').trim().slice(0, 500);
+    if (!num || !text) return res.status(400).json({ error: 'number + text required' });
+    const row = get('SELECT org_id, number FROM trucks WHERE UPPER(number) = UPPER(?) AND archived = 0 ORDER BY is_sub ASC LIMIT 1', num)
+             || get('SELECT org_id, number FROM trucks WHERE UPPER(number) = UPPER(?) LIMIT 1', num);
+    if (!row) return res.json({ ok: true, matched: false });
+    run('INSERT INTO calls (ts, org_id, number, author, kind, text) VALUES (?,?,?,?,?,?)',
+      nowISO(), row.org_id, row.number, String(b.by || 'board').slice(0, 40), 'note', text);
+    res.json({ ok: true, matched: true });
+  });
+  router.get('/api/board-calls', (req, res) => {
+    if (String((req.query || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    const num = normNum(req.query.number || req.query.num || '');
+    if (!num) return res.status(400).json({ error: 'number required' });
+    const row = get('SELECT org_id, number FROM trucks WHERE UPPER(number) = UPPER(?) AND archived = 0 ORDER BY is_sub ASC LIMIT 1', num)
+             || get('SELECT org_id, number FROM trucks WHERE UPPER(number) = UPPER(?) LIMIT 1', num);
+    if (!row) return res.json({ ok: true, matched: false, calls: [] });
+    res.json({ ok: true, matched: true, calls: all('SELECT ts, author, kind, text FROM calls WHERE org_id = ? AND number = ? ORDER BY id DESC LIMIT 100', row.org_id, row.number) });
   });
 
   router.get('/recruit', (req, res) => res.redirect(req.baseUrl + '/recruit.html'));
