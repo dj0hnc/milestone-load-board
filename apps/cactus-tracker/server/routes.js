@@ -301,6 +301,26 @@ function createRouter({ config, newmile, log }) {
   });
 
   // ---------- truck edits (my fields — NewMile never overwrites these) ----------
+  // 🔁 ESPEJO tracker → board (2026-08-26): la disponibilidad es UN solo switch compartido.
+  // Un cambio de status AQUÍ prende/apaga la MISMA bandera 🚩 del board al instante
+  // (localhost, canal abierto /api/truck-notes/set). fromTracker:1 corta el eco — el board
+  // NO re-espeja de regreso. Fire-and-forget: nunca bloquea ni rompe el guardado local.
+  function mirrorStatusToBoard(t, status, reason, by) {
+    try {
+      const num = String((t && (t.display_number || t.number)) || '').trim();
+      if (!num) return;
+      const st = status === 'ok' ? 'ok' : (status === 'shop' ? 'shop' : 'off');
+      fetch('http://127.0.0.1:8090/api/truck-notes/set', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          num, status: st,
+          reason: st === 'ok' ? '' : String(reason || status || '').slice(0, 300),
+          by: String(by || 'tracker').slice(0, 60), fromTracker: 1
+        })
+      }).catch(() => {});
+    } catch (e) { /* board caído → el feed de states lo empareja después */ }
+  }
+
   router.post('/api/truck/:org/:number', (req, res) => {
     const orgId = normNum(req.params.org), number = normNum(req.params.number);
     const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number);
@@ -329,6 +349,10 @@ function createRouter({ config, newmile, log }) {
     const by = String((req.body || {}).by || '').slice(0, 40);
     for (const f of EDITABLE) if (f in (req.body || {})) logChange(orgId, number, f, row[f], updated[f], by);
     snapshotTruckDay(updated);
+    // el switch de disponibilidad cambió aquí → misma bandera al board, al instante
+    if ('status' in (req.body || {}) && updated.status !== row.status) {
+      mirrorStatusToBoard(updated, updated.status, updated.status_note, by || 'tracker');
+    }
     res.json({ ok: true, truck: updated });
   });
 
@@ -864,6 +888,7 @@ function createRouter({ config, newmile, log }) {
       // el nombre en Samsara/NewMile sigue diciendo lo mismo: recordar el texto para no reproponerlo
       run(`UPDATE trucks SET status = ?, status_note = ?, ${col} = '', ${col}_dismissed = ?, updated_at = ? WHERE org_id = ? AND number = ?`,
         status, flag, flag, nowISO(), orgId, number);
+      if (status !== row.status) mirrorStatusToBoard(row, status, flag, 'tracker flag'); // switch → board
     } else {
       run(`UPDATE trucks SET ${col} = '', ${col}_dismissed = ?, updated_at = ? WHERE org_id = ? AND number = ?`, flag, nowISO(), orgId, number);
     }
@@ -1207,9 +1232,9 @@ function createRouter({ config, newmile, log }) {
     if (!num) return res.status(400).json({ error: 'number required' });
     const bs = String(b.status || 'ok').toLowerCase();
     const status = bs === 'shop' ? 'shop' : (bs === 'off' || bs === 'down') ? 'down' : 'ok';
-    // encontrar el troke por número (el board no manda org); no-archivados primero
-    const row = get('SELECT org_id, number, status FROM trucks WHERE UPPER(number) = UPPER(?) AND archived = 0 ORDER BY is_sub ASC LIMIT 1', num)
-             || get('SELECT org_id, number, status FROM trucks WHERE UPPER(number) = UPPER(?) LIMIT 1', num);
+    // encontrar el troke por número O display (el board manda el número del chip, sin org)
+    const row = get('SELECT org_id, number, status FROM trucks WHERE (UPPER(number) = UPPER(?) OR UPPER(display_number) = UPPER(?)) AND archived = 0 ORDER BY is_sub ASC LIMIT 1', num, num)
+             || get('SELECT org_id, number, status FROM trucks WHERE UPPER(number) = UPPER(?) OR UPPER(display_number) = UPPER(?) LIMIT 1', num, num);
     if (!row) return res.json({ ok: true, matched: false });   // troke no está en el tracker — no es error
     if (row.status === status && !b.reason) return res.json({ ok: true, matched: true, unchanged: true });
     run('UPDATE trucks SET status = ?, status_note = CASE WHEN ? <> \'\' THEN ? ELSE status_note END, updated_at = ? WHERE org_id = ? AND number = ?',
