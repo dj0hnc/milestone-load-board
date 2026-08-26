@@ -395,25 +395,38 @@ async function syncActivity(client, days) {
     (candDays.get(v.m.num) || candDays.set(v.m.num, new Set()).get(v.m.num)).add(iso);
   }
   const adopt = new Set([...candDays].filter(([, d]) => d.size >= SUB_REGULAR_DAYS).map(([n]) => n));
+  // ⚑ SUBS NUEVOS AL INSTANTE (2026-08-26, el caso JT7531): un sub externo que corrió HOY o
+  // AYER entra YA al board (zona SUBS de Cactus North, con bandera ⚑ NUEVO para revisarlo) —
+  // Juan despacha para MAÑANA y un sub invisible sus primeros 3 días no sirve de nada. La
+  // regla de frecuencia (>= 3 días distintos) se queda para adoptar SIN bandera; los
+  // esporádicos VIEJOS de la ventana de 21 días siguen ignorados como hasta hoy.
+  const fresh = new Set();
+  {
+    const yd = shiftISO(today, -1);
+    for (const [num, dset] of candDays) if (!adopt.has(num) && (dset.has(today) || dset.has(yd))) fresh.add(num);
+  }
 
   for (const [key, v] of agg) {
     const [orgId, num, iso] = key.split('|');
     let row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, num);
     if (!row) {
       const adoptThis = v.m.subCandidate && adopt.has(num);
-      if (!v.m.autoCreate && !adoptThis) { summary.unmatched += v.loads; continue; }
+      const freshThis = v.m.subCandidate && fresh.has(num);
+      if (!v.m.autoCreate && !adoptThis && !freshThis) { summary.unmatched += v.loads; continue; }
       // Ran a load but is not on my roster → ⚑ NUEVO immediately (never wait for 4:30 AM).
       // Un sub adoptado o uno con lugar propio entra directo al board (NORTH / zona SUBS).
       const sub = v.m.sub || (orgId === 'CACTUS' && /^(BT|BW|HS|AE)\d/i.test(num)) ? 1 : 0;
-      const division = adoptThis ? 'NORTH' : (v.m.division || null);
-      const area = adoptThis ? 'SUBS' : (v.m.area || '(SIN YARD)');
-      const placed = adoptThis || !!v.m.area; // ya colocado → no es ⚑ NUEVO
+      const division = (adoptThis || freshThis) ? 'NORTH' : (v.m.division || null);
+      const area = (adoptThis || freshThis) ? 'SUBS' : (v.m.area || '(SIN YARD)');
+      const placed = adoptThis || !!v.m.area; // fresh entra colocado PERO con ⚑ NUEVO para revisión
       run(`INSERT INTO trucks (org_id, number, display_number, division, area, driver, owner_name, tags, is_sub, suggested_division, is_new, updated_at)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-        orgId, num, v.m.display || num, division, area, v.driver || '', v.owner || '',
+        orgId, num, v.m.display || num, division, area, v.driver || '', v.owner || v.m.fleet || '',
         v.m.tags || (sub ? 'SUBHAULER' : ''), sub, v.m.suggestedDivision || null, placed ? 0 : 1, nowISO());
       row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, num);
-      if (adoptThis) summary.subsAdopted++; else summary.createdNew++;
+      if (adoptThis) summary.subsAdopted++;
+      else if (freshThis) summary.subsFresh = (summary.subsFresh || 0) + 1;
+      else summary.createdNew++;
     } else {
       if (row.archived) {
         // estaba archivado por inactividad pero VOLVIÓ a correr carga → regresa al board
