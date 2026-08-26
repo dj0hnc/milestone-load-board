@@ -10,7 +10,7 @@ const express = require('express');
 const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
 const { todayCT, weekDatesCT, daysBetween, normNum, canonArea, canonicalTruckNumber, shortTrailer } = require('./util');
-const { syncRoster, syncActivity, scanRipRap, reconcileICs } = require('./sync-newmile');
+const { syncRoster, syncActivity, syncAssignments, scanRipRap, reconcileICs } = require('./sync-newmile');
 const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking, locateTruck, debugHOS, auditHOS, refreshHOSTruck, cameraSnapshot, cameraCheck } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
 
@@ -31,7 +31,7 @@ function createRouter({ config, newmile, log }) {
   const PIN = process.env.ACCESS_PIN || config.accessPin || '';
   const crypto = require('crypto');
   const pinCookie = PIN ? crypto.createHash('sha256').update('cactus|' + PIN).digest('hex').slice(0, 40) : '';
-  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
+  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/sync-assignments', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
   if (PIN) {
     router.use((req, res, next) => {
       if (OPEN_PATHS.includes(req.path)) return next();
@@ -478,6 +478,22 @@ function createRouter({ config, newmile, log }) {
   });
 
   // La llave del canal — SOLO detrás del PIN. Juan la copia y se la pasa al board.
+  // ⚡ CARRIL INSTANTÁNEO (2026-08-26): el board avisa "acabo de push-ear a NewMile" y el
+  // tracker corre su sync SOLO-asignaciones YA (en vez de esperar el carril de 3 min).
+  // Canal de máquinas (states-key), con candado anti-ráfaga de 5 s.
+  let _asgPokeAt = 0, _asgPokeBusy = false;
+  router.post('/api/sync-assignments', async (req, res) => {
+    if (String((req.query || {}).key || (req.body || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    if (!newmile) return res.status(503).json({ error: 'NewMile not configured' });
+    if (_asgPokeBusy || Date.now() - _asgPokeAt < 5000) return res.json({ ok: true, debounced: true });
+    _asgPokeAt = Date.now(); _asgPokeBusy = true;
+    try {
+      if (!newmile.connected && !(await newmile.resume())) return res.status(401).json({ error: 'NOT_CONNECTED' });
+      res.json({ ok: true, summary: await syncAssignments(newmile) });
+    } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+    finally { _asgPokeBusy = false; }
+  });
+
   router.get('/api/states-key', (req, res) => {
     res.json({
       key: statesKey,

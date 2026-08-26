@@ -468,104 +468,11 @@ async function syncActivity(client, days) {
   }
 
   // Assignments: cover trucks that are PLANNED even if they haven't hauled yet — for
-  // TODAY and for the NEXT WORKING DAY (dispatch plans a day ahead: a refresh must show
-  // tomorrow's board already covered with what was pushed to NewMile).
-  async function coverFromAssignments(dateISO, label) {
-    try {
-      // Órdenes CON asignaciones: cubre trucks Y captura A DÓNDE va cada uno + los huecos
-      const rows = await client.ordersForDate(dateISO);
-      const nums = new Set();
-      const matched = new Set(); // org|num de los que SÍ están en NewMile ese día
-      const destByNum = new Map(); // num normalizado -> [{n,c,m,d}] (destinos del día)
-      const gaps = [];             // órdenes a las que les faltan trucks
-      let assignCount = 0;
-      for (const { order: o, assignments } of rows) {
-        const info = {
-          n: String(o.reference || o.project_name || o.customer_name || ('Order ' + o.id)).slice(0, 60),
-          c: String(o.customer_name || '').slice(0, 40),
-          m: String(o.material_name || o.material || '').slice(0, 40),
-          d: String(o.dropoff_location_name || o.dropoff_org_location_name || o.dropoff_site_name || '').slice(0, 50)
-        };
-        const act = (assignments || []).filter(a => !/cancel/i.test(a.assignment_status || ''));
-        assignCount += act.length;
-        for (const a of act) {
-          const raw = a.truck_number || (a.truck && (a.truck.truck_number || a.truck.number)) || '';
-          if (!raw) continue;
-          const key = normNum(raw).replace(/\s+/g, '');
-          nums.add(key);
-          (destByNum.get(key) || destByNum.set(key, []).get(key)).push(info);
-        }
-        const planned = o.planned_truck_count != null ? Number(o.planned_truck_count) : null;
-        if (planned && act.length < planned && !/cancel|complete|closed/i.test(o.status || '')) {
-          gaps.push({ id: o.id, ...info, planned, assigned: act.length, gap: planned - act.length });
-        }
-      }
-      metaSet('nm_gaps_' + dateISO, JSON.stringify(gaps.sort((a, b) => b.gap - a.gap).slice(0, 40)));
-      // ESTADO DE LA CARGA EN CURSO (solo HOY): "driving to pickup", "at delivery"…
-      // Se guarda por truck para pintarlo en el cuadrito. Las terminadas no cuentan.
-      const liveStatus = new Map();
-      if (dateISO === today && client.loadsForOrder) {
-        const withAssign = rows.filter(r => (r.assignments || []).length).slice(0, 60);
-        const lists = await Promise.all(withAssign.map(async (r) => {
-          try { return await client.loadsForOrder(r.order.id); } catch (e) { return []; }
-        }));
-        for (const loads of lists) for (const ld of loads) {
-          const st = String(ld.status || '');
-          if (!st || /complete|cancel|void/i.test(st)) continue;
-          const raw = ld.truck_number || '';
-          if (raw) liveStatus.set(normNum(raw).replace(/\s+/g, ''), st);
-        }
-        summary[label + 'LiveLoads'] = liveStatus.size;
-      }
-      summary[label + 'Assignments'] = assignCount;
-      if (gaps.length) summary[label + 'OrderGaps'] = gaps.length;
-      for (const n of nums) {
-        // assignment numbers usually match the truck resource, but tolerate the
-        // load-report styles too: "C1127" (Cactus) and "KT-7040 P"/"CKJ7040" (KT)
-        const candidates = [n, canonicalTruckNumber('KT', n)];
-        if (cactus && cactus.truck_prefix && n.startsWith(cactus.truck_prefix) && /\d/.test(n.slice(cactus.truck_prefix.length))) {
-          candidates.push(n.slice(cactus.truck_prefix.length));
-        }
-        // CKJ ICs: la asignación trae el número PELÓN ("211") pero el IC vive como CKJ211
-        if (/^\d{1,4}$/.test(n)) candidates.push('CKJ' + n);
-        let hit = null;
-        for (const c of [...new Set(candidates)]) {
-          hit = get('SELECT org_id, number, archived FROM trucks WHERE number = ?', c);
-          if (hit) break;
-        }
-        // último recurso: display_number ("LT245" del sub 245, "211" del IC CKJ211)
-        if (!hit) hit = get('SELECT org_id, number, archived FROM trucks WHERE display_number = ?', n);
-        if (!hit) continue;
-        matched.add(hit.org_id + '|' + hit.number);
-        const dest = JSON.stringify((destByNum.get(n) || []).slice(0, 3));
-        const lst = liveStatus.get(n) || '';
-        // asignado en NewMile = claramente ACTIVO → fuera de "¿de baja?" y des-archivado
-        // (falsas alarmas; el dispatcher no debe revisar trucks que están rodando)
-        run(`UPDATE trucks SET maybe_removed = 0, archived = 0 WHERE org_id = ? AND number = ? AND (maybe_removed = 1 OR archived = 1)`, hit.org_id, hit.number);
-        const st = get('SELECT * FROM dispatch_state WHERE date = ? AND org_id = ? AND number = ?', dateISO, hit.org_id, hit.number);
-        if (!st) {
-          run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_at, nm_confirmed, nm_info, nm_load_status) VALUES (?,?,?,'a','auto',?,1,?,?)`,
-            dateISO, hit.org_id, hit.number, nowISO(), dest, lst);
-          summary[label + 'Covered'] = (summary[label + 'Covered'] || 0) + 1;
-        } else {
-          // el truck YA estaba marcado (a mano o auto) → queda CONFIRMADO contra NewMile:
-          // el ✓ del dispatcher se vuelve ⚡. La marca manual nunca se pisa, solo se verifica.
-          run(`UPDATE dispatch_state SET nm_confirmed = 1, nm_info = ?, nm_load_status = ? WHERE date = ? AND org_id = ? AND number = ?`,
-            dest, lst, dateISO, hit.org_id, hit.number);
-        }
-      }
-      // los que estaban confirmados pero YA NO aparecen en NewMile pierden el ⚡ (p. ej.
-      // borraron la asignación) — vuelven a ✓ "planeado aquí, no está en NewMile"
-      for (const r of all('SELECT org_id, number FROM dispatch_state WHERE date = ? AND nm_confirmed = 1', dateISO)) {
-        if (!matched.has(r.org_id + '|' + r.number)) {
-          run(`UPDATE dispatch_state SET nm_confirmed = 0, nm_info = '' WHERE date = ? AND org_id = ? AND number = ?`, dateISO, r.org_id, r.number);
-        }
-      }
-      metaSet('nm_assign_checked_' + dateISO, nowISO()); // este día SÍ se cotejó contra NewMile
-    } catch (e) {
-      summary[label + 'AssignmentsError'] = String(e.message || e); // best-effort
-    }
-  }
+  // TODAY and for the NEXT WORKING DAY. La maquinaria vive a nivel módulo
+  // (coverAssignmentsFor) para que el carril rápido de 3 min (syncAssignments) la use
+  // sin cargar el sync pesado de tickets. Este alias conserva las llamadas de siempre.
+  const coverFromAssignments = (dateISO, label) => coverAssignmentsFor(client, dateISO, label, summary, cactus, today);
+
   // corrió carga esta semana = ACTIVO → limpiar "¿de baja?" (falsas alarmas del roster)
   run(`UPDATE trucks SET maybe_removed = 0 WHERE maybe_removed = 1 AND last_load_date >= ?`, shiftISO(today, -7));
 
@@ -679,4 +586,124 @@ async function scanRipRap(client, days) {
   return summary;
 }
 
-module.exports = { syncRoster, syncActivity, scanRipRap, matchLoadRow, reconcileICs };
+// ---------- COBERTURA DESDE ASIGNACIONES (nivel módulo) ----------
+// Marca ⚡ asignado desde las órdenes de NewMile para un día (misma maquinaria de
+// siempre: tolerancia de números, gaps, live status, confirmar/des-confirmar). La usan
+// el sync pesado (syncActivity) y el carril RÁPIDO syncAssignments de abajo.
+async function coverAssignmentsFor(client, dateISO, label, summary, cactus, today) {
+    try {
+      // Órdenes CON asignaciones: cubre trucks Y captura A DÓNDE va cada uno + los huecos
+      const rows = await client.ordersForDate(dateISO);
+      const nums = new Set();
+      const matched = new Set(); // org|num de los que SÍ están en NewMile ese día
+      const destByNum = new Map(); // num normalizado -> [{n,c,m,d}] (destinos del día)
+      const gaps = [];             // órdenes a las que les faltan trucks
+      let assignCount = 0;
+      for (const { order: o, assignments } of rows) {
+        const info = {
+          n: String(o.reference || o.project_name || o.customer_name || ('Order ' + o.id)).slice(0, 60),
+          c: String(o.customer_name || '').slice(0, 40),
+          m: String(o.material_name || o.material || '').slice(0, 40),
+          d: String(o.dropoff_location_name || o.dropoff_org_location_name || o.dropoff_site_name || '').slice(0, 50)
+        };
+        const act = (assignments || []).filter(a => !/cancel/i.test(a.assignment_status || ''));
+        assignCount += act.length;
+        for (const a of act) {
+          const raw = a.truck_number || (a.truck && (a.truck.truck_number || a.truck.number)) || '';
+          if (!raw) continue;
+          const key = normNum(raw).replace(/\s+/g, '');
+          nums.add(key);
+          (destByNum.get(key) || destByNum.set(key, []).get(key)).push(info);
+        }
+        const planned = o.planned_truck_count != null ? Number(o.planned_truck_count) : null;
+        if (planned && act.length < planned && !/cancel|complete|closed/i.test(o.status || '')) {
+          gaps.push({ id: o.id, ...info, planned, assigned: act.length, gap: planned - act.length });
+        }
+      }
+      metaSet('nm_gaps_' + dateISO, JSON.stringify(gaps.sort((a, b) => b.gap - a.gap).slice(0, 40)));
+      // ESTADO DE LA CARGA EN CURSO (solo HOY): "driving to pickup", "at delivery"…
+      // Se guarda por truck para pintarlo en el cuadrito. Las terminadas no cuentan.
+      const liveStatus = new Map();
+      if (dateISO === today && client.loadsForOrder) {
+        const withAssign = rows.filter(r => (r.assignments || []).length).slice(0, 60);
+        const lists = await Promise.all(withAssign.map(async (r) => {
+          try { return await client.loadsForOrder(r.order.id); } catch (e) { return []; }
+        }));
+        for (const loads of lists) for (const ld of loads) {
+          const st = String(ld.status || '');
+          if (!st || /complete|cancel|void/i.test(st)) continue;
+          const raw = ld.truck_number || '';
+          if (raw) liveStatus.set(normNum(raw).replace(/\s+/g, ''), st);
+        }
+        summary[label + 'LiveLoads'] = liveStatus.size;
+      }
+      summary[label + 'Assignments'] = assignCount;
+      if (gaps.length) summary[label + 'OrderGaps'] = gaps.length;
+      for (const n of nums) {
+        // assignment numbers usually match the truck resource, but tolerate the
+        // load-report styles too: "C1127" (Cactus) and "KT-7040 P"/"CKJ7040" (KT)
+        const candidates = [n, canonicalTruckNumber('KT', n)];
+        if (cactus && cactus.truck_prefix && n.startsWith(cactus.truck_prefix) && /\d/.test(n.slice(cactus.truck_prefix.length))) {
+          candidates.push(n.slice(cactus.truck_prefix.length));
+        }
+        // CKJ ICs: la asignación trae el número PELÓN ("211") pero el IC vive como CKJ211
+        if (/^\d{1,4}$/.test(n)) candidates.push('CKJ' + n);
+        let hit = null;
+        for (const c of [...new Set(candidates)]) {
+          hit = get('SELECT org_id, number, archived FROM trucks WHERE number = ?', c);
+          if (hit) break;
+        }
+        // último recurso: display_number ("LT245" del sub 245, "211" del IC CKJ211)
+        if (!hit) hit = get('SELECT org_id, number, archived FROM trucks WHERE display_number = ?', n);
+        if (!hit) continue;
+        matched.add(hit.org_id + '|' + hit.number);
+        const dest = JSON.stringify((destByNum.get(n) || []).slice(0, 3));
+        const lst = liveStatus.get(n) || '';
+        // asignado en NewMile = claramente ACTIVO → fuera de "¿de baja?" y des-archivado
+        // (falsas alarmas; el dispatcher no debe revisar trucks que están rodando)
+        run(`UPDATE trucks SET maybe_removed = 0, archived = 0 WHERE org_id = ? AND number = ? AND (maybe_removed = 1 OR archived = 1)`, hit.org_id, hit.number);
+        const st = get('SELECT * FROM dispatch_state WHERE date = ? AND org_id = ? AND number = ?', dateISO, hit.org_id, hit.number);
+        if (!st) {
+          run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_at, nm_confirmed, nm_info, nm_load_status) VALUES (?,?,?,'a','auto',?,1,?,?)`,
+            dateISO, hit.org_id, hit.number, nowISO(), dest, lst);
+          summary[label + 'Covered'] = (summary[label + 'Covered'] || 0) + 1;
+        } else {
+          // el truck YA estaba marcado (a mano o auto) → queda CONFIRMADO contra NewMile:
+          // el ✓ del dispatcher se vuelve ⚡. La marca manual nunca se pisa, solo se verifica.
+          run(`UPDATE dispatch_state SET nm_confirmed = 1, nm_info = ?, nm_load_status = ? WHERE date = ? AND org_id = ? AND number = ?`,
+            dest, lst, dateISO, hit.org_id, hit.number);
+        }
+      }
+      // los que estaban confirmados pero YA NO aparecen en NewMile pierden el ⚡ (p. ej.
+      // borraron la asignación) — vuelven a ✓ "planeado aquí, no está en NewMile"
+      for (const r of all('SELECT org_id, number FROM dispatch_state WHERE date = ? AND nm_confirmed = 1', dateISO)) {
+        if (!matched.has(r.org_id + '|' + r.number)) {
+          run(`UPDATE dispatch_state SET nm_confirmed = 0, nm_info = '' WHERE date = ? AND org_id = ? AND number = ?`, dateISO, r.org_id, r.number);
+        }
+      }
+      metaSet('nm_assign_checked_' + dateISO, nowISO()); // este día SÍ se cotejó contra NewMile
+    } catch (e) {
+      summary[label + 'AssignmentsError'] = String(e.message || e); // best-effort
+    }
+  }
+
+// ---------- SOLO ASIGNACIONES (rápido y barato) ----------
+// Para que lo asignado en NewMile aparezca en el tracker CASI AL INSTANTE sin el sync
+// pesado de tickets: corre cada 3 min en horario de despacho + al momento cuando el
+// board avisa que acaba de push-ear (/api/sync-assignments). Solo hoy + siguiente día
+// hábil, puro ordersForDate — baratísimo para NewMile.
+async function syncAssignments(client) {
+  const autoMark = get(`SELECT value FROM meta WHERE key = 'auto_mark'`);
+  if (autoMark && autoMark.value === '0') return { skipped: 'auto_mark off' };
+  const today = todayCT();
+  const orgs = enabledOrgs();
+  const cactus = orgs.find(o => o.id === 'CACTUS');
+  const summary = {};
+  await coverAssignmentsFor(client, today, 'today', summary, cactus, today);
+  const wd = new Date(today + 'T12:00:00Z').getUTCDay();
+  const nextWork = shiftISO(today, wd === 6 ? 2 : 1); // sábado planea el lunes
+  await coverAssignmentsFor(client, nextWork, 'tomorrow', summary, cactus, today);
+  return summary;
+}
+
+module.exports = { syncRoster, syncActivity, syncAssignments, scanRipRap, matchLoadRow, reconcileICs };

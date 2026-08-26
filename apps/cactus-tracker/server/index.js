@@ -22,7 +22,7 @@ const { open, metaGet, metaSet, backupTo, DATA_DIR } = require('./db');
 const seed = require('./seed');
 const { createRouter } = require('./routes');
 const { NewMileClient } = require('./newmile-client');
-const { syncRoster, syncActivity, scanRipRap } = require('./sync-newmile');
+const { syncRoster, syncActivity, syncAssignments, scanRipRap } = require('./sync-newmile');
 const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking } = require('./sync-samsara');
 const { snapshotAllToday } = require('./history');
 const { ctParts } = require('./util');
@@ -342,7 +342,7 @@ function createTracker(opts) {
   // PERSISTIDO en la DB. Así funciona igual en la PC de la oficina que en una nube que
   // duerme: si el host estaba dormido a las 4:30, el sync corre al primer despertar del
   // día (la visita que lo despertó lo dispara) en vez de perderse hasta mañana.
-  let lastActivityHourKey = '', timer = null, lastUpdCheck = 0, lastGps = 0, gpsBusy = false, lastFast = 0, fastBusy = false;
+  let lastActivityHourKey = '', timer = null, lastUpdCheck = 0, lastGps = 0, gpsBusy = false, lastFast = 0, fastBusy = false, lastAsg = 0, asgBusy = false;
 
   async function tick() {
     // auto-update en cada tick = cada minuto (también domingos): código nuevo → pull + restart
@@ -382,6 +382,22 @@ function createTracker(opts) {
       })();
     }
     if (weekday === 'Sun') return; // no dispatch Sundays
+    // ⚡ ASIGNACIONES CASI AL INSTANTE (2026-08-26, pedido de Juan): sync SOLO-asignaciones
+    // cada 3 min en horario de despacho — lo asignado en NewMile (o desde el board, que
+    // además avisa al momento vía /api/sync-assignments) aparece en el tracker sin que
+    // nadie le dé "Sync". Baratísimo: puro ordersForDate de hoy + siguiente día hábil.
+    if (!asgBusy && hour >= 4 && hour <= 20 && Date.now() - lastAsg > 3 * 60000) {
+      asgBusy = true; lastAsg = Date.now();
+      (async () => {
+        try {
+          if (newmile.connected || await newmile.resume()) {
+            const s = await syncAssignments(newmile);
+            if ((s.todayCovered || 0) + (s.tomorrowCovered || 0) > 0) log('assign fast → ' + JSON.stringify(s));
+          }
+        } catch (e) { /* el sync normal reintenta */ }
+        finally { asgBusy = false; }
+      })();
+    }
     const afterOr = (h, m) => hour > h || (hour === h && minute >= m);
     try {
       if (afterOr(4, 30) && metaGet('job_roster_day') !== dateISO) {
