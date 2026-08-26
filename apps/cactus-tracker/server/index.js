@@ -189,6 +189,31 @@ function ensureAutostart(log) {
   } catch (e) { log('AUTOSTART error: ' + (e.message || e)); }
 }
 
+// ---------- LLAVE DEL CANAL DE DEPLOY DEL BOARD ----------
+// El board acepta actualizaciones remotas firmadas (/admin/update, /admin/ls, /admin/read)
+// con la llave de mab-mobile\data\deploy-key.txt. La llave viaja por OneDrive (privado) —
+// JAMÁS por este repo (que es público). El tracker la instala/repara solo en cada arranque:
+// así la laptop despliega el board de la office sin que nadie pegue nada allá.
+let bdkDone = false;
+function ensureBoardDeployKey(log) {
+  if (bdkDone) return;
+  try {
+    const appDir = boardAppDir(); if (!appDir) return; // esta máquina no corre el board
+    const od = process.env.OneDriveCommercial || process.env.OneDrive || 'C:\\Users\\JuanJoseDeAlba\\OneDrive - Miles Ahead Brands';
+    const src = path.join(od, 'mab-deploy', 'board-deploy-key.txt');
+    if (!fs.existsSync(src)) return;
+    const key = fs.readFileSync(src, 'utf8').trim();
+    if (key.length < 32) return;
+    const dst = path.join(appDir, 'data', 'deploy-key.txt');
+    let cur = ''; try { cur = fs.readFileSync(dst, 'utf8').trim(); } catch (e) {}
+    if (cur === key) { bdkDone = true; return; }
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.writeFileSync(dst, key);
+    bdkDone = true;
+    log('deploy-key del board instalada desde OneDrive (canal remoto listo)');
+  } catch (e) { /* reintenta el próximo tick */ }
+}
+
 // ---------- TUNNEL GUARDIAN ----------
 // El ngrok gratis nos cortó por tope de datos (ERR_NGROK_725) y dejó TODO fuera. Plan
 // permanente y GRATIS: quick tunnel de Cloudflare (sin tope de datos) apuntado al proxy
@@ -326,6 +351,7 @@ function createTracker(opts) {
       if (await selfUpdate(log)) return; // se va a reiniciar: no arranques jobs a medias
     }
     ensureAutostart(log); // un reinicio de la PC ya no mata el stack: Windows nos arranca
+    ensureBoardDeployKey(log); // la llave del canal remoto del board, instalada sola
     guardBoard(log).catch(() => {}); // el board caído se levanta solo (misma PC)
     guardProxy(log).catch(() => {}); // el proxy :8000 caído se levanta solo
     guardTunnel(log).catch(() => {}); // el túnel caído se relanza solo (Cloudflare, gratis)
