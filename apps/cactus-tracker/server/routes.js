@@ -274,6 +274,12 @@ function createRouter({ config, newmile, log }) {
   });
 
   // ---------- dispatch state ----------
+  // 🔔 REV del board (2026-08-26, "trabajo a velocidad"): contador de "algo cambió". El
+  // front lo sondea cada 8 s (una respuesta de bytes) y SOLO recarga el board completo
+  // cuando la rev se movió — así los cambios se ven en segundos sin gastar ancho de banda.
+  function bumpRev() { try { metaSet('board_rev', nowISO()); } catch (e) {} }
+  router.get('/api/rev', (req, res) => res.json({ rev: metaGet('board_rev', '0') }));
+
   router.post('/api/state', (req, res) => {
     const { date, org, number, state, by } = req.body || {};
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !org || !number || !['p', 'a', 'd', 'n'].includes(state)) {
@@ -284,6 +290,7 @@ function createRouter({ config, newmile, log }) {
     run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_by, marked_at, nm_confirmed, nm_info) VALUES (?,?,?,?,'manual',?,?,0,'')
          ON CONFLICT(date, org_id, number) DO UPDATE SET state = excluded.state, source = 'manual', marked_by = excluded.marked_by, marked_at = excluded.marked_at, nm_confirmed = 0, nm_info = ''`,
       date, normNum(org), normNum(number), state, String(by || '').slice(0, 40), nowISO());
+    bumpRev();
     res.json({ ok: true });
   });
 
@@ -297,6 +304,7 @@ function createRouter({ config, newmile, log }) {
     } else {
       run('DELETE FROM dispatch_state WHERE date = ? AND org_id = ?', date, normNum(org));
     }
+    bumpRev();
     res.json({ ok: true });
   });
 
@@ -353,6 +361,7 @@ function createRouter({ config, newmile, log }) {
     if ('status' in (req.body || {}) && updated.status !== row.status) {
       mirrorStatusToBoard(updated, updated.status, updated.status_note, by || 'tracker');
     }
+    bumpRev();
     res.json({ ok: true, truck: updated });
   });
 
@@ -1257,6 +1266,7 @@ function createRouter({ config, newmile, log }) {
       status, String(b.reason || ''), String(b.reason || '').slice(0, 300), nowISO(), row.org_id, row.number);
     logChange(row.org_id, row.number, 'status', row.status || '', status + (b.reason ? (' — ' + b.reason) : '') + ' (from board)', String(b.by || 'board'));
     say(`board→tracker: ${row.number} → ${status}${b.reason ? ' (' + b.reason + ')' : ''}`);
+    bumpRev();
     res.json({ ok: true, matched: true, org: row.org_id, number: row.number, status });
   });
 

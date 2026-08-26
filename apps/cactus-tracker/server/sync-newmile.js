@@ -593,6 +593,7 @@ async function scanRipRap(client, days) {
 async function coverAssignmentsFor(client, dateISO, label, summary, cactus, today) {
     try {
       // Órdenes CON asignaciones: cubre trucks Y captura A DÓNDE va cada uno + los huecos
+      let changed = 0; // escrituras REALES → bump de board_rev (el front recarga en <=8 s)
       const rows = await client.ordersForDate(dateISO);
       const nums = new Set();
       const matched = new Set(); // org|num de los que SÍ están en NewMile ese día
@@ -661,17 +662,21 @@ async function coverAssignmentsFor(client, dateISO, label, summary, cactus, toda
         const lst = liveStatus.get(n) || '';
         // asignado en NewMile = claramente ACTIVO → fuera de "¿de baja?" y des-archivado
         // (falsas alarmas; el dispatcher no debe revisar trucks que están rodando)
-        run(`UPDATE trucks SET maybe_removed = 0, archived = 0 WHERE org_id = ? AND number = ? AND (maybe_removed = 1 OR archived = 1)`, hit.org_id, hit.number);
+        changed += (run(`UPDATE trucks SET maybe_removed = 0, archived = 0 WHERE org_id = ? AND number = ? AND (maybe_removed = 1 OR archived = 1)`, hit.org_id, hit.number).changes || 0);
         const st = get('SELECT * FROM dispatch_state WHERE date = ? AND org_id = ? AND number = ?', dateISO, hit.org_id, hit.number);
         if (!st) {
           run(`INSERT INTO dispatch_state (date, org_id, number, state, source, marked_at, nm_confirmed, nm_info, nm_load_status) VALUES (?,?,?,'a','auto',?,1,?,?)`,
             dateISO, hit.org_id, hit.number, nowISO(), dest, lst);
           summary[label + 'Covered'] = (summary[label + 'Covered'] || 0) + 1;
+          changed++;
         } else {
           // el truck YA estaba marcado (a mano o auto) → queda CONFIRMADO contra NewMile:
           // el ✓ del dispatcher se vuelve ⚡. La marca manual nunca se pisa, solo se verifica.
-          run(`UPDATE dispatch_state SET nm_confirmed = 1, nm_info = ?, nm_load_status = ? WHERE date = ? AND org_id = ? AND number = ?`,
-            dest, lst, dateISO, hit.org_id, hit.number);
+          // (condicionado: solo escribe si ALGO difiere — así el bump de rev es honesto)
+          changed += (run(`UPDATE dispatch_state SET nm_confirmed = 1, nm_info = ?, nm_load_status = ?
+               WHERE date = ? AND org_id = ? AND number = ?
+                 AND (nm_confirmed <> 1 OR COALESCE(nm_info,'') <> ? OR COALESCE(nm_load_status,'') <> ?)`,
+            dest, lst, dateISO, hit.org_id, hit.number, dest, lst).changes || 0);
         }
       }
       // los que estaban confirmados pero YA NO aparecen en NewMile pierden el ⚡ (p. ej.
@@ -679,8 +684,10 @@ async function coverAssignmentsFor(client, dateISO, label, summary, cactus, toda
       for (const r of all('SELECT org_id, number FROM dispatch_state WHERE date = ? AND nm_confirmed = 1', dateISO)) {
         if (!matched.has(r.org_id + '|' + r.number)) {
           run(`UPDATE dispatch_state SET nm_confirmed = 0, nm_info = '' WHERE date = ? AND org_id = ? AND number = ?`, dateISO, r.org_id, r.number);
+          changed++;
         }
       }
+      if (changed) metaSet('board_rev', nowISO()); // 🔔 algo cambió → el front recarga en <=8 s
       metaSet('nm_assign_checked_' + dateISO, nowISO()); // este día SÍ se cotejó contra NewMile
     } catch (e) {
       summary[label + 'AssignmentsError'] = String(e.message || e); // best-effort

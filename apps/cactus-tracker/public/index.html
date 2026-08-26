@@ -2503,7 +2503,22 @@ async function mlDelChat(id){
 
 // ---------- boot ----------
 fetchBoard();
-setInterval(()=>{if(!document.hidden)fetchBoard();},30*1000); // 30s visible — espejo board⇄tracker casi en vivo
+// ⚡ REFRESH REACTIVO (2026-08-26, "trabajo a velocidad"): cada 8 s se pregunta /api/rev
+// (una respuesta de BYTES); solo si algo cambió en el server se recarga el board completo.
+// Además: al VOLVER a esta pestaña (después de asignar en el loadboard) recarga AL INSTANTE.
+// Red de seguridad: recarga completa cada 60 s aunque la rev no se mueva.
+let __lastRev="", __lastFull=Date.now();
+async function pollRev(){
+  if(document.hidden) return;
+  try{
+    const r=await fetch(API+"/api/rev").then(x=>x.json());
+    if(r&&r.rev&&r.rev!==__lastRev){ const first=(__lastRev===""); __lastRev=r.rev; if(!first){ __lastFull=Date.now(); fetchBoard(); return; } }
+  }catch(e){}
+  if(Date.now()-__lastFull>60*1000){ __lastFull=Date.now(); fetchBoard(); }
+}
+setInterval(pollRev,8*1000);
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden){ __lastFull=0; pollRev(); } });
+window.addEventListener("focus",()=>{ __lastFull=0; pollRev(); });
 // al abrir el cel / regresar a la pestaña: refresh inmediato (y si hay versión nueva, recarga sola)
 document.addEventListener("visibilitychange",()=>{
   if(!document.hidden&&Date.now()-(window._visFetch||0)>8000){window._visFetch=Date.now();fetchBoard();}

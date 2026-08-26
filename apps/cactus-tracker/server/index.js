@@ -386,7 +386,7 @@ function createTracker(opts) {
     // cada 3 min en horario de despacho — lo asignado en NewMile (o desde el board, que
     // además avisa al momento vía /api/sync-assignments) aparece en el tracker sin que
     // nadie le dé "Sync". Baratísimo: puro ordersForDate de hoy + siguiente día hábil.
-    if (!asgBusy && hour >= 4 && hour <= 20 && Date.now() - lastAsg > 3 * 60000) {
+    if (!asgBusy && hour >= 4 && hour <= 20 && Date.now() - lastAsg > 90 * 1000) {
       asgBusy = true; lastAsg = Date.now();
       (async () => {
         try {
