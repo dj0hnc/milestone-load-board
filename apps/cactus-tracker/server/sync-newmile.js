@@ -598,6 +598,7 @@ async function coverAssignmentsFor(client, dateISO, label, summary, cactus, toda
       const nums = new Set();
       const matched = new Set(); // org|num de los que SÍ están en NewMile ese día
       const destByNum = new Map(); // num normalizado -> [{n,c,m,d}] (destinos del día)
+      const metaByNum = new Map(); // num -> {fleet, owner, driver} (para crear el ⚑ NUEVO bien)
       const gaps = [];             // órdenes a las que les faltan trucks
       let assignCount = 0;
       for (const { order: o, assignments } of rows) {
@@ -615,6 +616,14 @@ async function coverAssignmentsFor(client, dateISO, label, summary, cactus, toda
           const key = normNum(raw).replace(/\s+/g, '');
           nums.add(key);
           (destByNum.get(key) || destByNum.set(key, []).get(key)).push(info);
+          if (!metaByNum.has(key)) {
+            const tk = a.truck || {};
+            metaByNum.set(key, {
+              fleet: String(a.fleet || tk.fleet || (tk.fleet && tk.fleet.name) || '').trim(),
+              owner: String(a.truck_owner || tk.owner_name || tk.owner || '').trim(),
+              driver: String(a.driver_name || a.driver || tk.driver_name || '').trim()
+            });
+          }
         }
         const planned = o.planned_truck_count != null ? Number(o.planned_truck_count) : null;
         if (planned && act.length < planned && !/cancel|complete|closed/i.test(o.status || '')) {
@@ -656,7 +665,27 @@ async function coverAssignmentsFor(client, dateISO, label, summary, cactus, toda
         }
         // último recurso: display_number ("LT245" del sub 245, "211" del IC CKJ211)
         if (!hit) hit = get('SELECT org_id, number, archived FROM trucks WHERE display_number = ?', n);
-        if (!hit) continue;
+        // ⚑ PRIMERA VEZ QUE CORRE (2026-08-27, Juan): un troke ASIGNADO en NewMile que NO está
+        // en la lista se CREA como ⚑ NUEVO para colocarlo en su zona — así cuadra con el board
+        // (que cuenta toda asignación) y no se pierde ningún sub de primera vez. Solo números
+        // que parecen troke real (evita basura); clasificación conservadora: KT/CKJ → KT, el
+        // resto → sub de CACTUS (Juan lo mueve a su tab con confirm-new si va en otra org).
+        if (!hit) {
+          if (!/^[A-Z]{0,4}\d{2,5}[A-Z]?$/i.test(n)) continue; // no parece número de troke → ignora
+          const up = n.toUpperCase();
+          const isKt = /^KT/.test(up) || /^CKJ\d/.test(up);
+          const org = isKt ? 'KT' : 'CACTUS';
+          const isCkjIc = /^CKJ\d/.test(up);
+          const md = metaByNum.get(n) || {};
+          run(`INSERT INTO trucks (org_id, number, display_number, division, area, driver, owner_name, tags, is_sub, is_new, updated_at)
+               VALUES (?,?,?,NULL,'(SIN YARD)',?,?,?,?,1,?)`,
+            org, up, up, md.driver || '', md.owner || md.fleet || '',
+            isCkjIc ? 'CKJ IC' : 'SUBHAULER', 1, nowISO());
+          hit = get('SELECT org_id, number, archived FROM trucks WHERE org_id = ? AND number = ?', org, up);
+          if (!hit) continue;
+          summary[label + 'NewFromAssign'] = (summary[label + 'NewFromAssign'] || 0) + 1;
+          changed++;
+        }
         matched.add(hit.org_id + '|' + hit.number);
         const dest = JSON.stringify((destByNum.get(n) || []).slice(0, 3));
         const lst = liveStatus.get(n) || '';
