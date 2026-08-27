@@ -619,6 +619,7 @@ async function coverAssignmentsFor(client, dateISO, label, summary, cactus, toda
           if (!metaByNum.has(key)) {
             const tk = a.truck || {};
             metaByNum.set(key, {
+              raw: String(raw).trim(),   // número EXACTO como NewMile lo muestra (con su prefijo)
               fleet: String(a.fleet || tk.fleet || (tk.fleet && tk.fleet.name) || '').trim(),
               owner: String(a.truck_owner || tk.owner_name || tk.owner || '').trim(),
               driver: String(a.driver_name || a.driver || tk.driver_name || '').trim()
@@ -658,6 +659,11 @@ async function coverAssignmentsFor(client, dateISO, label, summary, cactus, toda
         }
         // CKJ ICs: la asignación trae el número PELÓN ("211") pero el IC vive como CKJ211
         if (/^\d{1,4}$/.test(n)) candidates.push('CKJ' + n);
+        // ALIAS ARANGO/CKJ: la asignación llega "AT269" / "269 - Arango" pero el troke vive como
+        // "ARANGO269"/"ARANGO-269"/"AT269" (numeración inconsistente en NewMile). ckjAliasKey
+        // normaliza a "ARANGO<dígitos>"; sin esto los Arango de Sanger quedaban sin contar.
+        const alias = ckjAliasKey(n);
+        if (alias && alias !== n) candidates.push(alias);
         let hit = null;
         for (const c of [...new Set(candidates)]) {
           hit = get('SELECT org_id, number, archived FROM trucks WHERE number = ?', c);
@@ -665,26 +671,45 @@ async function coverAssignmentsFor(client, dateISO, label, summary, cactus, toda
         }
         // último recurso: display_number ("LT245" del sub 245, "211" del IC CKJ211)
         if (!hit) hit = get('SELECT org_id, number, archived FROM trucks WHERE display_number = ?', n);
+        // ARANGO por DÍGITOS: el mismo troke está escrito de mil formas (AT269 / 269 - Arango /
+        // ARANGO-269). Si trae "ARANGO"/"AT<díg>", matchea CUALQUIER troke Arango con esos
+        // dígitos — así cuenta una vez y NO crea un duplicado nuevo.
+        if (!hit && /ARANGO|^AT\d/i.test(n)) {
+          const dig = (n.match(/\d+/) || [''])[0];
+          if (dig) {
+            for (const cand of all(`SELECT org_id, number, archived FROM trucks
+                                    WHERE (UPPER(number) LIKE '%ARANGO%' OR UPPER(number) LIKE 'AT%')`)) {
+              const cdig = (String(cand.number).match(/\d+/) || [''])[0];
+              if (cdig && String(Number(cdig)) === String(Number(dig))) { hit = cand; break; }
+            }
+          }
+        }
         // ⚑ PRIMERA VEZ QUE CORRE (2026-08-27, Juan): un troke ASIGNADO en NewMile que NO está
         // en la lista se CREA como ⚑ NUEVO para colocarlo en su zona — así cuadra con el board
-        // (que cuenta toda asignación) y no se pierde ningún sub de primera vez. Solo números
-        // que parecen troke real (evita basura); clasificación conservadora: KT/CKJ → KT, el
-        // resto → sub de CACTUS (Juan lo mueve a su tab con confirm-new si va en otra org).
+        // (que cuenta toda asignación) y no se pierde ningún sub de primera vez.
+        // ORG por su FLEET/organización de NewMile (matchLoadRow), NO por cómo está escrito el
+        // número (Juan). DISPLAY = número EXACTO como NewMile lo muestra (con su prefijo).
         if (!hit) {
           if (!/^[A-Z]{0,4}\d{2,5}[A-Z]?$/i.test(n)) continue; // no parece número de troke → ignora
-          const up = n.toUpperCase();
-          const isKt = /^KT/.test(up) || /^CKJ\d/.test(up);
-          const org = isKt ? 'KT' : 'CACTUS';
-          const isCkjIc = /^CKJ\d/.test(up);
           const md = metaByNum.get(n) || {};
-          run(`INSERT INTO trucks (org_id, number, display_number, division, area, driver, owner_name, tags, is_sub, is_new, updated_at)
-               VALUES (?,?,?,NULL,'(SIN YARD)',?,?,?,?,1,?)`,
-            org, up, up, md.driver || '', md.owner || md.fleet || '',
-            isCkjIc ? 'CKJ IC' : 'SUBHAULER', 1, nowISO());
-          hit = get('SELECT org_id, number, archived FROM trucks WHERE org_id = ? AND number = ?', org, up);
-          if (!hit) continue;
-          summary[label + 'NewFromAssign'] = (summary[label + 'NewFromAssign'] || 0) + 1;
-          changed++;
+          const disp = (md.raw || n).toString().trim().slice(0, 40); // exacto de NewMile
+          // clasifica por el FLEET de la asignación (misma lógica que los tickets)
+          const m = matchLoadRow({ truck_number: md.raw || n, fleet: md.fleet || '', driver_name: md.driver || '', truck_owner: md.owner || '' }, enabledOrgs(), subFleetNames());
+          const org = (m && m.orgId) || 'CACTUS';
+          const isSub = m ? (m.sub ? 1 : 0) : 1;
+          const tags = (m && m.tags) || (isSub ? 'SUBHAULER' : '');
+          const keyNum = (m && m.num) ? String(m.num) : n.toUpperCase(); // llave interna (canónica)
+          if (get('SELECT 1 AS x FROM trucks WHERE org_id = ? AND number = ?', org, keyNum)) { hit = get('SELECT org_id, number, archived FROM trucks WHERE org_id = ? AND number = ?', org, keyNum); }
+          else {
+            run(`INSERT INTO trucks (org_id, number, display_number, division, area, driver, owner_name, tags, is_sub, suggested_division, is_new, updated_at)
+                 VALUES (?,?,?,NULL,'(SIN YARD)',?,?,?,?,?,1,?)`,
+              org, keyNum, disp, md.driver || '', md.owner || md.fleet || '',
+              tags, isSub, (m && m.suggestedDivision) || null, nowISO());
+            hit = get('SELECT org_id, number, archived FROM trucks WHERE org_id = ? AND number = ?', org, keyNum);
+            if (!hit) continue;
+            summary[label + 'NewFromAssign'] = (summary[label + 'NewFromAssign'] || 0) + 1;
+            changed++;
+          }
         }
         matched.add(hit.org_id + '|' + hit.number);
         const dest = JSON.stringify((destByNum.get(n) || []).slice(0, 3));
