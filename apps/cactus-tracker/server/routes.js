@@ -31,7 +31,7 @@ function createRouter({ config, newmile, log }) {
   const PIN = process.env.ACCESS_PIN || config.accessPin || '';
   const crypto = require('crypto');
   const pinCookie = PIN ? crypto.createHash('sha256').update('cactus|' + PIN).digest('hex').slice(0, 40) : '';
-  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/sync-assignments', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
+  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/board-truck', '/api/sync-assignments', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
   if (PIN) {
     router.use((req, res, next) => {
       if (OPEN_PATHS.includes(req.path)) return next();
@@ -874,14 +874,33 @@ function createRouter({ config, newmile, log }) {
   router.post('/api/truck/:org/:number/confirm-new', (req, res) => {
     const orgId = normNum(req.params.org), number = normNum(req.params.number);
     const { division, area } = req.body || {};
+    // 🚚 A CUALQUIER TAB (2026-08-26, Juan): un ⚑ NUEVO puede confirmarse hacia OTRA org
+    // (body.org) — se muda el troke Y toda su historia (estados, actividad, llamadas, HOS…)
+    // para que nada quede huérfano con la llave vieja.
+    const targetOrg = normNum((req.body || {}).org || orgId);
     if (!division) return res.status(400).json({ error: 'division is required to confirm a NEW truck' });
-    const d = get('SELECT 1 AS x FROM divisions WHERE org_id = ? AND id = ?', orgId, normNum(division));
+    const d = get('SELECT 1 AS x FROM divisions WHERE org_id = ? AND id = ?', targetOrg, normNum(division));
     if (!d) return res.status(400).json({ error: 'invalid division' });
+    if (targetOrg !== orgId) {
+      if (get('SELECT 1 AS x FROM trucks WHERE org_id = ? AND number = ?', targetOrg, number)) {
+        return res.status(409).json({ error: 'ya existe un truck ' + number + ' en ' + targetOrg });
+      }
+      run('BEGIN');
+      try {
+        for (const tb of ['trucks', 'dispatch_state', 'activity_log', 'truck_log', 'calls', 'truck_days', 'time_off', 'parking_log', 'hos_days', 'work_days']) {
+          try { run(`UPDATE ${tb} SET org_id = ? WHERE org_id = ? AND number = ?`, targetOrg, orgId, number); }
+          catch (e) { /* tabla sin (org_id, number) — se salta */ }
+        }
+        run('COMMIT');
+      } catch (e) { try { run('ROLLBACK'); } catch (e2) {} return res.status(500).json({ error: String(e.message || e) }); }
+      logChange(targetOrg, number, 'org', orgId, targetOrg, String((req.body || {}).by || '').slice(0, 40));
+    }
     const r = run(`UPDATE trucks SET is_new = 0, division = ?, area = COALESCE(NULLIF(?, ''), area), suggested_division = NULL, updated_at = ?
                    WHERE org_id = ? AND number = ?`,
-      normNum(division), canonArea(area || ''), nowISO(), orgId, number);
+      normNum(division), canonArea(area || ''), nowISO(), targetOrg, number);
     if (!r.changes) return res.status(404).json({ error: 'truck not found' });
-    res.json({ ok: true });
+    bumpRev();
+    res.json({ ok: true, org: targetOrg });
   });
 
   // Resolve a ¿de baja?: archive it (kept for history) or keep it active.
@@ -1268,6 +1287,52 @@ function createRouter({ config, newmile, log }) {
     say(`board→tracker: ${row.number} → ${status}${b.reason ? ' (' + b.reason + ')' : ''}`);
     bumpRev();
     res.json({ ok: true, matched: true, org: row.org_id, number: row.number, status });
+  });
+
+  // 🪪 FICHA COMPLETA board⇄tracker (2026-08-26, Juan: "todas las opciones en los dos lados"):
+  // el board LEE y EDITA la ficha del troke (status completo, chofer, teléfono, zona, nota)
+  // por el canal de máquinas. Sin fields = solo lectura. Ediciones: whitelist + logChange
+  // "(board)" + espejo de bandera + bump de rev — misma disciplina que el lapicito de aquí.
+  router.post('/api/board-truck', (req, res) => {
+    if (String((req.query || {}).key || (req.body || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    const b = req.body || {};
+    const num = normNum(b.number || b.num);
+    if (!num) return res.status(400).json({ error: 'number required' });
+    let row = get('SELECT * FROM trucks WHERE (UPPER(number) = UPPER(?) OR UPPER(display_number) = UPPER(?)) AND archived = 0 ORDER BY is_sub ASC LIMIT 1', num, num)
+           || get('SELECT * FROM trucks WHERE UPPER(number) = UPPER(?) OR UPPER(display_number) = UPPER(?) LIMIT 1', num, num);
+    if (!row) return res.json({ ok: true, matched: false });
+    const f = b.fields || null;
+    if (f) {
+      const by = String(b.by || 'board').slice(0, 40);
+      const ALLOW = ['status', 'status_note', 'driver', 'phone', 'area', 'note'];
+      const sets = [], vals = [];
+      for (const k of ALLOW) {
+        if (!(k in f)) continue;
+        let v = String(f[k] == null ? '' : f[k]).slice(0, 300);
+        if (k === 'status' && !VALID_STATUS.includes(v)) return res.status(400).json({ error: 'invalid status' });
+        if (k === 'area' && v) v = canonArea(v);
+        sets.push(`${k} = ?`); vals.push(v);
+      }
+      if (sets.length) {
+        sets.push('updated_at = ?'); vals.push(nowISO());
+        run(`UPDATE trucks SET ${sets.join(', ')} WHERE org_id = ? AND number = ?`, ...vals, row.org_id, row.number);
+        const updated = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', row.org_id, row.number);
+        for (const k of ALLOW) {
+          if ((k in f) && String(updated[k] == null ? '' : updated[k]) !== String(row[k] == null ? '' : row[k])) {
+            logChange(row.org_id, row.number, k, row[k], updated[k], by + ' (board)');
+          }
+        }
+        if (('status' in f) && updated.status !== row.status) mirrorStatusToBoard(updated, updated.status, updated.status_note, by);
+        bumpRev();
+        row = updated;
+      }
+    }
+    res.json({ ok: true, matched: true, truck: {
+      org: row.org_id, number: row.number, display: row.display_number || row.number,
+      status: row.status, status_note: row.status_note || '', driver: row.driver || '',
+      phone: row.phone || '', area: row.area || '', division: row.division || '',
+      owner: row.owner_name || '', trailer: row.trailer_type || '', note: row.note || ''
+    } });
   });
 
   // ---------- BITÁCORA UNIFICADA (2026-08-24): una sola historia por troke ----------

@@ -2028,7 +2028,13 @@ function applyAreaSuggest(org,num,action){
 
 function openConfirmNew(org,num){
   const t=truckOf(org,num);if(!t)return;
-  const divs=(board.divisions||[]).filter(d=>d.org_id===t.org_id||!d.org_id).map(d=>`<option value="${d.id}" ${(t.suggested_division||"")===d.id?"selected":""}>${esc(d.label)}</option>`).join("");
+  // TODAS las orgs·divisiones (2026-08-26): un ⚑ NUEVO puede irse a CUALQUIER tab, no solo
+  // a las divisiones de su org de nacimiento (los subs nacen en CACTUS y solo salía N/S).
+  const divs=(board.divisions||[]).map(d=>{
+    const own=(d.org_id||t.org_id)===t.org_id;
+    const sel=own&&(t.suggested_division||"")===d.id;
+    return `<option value="${d.org_id||t.org_id}|${d.id}" ${sel?"selected":""}>${esc((d.org_id||t.org_id))} · ${esc(d.label)}</option>`;
+  }).join("");
   openModal(`
     <h3>⚑ NEW — Truck ${esc(dnum(t))}</h3>
     <p style="font-size:14px;color:var(--mut);">${esc(t.driver||"no driver")}${trlTxt(t)?" · "+esc(trlTxt(t)):""}${t.suggested_division?" · Samsara suggests: <b>"+esc(t.suggested_division)+"</b>":""}</p>
@@ -2042,10 +2048,11 @@ function openConfirmNew(org,num){
 function confirmNew(org,num){
   const t=truckOf(org,num);if(!t)return;
   ensureWho();
-  const division_=$("cnDiv").value, area=$("cnArea").value.toUpperCase();
+  const v=$("cnDiv").value.split("|"), torg=v[0]||t.org_id, division_=v[1]||v[0], area=$("cnArea").value.toUpperCase();
   Object.assign(t,{is_new:0,division:division_,area:area||t.area});
-  queuePush({path:`/api/truck/${t.org_id}/${encodeURIComponent(num)}/confirm-new`,body:{division:division_,area,by:WHO}});
+  queuePush({path:`/api/truck/${t.org_id}/${encodeURIComponent(num)}/confirm-new`,body:{org:torg,division:division_,area,by:WHO}});
   closeModal();render();
+  if(torg!==t.org_id){ setTimeout(fetchBoard,1500); } // mudanza de tab → repintar con su nueva casa
 }
 
 function openResolveRemoved(org,num){
