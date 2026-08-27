@@ -29,8 +29,8 @@ on:
     # night reports of 7/10 and 7/11 were missed entirely because no run landed inside the whole
     # 4-hour window. Fire every 15 min during the window hours (both DST offsets) to buy more
     # lottery tickets; out-of-window runs exit in seconds and the once-per-day lock dedupes.
-    # hours 23,0 and 11 UTC feed the pre-window HOLDER runs (6:30-8pm / 6:45-7:30am CT)
-    - cron: '*/15 0-6,11-17,23 * * *'
+    # hours 22,23,0 and 11 UTC feed the pre-window HOLDER runs (5-8pm / 6:45-7:30am CT)
+    - cron: '*/15 0-6,11-17,22,23 * * *'
   # PUSH PINGER: pushing these branches fires the send immediately — punctual and immune to
   # GitHub's schedule starvation. A daily Claude Routine pushes them at ~7:35am / ~8:05pm CT
   # (pure git, no API token needed). Early pings sleep until the window opens; the once-per-day
@@ -156,9 +156,9 @@ jobs:
             # 15-min in-window entries are lottery tickets; a HOLDER is a guarantee: a run landing
             # shortly before a window stays alive and sleeps until the window opens, then sends
             # right on time itself. Concurrency queues later crons behind it; the lock dedupes.
-            elif [ "$NOWM" -ge $((18*60+30)) ] && [ "$NOWM" -lt $((20*60)) ]; then
+            elif [ "$NOWM" -ge $((17*60)) ] && [ "$NOWM" -lt $((20*60)) ]; then
               KIND=night
-              echo "holder: $HOUR:$MIN CT — sleeping $((20*60-NOWM)) min to send the night report at 8:00pm CT sharp"
+              echo "holder: $HOUR:$MIN CT — holding (armable from 5pm; on 8/26 GitHub starved everything after 5:29pm) and sleeping $((20*60-NOWM)) min to send the night report at 8:00pm CT sharp"
               sleep $(( (20*60-NOWM)*60 ))
             elif [ "$NOWM" -ge $((6*60+45)) ] && [ "$NOWM" -lt $((7*60+30)) ]; then
               KIND=morning
