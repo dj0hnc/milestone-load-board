@@ -381,11 +381,11 @@ function createTracker(opts) {
         finally { fastBusy = false; }
       })();
     }
-    if (weekday === 'Sun') return; // no dispatch Sundays
     // ⚡ ASIGNACIONES CASI AL INSTANTE (2026-08-26, pedido de Juan): sync SOLO-asignaciones
-    // cada 3 min en horario de despacho — lo asignado en NewMile (o desde el board, que
-    // además avisa al momento vía /api/sync-assignments) aparece en el tracker sin que
-    // nadie le dé "Sync". Baratísimo: puro ordersForDate de hoy + siguiente día hábil.
+    // cada 90 s en horario de trabajo — lo asignado en NewMile (o desde el board, que además
+    // avisa al momento vía /api/sync-assignments) aparece en el tracker sin darle "Sync".
+    // 2026-08-30: CORRE TAMBIÉN EN DOMINGO — el domingo se planea el LUNES, así que este carril
+    // va ANTES del gate de domingo (era el bug del 684: asignado el lun, no aparecía el dom).
     if (!asgBusy && hour >= 4 && hour <= 20 && Date.now() - lastAsg > 90 * 1000) {
       asgBusy = true; lastAsg = Date.now();
       (async () => {
@@ -398,6 +398,7 @@ function createTracker(opts) {
         finally { asgBusy = false; }
       })();
     }
+    if (weekday === 'Sun') return; // los jobs PESADOS diarios (roster/actividad 21d) sí se saltan el domingo
     const afterOr = (h, m) => hour > h || (hour === h && minute >= m);
     try {
       if (afterOr(4, 30) && metaGet('job_roster_day') !== dateISO) {
