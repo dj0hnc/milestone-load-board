@@ -29,6 +29,21 @@ function createRouter({ config, newmile, log }) {
   // por dispositivo (cookie de 180 días); el OAuth callback de NewMile pasa con la
   // cookie del mismo navegador.
   const PIN = process.env.ACCESS_PIN || config.accessPin || '';
+  // 🚛 BUCKET de flota (2026-08-30, "KT y CKJ hay que separarlos, cuadrar con el board"):
+  // los troques KT-org se guardan con número PELÓN ("211", "269") — indexOf('KT') nunca
+  // matcheaba y todos caían a CKJ (KT=0). Separación correcta dentro de KT: los CKJ ICs /
+  // afiliados (is_sub, división ICS, número/tag CKJ) = CKJ; el resto de KT (flota Kennemer
+  // en POWDERLY/WHITEWRIGHT/RHOME) = KT. CACTUS: subs=SUBHAULERS, propios=CACTUS.
+  function bucketOf(r) {
+    const num = String(r.number || '').toUpperCase();
+    const div = String(r.division || '').toUpperCase();
+    const tags = String(r.tags || '').toUpperCase();
+    if (r.org_id === 'KT') {
+      const isCkjAff = num.indexOf('CKJ') === 0 || div === 'ICS' || tags.indexOf('CKJ') >= 0 || (r.is_sub && num.indexOf('KT') < 0);
+      return isCkjAff ? 'CKJ' : 'KT';
+    }
+    return r.is_sub ? 'SUBHAULERS' : 'CACTUS';
+  }
   const crypto = require('crypto');
   const pinCookie = PIN ? crypto.createHash('sha256').update('cactus|' + PIN).digest('hex').slice(0, 40) : '';
   const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/board-truck', '/api/sync-assignments', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
@@ -237,7 +252,7 @@ function createRouter({ config, newmile, log }) {
       // (resto de la flota KT) / SUBHAULERS (is_sub). working = marcados cubiertos ese día.
       working: (() => {
         const w = { total: 0, CACTUS: 0, KT: 0, CKJ: 0, SUBHAULERS: 0, x: 0, nw: 0 };
-        const rows = all(`SELECT t.org_id, t.number, t.is_sub, s.state FROM trucks t
+        const rows = all(`SELECT t.org_id, t.number, t.is_sub, t.division, t.tags, s.state FROM trucks t
                           JOIN orgs o ON o.id = t.org_id
                           JOIN dispatch_state s ON s.org_id = t.org_id AND s.number = t.number AND s.date = ?
                           WHERE o.enabled = 1 AND t.archived = 0`, date);
@@ -246,11 +261,7 @@ function createRouter({ config, newmile, log }) {
           if (r.state === 'd') { w.x++; continue; }
           if (r.state !== 'a') continue;
           w.total++;
-          const num = String(r.number || '').toUpperCase();
-          let b;
-          if (r.org_id === 'KT') b = num.indexOf('KT') >= 0 ? 'KT' : (num.indexOf('CKJ') === 0 ? 'CKJ' : (r.is_sub ? 'SUBHAULERS' : 'CKJ'));
-          else b = r.is_sub ? 'SUBHAULERS' : 'CACTUS';
-          w[b]++;
+          w[bucketOf(r)]++;
         }
         return w;
       })(),

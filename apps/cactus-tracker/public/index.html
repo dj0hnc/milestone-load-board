@@ -1465,16 +1465,26 @@ function buildHeader(){
     (date!==board.today?`<button class="day" style="width:auto;padding:0 10px" onclick="setDate('${board.today}')" title="Back to today">TODAY</button>`:"");
   // 🔒 RECRUIT solo aparece para Juan/Tony (identidad NewMile del board)
   const rl=$("recruitLink"); if(rl)rl.style.display=(board&&board.recruitAllowed)?"":"none";
-  // 🚛 números del día — mismos buckets que los reportes del board, TODAS las orgs
+  // 🚛 números del día. Los buckets ASIGNADOS (working/CACTUS/SUB/CKJ/KT) son GLOBALES — deben
+  // CUADRAR con lo asignado en el board (todas las flotas). Pero X/DOWN y NO WORK se cuentan del
+  // TAB ACTUAL nomás (2026-08-30, Juan): en CACTUS NORTH solo los de ese tab, etc.
   const w=board&&board.working;
+  let tabX=0, tabNW=0;
+  try{
+    const virtual=isVirtual();
+    const tabTrucks=(board.trucks||[]).filter(t=>!t.archived&&subOnlyOk(t)&&(virtual||t.division===division));
+    tabX =tabTrucks.filter(t=>t.state==="d"||outOfService(t)).length; // X hoy + fuera de servicio (shop/vacaciones/down/deleased)
+    tabNW=tabTrucks.filter(t=>t.state==="n").length;                  // marcados NO WORK hoy
+  }catch(e){}
+  const tabName=isVirtual()?(ORG==="ALL"?"all fleets":"subs"):(division||"this tab");
   $("workbar").innerHTML=!w?"":[
-    ["tot",w.total,"TRUCKS WORKING","covered/assigned this day, all fleets"],
-    ["bkt",w.CACTUS,"CACTUS","Cactus Express fleet"],
-    ["bkt",w.SUBHAULERS,"SUBHAULERS","subs / ICs"],
-    ["bkt",w.CKJ,"CKJ","CKJ fleet (non-KT numbers)"],
-    ["bkt",w.KT,"KT","KT-numbered trucks"],
-    ["x",w.x,"X / DOWN","marked X this day"],
-    ["nw",w.nw,"NO WORK","marked NW this day"]
+    ["tot",w.total,"TRUCKS WORKING","assigned this day, all fleets — matches the board"],
+    ["bkt",w.CACTUS,"CACTUS","Cactus Express fleet (all)"],
+    ["bkt",w.SUBHAULERS,"SUBHAULERS","subs (all)"],
+    ["bkt",w.CKJ,"CKJ","CKJ affiliates / ICs (all)"],
+    ["bkt",w.KT,"KT","KT / Kennemer fleet (all)"],
+    ["x",tabX,"X / DOWN","down / shop / vacation — "+tabName],
+    ["nw",tabNW,"NO WORK","marked no-work this day — "+tabName]
   ].map(([c,v,l,tip])=>`<div class="wbi ${c}${v?"":" zero"}" title="${tip}"><b>${v}</b><small>${l}</small></div>`).join("");
   syncStickyTop();
 }
