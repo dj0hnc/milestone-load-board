@@ -1315,7 +1315,9 @@ function createRouter({ config, newmile, log }) {
     const f = b.fields || null;
     if (f) {
       const by = String(b.by || 'board').slice(0, 40);
-      const ALLOW = ['status', 'status_note', 'driver', 'phone', 'area', 'note'];
+      // is_sub/tags/division = RECLASIFICAR de qué tab sale el troke (2026-08-30: el 1280 estaba
+      // como sub → pegado en SUBS aunque su división fuera SOUTH). Se validan aparte de los textos.
+      const ALLOW = ['status', 'status_note', 'driver', 'phone', 'area', 'note', 'tags'];
       const sets = [], vals = [];
       for (const k of ALLOW) {
         if (!(k in f)) continue;
@@ -1323,6 +1325,12 @@ function createRouter({ config, newmile, log }) {
         if (k === 'status' && !VALID_STATUS.includes(v)) return res.status(400).json({ error: 'invalid status' });
         if (k === 'area' && v) v = canonArea(v);
         sets.push(`${k} = ?`); vals.push(v);
+      }
+      if ('is_sub' in f) { sets.push('is_sub = ?'); vals.push(f.is_sub ? 1 : 0); }
+      if ('division' in f && f.division != null && f.division !== '') {
+        const d = get('SELECT 1 AS x FROM divisions WHERE org_id = ? AND id = ?', row.org_id, normNum(f.division));
+        if (!d) return res.status(400).json({ error: 'invalid division' });
+        sets.push('division = ?'); vals.push(normNum(f.division));
       }
       if (sets.length) {
         sets.push('updated_at = ?'); vals.push(nowISO());
@@ -1342,7 +1350,8 @@ function createRouter({ config, newmile, log }) {
       org: row.org_id, number: row.number, display: row.display_number || row.number,
       status: row.status, status_note: row.status_note || '', driver: row.driver || '',
       phone: row.phone || '', area: row.area || '', division: row.division || '',
-      owner: row.owner_name || '', trailer: row.trailer_type || '', note: row.note || ''
+      owner: row.owner_name || '', trailer: row.trailer_type || '', note: row.note || '',
+      is_sub: !!row.is_sub, tags: row.tags || '', is_new: !!row.is_new
     } });
   });
 
