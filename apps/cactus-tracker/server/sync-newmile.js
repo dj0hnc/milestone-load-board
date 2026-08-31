@@ -723,8 +723,18 @@ async function coverAssignmentsFor(client, dateISO, label, summary, cactus, toda
             dateISO, hit.org_id, hit.number, nowISO(), dest, lst);
           summary[label + 'Covered'] = (summary[label + 'Covered'] || 0) + 1;
           changed++;
+        } else if (st.state !== 'a' && st.source !== 'manual') {
+          // ASIGNADO EN NEWMILE PERO EL ESTADO LOCAL NO ES 'a' (2026-08-31, caso 1090): un estado
+          // AUTO/carry/pending viejo (down heredado, "open") dejaba al troke "sin asignar" aunque
+          // estuviera en órdenes. Si NO fue marca MANUAL del dispatcher, súbelo a ASIGNADO — un
+          // troke que NewMile tiene asignado debe salir asignado. Las marcas MANUALES (down/NW que
+          // tú pusiste a propósito) NUNCA se pisan.
+          changed += (run(`UPDATE dispatch_state SET state = 'a', source = 'auto', nm_confirmed = 1, nm_info = ?, nm_load_status = ?
+               WHERE date = ? AND org_id = ? AND number = ?`,
+            dest, lst, dateISO, hit.org_id, hit.number).changes || 0);
+          summary[label + 'Covered'] = (summary[label + 'Covered'] || 0) + 1;
         } else {
-          // el truck YA estaba marcado (a mano o auto) → queda CONFIRMADO contra NewMile:
+          // el truck YA estaba marcado (a mano o ya asignado) → queda CONFIRMADO contra NewMile:
           // el ✓ del dispatcher se vuelve ⚡. La marca manual nunca se pisa, solo se verifica.
           // (condicionado: solo escribe si ALGO difiere — así el bump de rev es honesto)
           changed += (run(`UPDATE dispatch_state SET nm_confirmed = 1, nm_info = ?, nm_load_status = ?
