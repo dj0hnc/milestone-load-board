@@ -150,7 +150,16 @@ function centralDate(offsetDays) {
     console.log('SF week: ' + range.from + ' -> ' + range.to);
     const raw = await servicefail.fetchWeek(client, range.from, range.to);
     console.log('  pulled: ' + raw.failures.length + ' failures · ' + raw.orders.length + ' orders · ' + raw.poMargin.length + ' PO margin rows');
-    const rep = servicefail.buildServiceFailures(raw, range);
+    // WEEK OVER WEEK: pull the preceding Mon-Sat and keep its totals as the comparison baseline.
+    // Best-effort — if that pull fails the report still goes out, just without the comparison.
+    let prior = null;
+    try {
+      const pr = servicefail.priorWeekRange(range.from);
+      const praw = await servicefail.fetchWeek(client, pr.from, pr.to);
+      prior = { from: pr.from, to: pr.to, totals: servicefail.buildServiceFailures(praw, pr).totals };
+      console.log('  prior week ' + pr.from + ' -> ' + pr.to + ': ' + prior.totals.failures + ' failures · LOST GP $' + prior.totals.lostGp.toFixed(2));
+    } catch (e) { console.log('  prior week pull failed — sending without the comparison: ' + (e.message || e)); }
+    const rep = servicefail.buildServiceFailures(raw, Object.assign({}, range, { prior: prior }));
     const t = rep.totals;
     const gpK = '$' + (Math.abs(t.lostGp) >= 1000 ? (t.lostGp / 1000).toFixed(1) + 'K' : t.lostGp.toFixed(1));
     const subject = '📉 Service Failures ' + range.from + ' → ' + range.to + ' — ' + gpK + ' GP lost · ' + t.failures + ' failures';

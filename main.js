@@ -809,7 +809,15 @@ ipcMain.handle('nm:sfBuild', async (_e, p) => {
       : servicefail.lastWeekRange(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }));
     pushLog('SF report: pulling ' + range.from + ' -> ' + range.to);
     const raw = await servicefail.fetchWeek(client, range.from, range.to);
-    const rep = servicefail.buildServiceFailures(raw, range);
+    // week-over-week baseline: the preceding Mon-Sat. Best-effort — a failed pull just drops
+    // the comparison section rather than the whole report.
+    let prior = null;
+    try {
+      const pr = servicefail.priorWeekRange(range.from);
+      const praw = await servicefail.fetchWeek(client, pr.from, pr.to);
+      prior = { from: pr.from, to: pr.to, totals: servicefail.buildServiceFailures(praw, pr).totals };
+    } catch (e) { pushLog('SF report: prior-week pull failed (' + (e.message || e) + ') — no comparison'); }
+    const rep = servicefail.buildServiceFailures(raw, Object.assign({}, range, { prior: prior }));
     rep._failures = raw.failures;              // kept for the print/PDF layout (failure detail pages)
     lastSf = rep;
     const s = loadSettings();

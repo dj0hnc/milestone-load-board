@@ -96,6 +96,32 @@ function lastWeekRange(todayISO) {
   return { from: from, to: d.toISOString().slice(0, 10) };
 }
 
+// The Mon-Sat week before the one starting at fromISO — the comparison baseline.
+function priorWeekRange(fromISO) {
+  const d = new Date(fromISO + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() - 7);
+  const from = d.toISOString().slice(0, 10);
+  d.setUTCDate(d.getUTCDate() + 5);
+  return { from: from, to: d.toISOString().slice(0, 10) };
+}
+
+/*
+ * Week-over-week variance, in MAB's convention: B/(W) = Better/(Worse), one decimal,
+ * parentheses for negatives. On a failure report almost every metric is "less is better",
+ * so a DROP is Better. Returns null when there is no prior week to compare against.
+ */
+function variance(cur, prev, fmt) {
+  if (prev == null) return null;
+  const diff = cur - prev;                         // + = more failures/cost = Worse
+  const better = diff < 0;
+  const pctTxt = prev !== 0 ? ' · ' + Math.abs(100 * diff / prev).toFixed(1) + '%' : '';
+  return {
+    better: better, flat: diff === 0,
+    text: diff === 0 ? 'flat vs prior week'
+      : (fmt ? fmt(Math.abs(diff)) : fmtQty(Math.abs(diff))) + pctTxt + (better ? ' (B)' : ' (W)')
+  };
+}
+
 // Pull every page of a report (query_report caps page_size at 100).
 async function fetchAllPages(client, reportName, filters, columns) {
   const rows = []; let page = 1, totalPages = 1;
@@ -265,27 +291,35 @@ function buildServiceFailures(raw, opts) {
   const sfCsv = [sfHead.join(',')].concat(failures.map(f => sfKeys.map(k => csvCell(f[k])).join(','))).join('\r\n');
 
   // ---- email body: same document design as the PDF, in email-safe HTML ----
-  const core = { from: from, to: to, totals: T, rows: rows, unmatched: unmatched };
+  // opts.prior (optional) = { from, to, totals } for the preceding Mon-Sat week; when present
+  // every document gains the week-over-week comparison.
+  const core = { from: from, to: to, totals: T, rows: rows, unmatched: unmatched, prior: (opts && opts.prior) || null };
   const html = buildEmailHtml(core, failures);
   const rangeStr = from + ' \u2192 ' + to;
 
 
   // ---- plain text ----
-  const text = [
+  const cmpText = comparisonRows(core);
+  const textLines = [
     'SERVICE FAILURE REPORT — Milestone Supply Texas — ' + rangeStr,
     '',
     'GP DOLLARS OF LOST LOADS: ' + fmtMoney(T.lostGp) + ' direct (floor) · ' + fmtMoney(T.gpAtRisk) + ' at risk counting every failure (ceiling)',
     'Lost revenue: ' + fmtMoney(T.lostRevenue) + ' · Lost: ' + fmtQty(T.lostTons) + ' tons · Loads lost (per failures): ' + Math.round(T.loadsLost),
-    'Failures recorded: ' + T.failures + ' (' + T.critical + ' critical) across ' + T.failedOrders + ' orders',
-    '',
-    'TOP LOSSES:',
-  ].concat(rows.filter(r => r.lostGp > 0).slice(0, 12).map(r =>
-    '  ' + r.date + '  ' + r.order + '  ' + Math.round(r.loadsLost) + ' loads (' + fmtQty(r.qtyLost) + ' ' + r.uom + ')  GP lost ' + fmtMoney(r.lostGp)
-  )).concat(unmatched.length ? ['', 'UNMATCHED FAILURES (fix order name in NewMile): ' + unmatched.map(f => f.order_reference).join('; ')] : []).join('\n');
+    'Failures recorded: ' + T.failures + ' (' + T.critical + ' critical) across ' + T.failedOrders + ' orders'
+  ];
+  if (cmpText.length) {
+    textLines.push('', 'VS PRIOR WEEK (' + core.prior.from + ' to ' + core.prior.to + ') — B/(W) = Better/(Worse):');
+    cmpText.forEach(r => textLines.push('  ' + r.label + ': ' + r.cur + ' vs ' + r.prev + '  ' + r.v.text));
+  }
+  textLines.push('', 'TOP LOSSES:');
+  rows.filter(r => r.lostGp > 0).slice(0, 12).forEach(r => textLines.push(
+    '  ' + r.date + '  ' + r.order + '  ' + Math.round(r.loadsLost) + ' loads (' + fmtQty(r.qtyLost) + ' ' + r.uom + ')  GP lost ' + fmtMoney(r.lostGp)));
+  if (unmatched.length) textLines.push('', 'UNMATCHED FAILURES (fix order name in NewMile): ' + unmatched.map(f => f.order_reference).join('; '));
+  const text = textLines.join('\n');
 
   return {
     kind: 'sf', from: from, to: to, totals: T, rows: rows, unmatched: unmatched,
-    html: html, text: text,
+    prior: core.prior, html: html, text: text,
     attachments: [
       { filename: 'lost_loads_gp_' + from + '_' + to + '.csv', content: gpCsv },
       { filename: 'service_failures_' + from + '_' + to + '.csv', content: sfCsv }
@@ -301,6 +335,26 @@ function buildServiceFailures(raw, opts) {
  * Returns a full standalone HTML document sized for US Letter; render with Chromium
  * --print-to-pdf or Electron webContents.printToPDF.
  */
+/*
+ * Week-over-week comparison rows. Same metric order everywhere, most consequential first, so
+ * the email, the PDF and the meeting all read the trend the same way. Returns [] with no prior.
+ */
+function comparisonRows(rep) {
+  const p = rep.prior, T = rep.totals;
+  if (!p || !p.totals) return [];
+  const P = p.totals;
+  const money = n => fmtMoney(n), count = n => String(Math.round(n));
+  return [
+    { label: 'GP lost — direct', cur: money(T.lostGp), prev: money(P.lostGp), v: variance(T.lostGp, P.lostGp, money), lead: true },
+    { label: 'GP at risk — all failures', cur: money(T.gpAtRisk), prev: money(P.gpAtRisk), v: variance(T.gpAtRisk, P.gpAtRisk, money), lead: true },
+    { label: 'Lost revenue', cur: money(T.lostRevenue), prev: money(P.lostRevenue), v: variance(T.lostRevenue, P.lostRevenue, money) },
+    { label: 'Failures recorded', cur: count(T.failures), prev: count(P.failures), v: variance(T.failures, P.failures, count) },
+    { label: 'Critical severity', cur: count(T.critical), prev: count(P.critical), v: variance(T.critical, P.critical, count) },
+    { label: 'Orders hit', cur: count(T.failedOrders), prev: count(P.failedOrders), v: variance(T.failedOrders, P.failedOrders, count) },
+    { label: 'Loads lost', cur: count(T.loadsLost), prev: count(P.loadsLost), v: variance(T.loadsLost, P.loadsLost, count) }
+  ];
+}
+
 // Aggregates over the failure log, shared by the email body and the print/PDF layout so both
 // documents always tell the same story from the same numbers.
 function computeAggregates(failures) {
@@ -334,6 +388,8 @@ function computeAggregates(failures) {
 function buildEmailHtml(rep, failures) {
   const GOLD = '#b8862b', DARK = '#191713', DIM = '#8a8579', LINE = '#e8e4dc', RED = '#b02a1e';
   const T = rep.totals, A = computeAggregates(failures || []);
+  const cmp = comparisonRows(rep);                 // [] when there is no prior week
+  const N = n => n + (cmp.length ? 1 : 0);         // section numbers shift when the comparison is present
   const rangeStr = mdLabel(rep.from) + ' → ' + mdLabel(rep.to);
   const pct = n => Math.round(100 * n / Math.max(1, T.failures));
   const todayStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago' });
@@ -411,8 +467,19 @@ function buildEmailHtml(rep, failures) {
     + T.taggedFinancial + ' of ' + T.failures + ' failures (' + pct(T.taggedFinancial) + '%) were tagged Financial impact by dispatch; the GP range above prices every failure’s loads, tagged or not.'
     + '</td></tr></table></td></tr>'
 
-    // ---- 02 GP of lost loads ----
-    + sec(2, 'GP DOLLARS OF LOST LOADS', 'Per failed order, two readings priced at the order’s actual avg load size × the PO+material’s realized per-unit margin this week. LOST GP (floor): loads the failure notes document as lost. GP AT RISK (ceiling): every logged failure counts at least 1 displaced load.')
+    // ---- 02 week over week (only when a prior week was fetched) ----
+    + (cmp.length ? sec(2, 'WEEK OVER WEEK', 'This week vs the preceding Mon–Sat (' + esc(mdLabel(rep.prior.from)) + ' → ' + esc(mdLabel(rep.prior.to)) + ') · B/(W) = Better/(Worse)')
+      + '<tr><td><table class="sf" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:10.5px;font-family:Segoe UI,Arial,sans-serif">'
+      + '<tr>' + th('Metric') + th('This week', 1) + th('Prior week', 1) + th('Variance B/(W)', 1) + '</tr>'
+      + cmp.map(r => '<tr>'
+        + '<td class="c' + (r.lead ? ' b' : '') + '">' + esc(r.label) + '</td>'
+        + '<td class="c r' + (r.lead ? ' b' : '') + '">' + r.cur + '</td>'
+        + '<td class="c r d">' + r.prev + '</td>'
+        + '<td class="c r" style="color:' + (r.v.flat ? DIM : (r.v.better ? '#2f7d54' : RED)) + ';font-weight:700">' + esc(r.v.text) + '</td></tr>').join('')
+      + '</table></td></tr>' : '')
+
+    // ---- GP of lost loads ----
+    + sec(cmp.length ? 3 : 2, 'GP DOLLARS OF LOST LOADS', 'Per failed order, two readings priced at the order’s actual avg load size × the PO+material’s realized per-unit margin this week. LOST GP (floor): loads the failure notes document as lost. GP AT RISK (ceiling): every logged failure counts at least 1 displaced load.')
     + '<tr><td><table width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:10.5px;font-family:Segoe UI,Arial,sans-serif">'
     + '<tr>' + th('Date') + th('Order') + th('Customer') + th('Loads Lost', 1) + th('Qty Lost', 1) + th('Lost Revenue', 1) + th('Lost GP', 1) + th('GP at Risk', 1) + '</tr>'
     + rep.rows.map(r => { const z = r.lostGp > 0 ? '' : ' d'; return '<tr>'
@@ -438,17 +505,17 @@ function buildEmailHtml(rep, failures) {
       + rep.unmatched.map(f => esc(f.order_reference) + ' (' + esc(dateKey(f.order_date)) + ')').join('; ') + '</td></tr>';
   }
 
-  h += sec(3, 'FAILURES BY DAY', 'Recorded failures per dispatch day · all entity types')
+  h += sec(N(3), 'FAILURES BY DAY', 'Recorded failures per dispatch day · all entity types')
     + bars(A.byDay, p => p[1] === A.worstDay[1] ? ' · peak' : '')
-    + sec(4, 'WHY SERVICE FAILED', 'Failure types by count · critical share noted per type')
+    + sec(N(4), 'WHY SERVICE FAILED', 'Failure types by count · critical share noted per type')
     + bars(A.byType, p => (A.typeCrit.get(p[0]) ? ' · ' + A.typeCrit.get(p[0]) + ' critical' : ''))
-    + sec(5, 'RESPONSIBLE PARTY', 'Who owned each failure, as logged in NewMile')
+    + sec(N(5), 'RESPONSIBLE PARTY', 'Who owned each failure, as logged in NewMile')
     + bars(A.byParty)
-    + sec(6, 'CUSTOMER IMPACT', 'Failures by customer · count of recorded events')
+    + sec(N(6), 'CUSTOMER IMPACT', 'Failures by customer · count of recorded events')
     + bars(A.byCust)
 
     // ---- 07 driver no-shows ----
-    + sec(7, 'DRIVER NO-SHOWS', 'Committed trucks and drivers that did not run')
+    + sec(N(7), 'DRIVER NO-SHOWS', 'Committed trucks and drivers that did not run')
     + '<tr><td><table width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size:10.5px;font-family:Segoe UI,Arial,sans-serif">'
     + '<tr>' + th('Date') + th('Truck') + th('Driver') + th('Fleet / Owner') + th('Customer') + th('Notes') + '</tr>'
     + (A.noShows.length ? A.noShows.map(f => '<tr>'
@@ -485,7 +552,7 @@ function buildEmailHtml(rep, failures) {
     const fits = Math.max(10, Math.floor((CLIP - overhead) / rowCost));
     if (fits < sorted.length) { shown = sorted.slice(0, fits); dropped = sorted.length - fits; }
   }
-  h += sec(8, 'FAILURE DETAIL', (dropped
+  h += sec(N(8), 'FAILURE DETAIL', (dropped
       ? 'The ' + shown.length + ' most severe of ' + T.failures + ' recorded failures · <b style="color:' + RED + '">the remaining ' + dropped
         + ' (least severe) are in the attached PDF and CSV, which carry all ' + T.failures + '</b>'
       : 'All ' + T.failures + ' recorded failures, most severe first · source: NewMile'))
@@ -524,6 +591,7 @@ function buildPrintHtml(rep, failures) {
 
   // ---- aggregates over the failure log (shared with the email body) ----
   const A = computeAggregates(failures);
+  const cmp = comparisonRows(rep);                 // [] when the run had no prior week to compare
   const byDay = A.byDay, byType = A.byType, typeCrit = A.typeCrit, byParty = A.byParty, byCust = A.byCust;
   const noShows = A.noShows, worstDay = A.worstDay, topType = A.topType, custHardest = A.custHardest;
   const pct = n => Math.round(100 * n / Math.max(1, T.failures));
@@ -595,7 +663,18 @@ function buildPrintHtml(rep, failures) {
     + T.taggedFinancial + ' of ' + T.failures + ' failures (' + pct(T.taggedFinancial) + '%) were tagged Financial impact by dispatch; the GP range above prices every failure\'s loads, tagged or not.'
     + '</div>'
 
-    // ---- 02 GP of lost loads (NEW — Tony's ask) ----
+    // ---- week over week (only when a prior week was fetched) ----
+    + (cmp.length ? '<div class="nobrk"><div class="sec">' + secNo() + '</div><h2>WEEK OVER WEEK</h2>'
+      + '<div class="sub">This week vs the preceding Mon–Sat (' + esc(mdLabel(rep.prior.from)) + ' → ' + esc(mdLabel(rep.prior.to)) + ') · B/(W) = Better/(Worse)</div>'
+      + '<table><thead><tr><th>Metric</th><th style="text-align:right">This week</th><th style="text-align:right">Prior week</th><th style="text-align:right">Variance B/(W)</th></tr></thead><tbody>'
+      + cmp.map(r => '<tr>'
+        + '<td' + (r.lead ? ' style="font-weight:800"' : '') + '>' + esc(r.label) + '</td>'
+        + '<td style="text-align:right' + (r.lead ? ';font-weight:800' : '') + '">' + r.cur + '</td>'
+        + '<td style="text-align:right;color:' + INKDIM + '">' + r.prev + '</td>'
+        + '<td style="text-align:right;font-weight:700;color:' + (r.v.flat ? INKDIM : (r.v.better ? '#2f7d54' : RED)) + '">' + esc(r.v.text) + '</td></tr>').join('')
+      + '</tbody></table></div>' : '')
+
+    // ---- GP of lost loads (Tony's ask) ----
     + '<div class="brk"></div><div class="sec">' + secNo() + '</div><h2>GP DOLLARS OF LOST LOADS</h2>'
     + '<div class="sub">Per failed order, two readings priced at the order\'s actual avg load size × the PO+material\'s realized per-unit margin this week (NewMile PO Margin). LOST GP (floor): loads the failure notes document as lost — count written in the note; no count = 1 if Financial impact or No Show, 0 if informational; order-level vs truck-level counts deduped. GP AT RISK (ceiling): every logged failure counts at least 1 load — a failure\'s truck was planned somewhere, and even a covered failure displaces capacity from another order that logs no failure.</div>'
     + '<table><thead><tr><th>Date</th><th>Order</th><th>Customer</th><th style="text-align:right">Loads Lost</th><th style="text-align:right">Qty Lost</th><th style="text-align:right">Lost Revenue</th><th style="text-align:right">Lost GP</th><th style="text-align:right">GP at Risk</th></tr></thead><tbody>'
@@ -669,4 +748,4 @@ function printFooterTemplate(rep) {
     + '<span>' + esc(rangeStr) + ' · CONFIDENTIAL</span></div>';
 }
 
-module.exports = { lastWeekRange, fetchWeek, buildServiceFailures, buildPrintHtml, printFooterTemplate };
+module.exports = { lastWeekRange, priorWeekRange, fetchWeek, buildServiceFailures, buildPrintHtml, printFooterTemplate };
