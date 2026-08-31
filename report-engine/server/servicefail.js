@@ -203,9 +203,15 @@ function buildServiceFailures(raw, opts) {
     const committed = num(o.quantity_requested);
     const uom = o.quantity_requested_uom || '';
     // actual average load size for THIS order/day; fallbacks: 1 for Load-UOM, tonsPerLoad for tons.
-    const avgLoad = num(o.total_load_count) > 0 && num(o.quantity_delivered) > 0
-      ? num(o.quantity_delivered) / num(o.total_load_count)
-      : (/load/i.test(uom) ? 1 : (/hour/i.test(uom) ? 0 : tonsPerLoad));
+    // HOURLY ORDERS PRICE AT ZERO, ALWAYS. Hourly work is reported as one consolidated "load"
+    // holding the whole shift, so delivered/load_count comes back as ~148 HOURS per load — pricing
+    // a single failure at one of those loads charged an entire day of billed hours to one missed
+    // truck ($11.0K off one row on 8/24, three quarters of that week's at-risk ceiling). There is
+    // no load size to displace on an hourly order, so it contributes no GP: direct or at risk.
+    const avgLoad = /hour/i.test(uom) ? 0
+      : (num(o.total_load_count) > 0 && num(o.quantity_delivered) > 0
+          ? num(o.quantity_delivered) / num(o.total_load_count)
+          : (/load/i.test(uom) ? 1 : tonsPerLoad));
     // loads lost comes from the FAILURE ROWS ONLY. Order-level and assignment-level failures
     // usually describe the same loads, so take the max of the two totals, not the sum.
     let orderLoads = 0, assignLoads = 0, orderRisk = 0, assignRisk = 0;
