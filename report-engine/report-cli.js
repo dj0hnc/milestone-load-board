@@ -141,6 +141,49 @@ function centralDate(offsetDays) {
     } finally { try { await browser.close(); } catch (e) {} }
   }
 
+  // MULTI-WEEK TREND — the same engine that builds the weekly report, run back over the last N
+  // Mon-Sat weeks, printed as one table. Never emails: this is the number set for the leadership
+  // meeting, and it has to come from production code, not a spreadsheet rebuilt by hand.
+  //   node report-engine/report-cli.js sftrend --weeks=6
+  if (KIND === 'sftrend') {
+    const weeks = Math.max(2, Math.min(12, parseInt(arg('weeks', 6), 10) || 6));
+    let range = (arg('from', '') && arg('to', ''))
+      ? { from: String(arg('from')), to: String(arg('to')) }
+      : servicefail.lastWeekRange(centralDate(0));
+    const out = [];
+    for (let i = 0; i < weeks; i++) {
+      try {
+        const raw = await servicefail.fetchWeek(client, range.from, range.to);
+        const rep = servicefail.buildServiceFailures(raw, range);
+        out.push({ from: range.from, to: range.to, t: rep.totals, rows: rep.rows });
+        console.log('  ' + range.from + ' -> ' + range.to + ': ' + rep.totals.failures + ' failures pulled');
+      } catch (e) { console.log('  ' + range.from + ' week failed: ' + (e.message || e)); }
+      range = servicefail.priorWeekRange(range.from);
+    }
+    out.reverse();                                   // oldest first — the trend reads left to right
+    const pad = (s, n) => String(s).padStart(n);
+    console.log('\n----- SF TREND BEGIN -----');
+    console.log('week        | fails | crit | orders | loads | at-risk loads |  lost revenue |    GP direct |    GP at risk');
+    out.forEach(w => {
+      const t = w.t;
+      console.log(w.from + '  | ' + pad(t.failures, 5) + ' | ' + pad(t.critical, 4) + ' | ' + pad(t.failedOrders, 6) +
+        ' | ' + pad(Math.round(t.loadsLost), 5) + ' | ' + pad(Math.round(t.loadsAtRisk), 13) +
+        ' | ' + pad('$' + t.lostRevenue.toFixed(0), 13) + ' | ' + pad('$' + t.lostGp.toFixed(0), 12) +
+        ' | ' + pad('$' + t.gpAtRisk.toFixed(0), 13));
+    });
+    // The at-risk ceiling swings week to week; show what drives it so the meeting can judge it.
+    const last = out[out.length - 1];
+    if (last) {
+      console.log('\nAT-RISK CEILING DRIVERS (' + last.from + ' -> ' + last.to + '):');
+      last.rows.slice().sort((a, b) => b.gpAtRisk - a.gpAtRisk).slice(0, 10).forEach(r => console.log(
+        '  ' + r.date + '  ' + r.order + '  loads ' + Math.round(r.loadsLost) + '/' + Math.round(r.loadsAtRisk) +
+        '  avg ' + r.avgLoad.toFixed(1) + ' ' + r.uom + '  GP $' + r.lostGp.toFixed(0) + ' / at risk $' + r.gpAtRisk.toFixed(0) +
+        '  [' + r.gpMethod + ']'));
+    }
+    console.log('----- SF TREND END -----');
+    return;
+  }
+
   // WEEKLY SERVICE FAILURES + GP OF LOST LOADS — pure report-API pull, needs no board/Samsara/off-app.
   // Runs Mondays over the prior Mon-Sat; --from/--to override for reruns of any week.
   if (KIND === 'sf') {
