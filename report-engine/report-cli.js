@@ -166,8 +166,18 @@ function centralDate(offsetDays) {
       let atts = rep.attachments;
       try {
         const pdf = await renderSfPdf(rep, raw.failures);
-        if (pdf) atts = [{ filename: 'Milestone_Tx_SF_Report_' + range.from + '_' + range.to + '.pdf', content: pdf }].concat(rep.attachments);
-        console.log('  pdf attachment: ' + (pdf ? 'yes (' + pdf.length + ' bytes)' : 'no renderer available — sending CSVs only'));
+        if (pdf) {
+          // Prove it is a real PDF before it ships: the bytes must start with "%PDF-". A renderer
+          // returning something else (or a value that would get stringified downstream) is a bug
+          // worth failing loudly on, not mailing out as an attachment nobody can open.
+          const buf = Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf.buffer || pdf, pdf.byteOffset || 0, pdf.byteLength || pdf.length);
+          const magic = buf.slice(0, 5).toString('latin1');
+          if (magic !== '%PDF-') throw new Error('renderer returned ' + buf.length + ' bytes starting "' + magic + '" — not a PDF');
+          atts = [{ filename: 'Milestone_Tx_SF_Report_' + range.from + '_' + range.to + '.pdf', content: buf }].concat(rep.attachments);
+          console.log('  pdf attachment: yes (' + buf.length + ' bytes, %PDF- verified)');
+        } else {
+          console.log('  pdf attachment: no renderer available — sending CSVs only');
+        }
       } catch (e) { console.log('  pdf render failed (sending CSVs only): ' + (e.message || e)); }
       const m = await mailer.sendEmail(reportCfg, { subject: subject, html: rep.html, text: rep.text, attachments: atts });
       console.log('email: ' + JSON.stringify(m));

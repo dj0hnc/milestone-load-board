@@ -53,11 +53,23 @@ function smtpSend(smtp, from, toArr, subject, text, html) {
 // ---- Resend (plain HTTPS, no dependency) ----
 // attachments: [{ filename, content }] where content is a utf8 string (CSV etc.) or a Buffer —
 // Resend wants base64.
+// Attachment payload -> base64, WITHOUT ever stringifying binary.
+// Every binary shape has to be handled explicitly: Electron's printToPDF hands back a Buffer, but
+// puppeteer v23+ page.pdf() returns a Uint8Array, and `Buffer.isBuffer(uint8array)` is false — the
+// old code fell through to String(bytes), which turns a PDF into the literal text "37,80,68,70,…"
+// and ships an attachment no reader can open (that is exactly what the 8/31 report went out with).
+function attachmentToBase64(content) {
+  if (Buffer.isBuffer(content)) return content.toString('base64');
+  if (ArrayBuffer.isView(content)) return Buffer.from(content.buffer, content.byteOffset, content.byteLength).toString('base64');
+  if (content instanceof ArrayBuffer) return Buffer.from(content).toString('base64');
+  return Buffer.from(String(content), 'utf8').toString('base64');   // CSV / plain text
+}
+
 async function resendSend(key, from, toArr, subject, html, text, attachments) {
   try {
     const atts = (attachments || []).map(a => ({
       filename: a.filename,
-      content: Buffer.isBuffer(a.content) ? a.content.toString('base64') : Buffer.from(String(a.content), 'utf8').toString('base64')
+      content: attachmentToBase64(a.content)
     }));
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -100,4 +112,4 @@ async function sendEmail(cfg, msg) {
   return { ok: false, error: 'no email method configured (need smtp user/pass or resendKey)' };
 }
 
-module.exports = { sendEmail, smtpSend, resendSend };
+module.exports = { sendEmail, smtpSend, resendSend, attachmentToBase64 };
