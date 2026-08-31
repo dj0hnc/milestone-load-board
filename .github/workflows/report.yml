@@ -40,9 +40,9 @@ on:
   workflow_dispatch:
     inputs:
       kind:
-        description: 'Report to run (sf = weekly service failures + GP of lost loads, last Mon-Sat)'
+        description: 'Report to run (sf = weekly service failures + GP of lost loads, last Mon-Sat; sftrend = multi-week trend printed to the log, never emails)'
         type: choice
-        options: [morning, night, recheck, sf]
+        options: [morning, night, recheck, sf, sftrend]
         default: night
       offsubs:
         description: 'OFF-APP subs count (blank = use the MAB_OFFSUBS variable)'
@@ -52,6 +52,9 @@ on:
         default: ''
       preview:
         description: 'true = DRY RUN: build the report and print the full list to the log, send NO email.'
+        default: ''
+      weeks:
+        description: 'sftrend only: how many Mon-Sat weeks back to chart (default 6).'
         default: ''
 
 concurrency:
@@ -97,6 +100,11 @@ jobs:
         run: |
           set -e
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # the trend is a log-only report — it never mails, so it ignores preview/force entirely
+            if [ "${{ github.event.inputs.kind }}" = "sftrend" ]; then
+              node report-engine/report-cli.js sftrend --weeks=${{ github.event.inputs.weeks || '6' }}
+              exit 0
+            fi
             # PREVIEW = dry run: build + print the full report to the log, send NO email. No --send,
             # so the once-per-day lock is never touched and no recipient/Resend key is needed.
             if [ "${{ github.event.inputs.preview }}" = "true" ]; then
