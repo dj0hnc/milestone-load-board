@@ -1,0 +1,387 @@
+<title>Zonas de Despacho TX</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  color-scheme:light;
+  --bg:#f4f4f0; --surface:#fffffe; --surface2:#eceee7; --line:#d8dacf;
+  --ink:#232620; --ink2:#5c6156; --ink3:#8a8f82;
+  --gold:#a8813f;
+  --juan:#2a78d6; --mary:#eb6834; --jimmy:#1baf7a;
+  --juan-soft:rgba(42,120,214,.13); --mary-soft:rgba(235,104,52,.13); --jimmy-soft:rgba(27,175,122,.13);
+  --map-ground:#eceee6; --map-road:#c6c9bc; --map-river:#8fb3cc; --map-city:#6b7062;
+  --chip-bg:#f0f1ea;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#181a16; --surface:#20231d; --surface2:#272a23; --line:#3a3e34;
+    --ink:#eceade; --ink2:#a7ab9c; --ink3:#7d816f;
+    --gold:#c8a05e;
+    --juan:#3987e5; --mary:#d95926; --jimmy:#199e70;
+    --juan-soft:rgba(57,135,229,.18); --mary-soft:rgba(217,89,38,.18); --jimmy-soft:rgba(25,158,112,.18);
+    --map-ground:#23261f; --map-road:#42463a; --map-river:#4f7a99; --map-city:#9ba08e;
+    --chip-bg:#2b2e26;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#181a16; --surface:#20231d; --surface2:#272a23; --line:#3a3e34;
+  --ink:#eceade; --ink2:#a7ab9c; --ink3:#7d816f;
+  --gold:#c8a05e;
+  --juan:#3987e5; --mary:#d95926; --jimmy:#199e70;
+  --juan-soft:rgba(57,135,229,.18); --mary-soft:rgba(217,89,38,.18); --jimmy-soft:rgba(25,158,112,.18);
+  --map-ground:#23261f; --map-road:#42463a; --map-river:#4f7a99; --map-city:#9ba08e;
+  --chip-bg:#2b2e26;
+}
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:15px; line-height:1.45; margin:0;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:28px 22px 64px}
+.eyebrow{font-size:11.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
+h1{font-size:clamp(26px,4vw,38px);font-weight:800;letter-spacing:-.01em;margin:4px 0 2px;text-wrap:balance}
+.sub{color:var(--ink2);margin:0 0 18px;max-width:62ch}
+h2{font-size:17px;font-weight:700;margin:0 0 10px;letter-spacing:.01em}
+.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:18px 0 22px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:13px 16px 11px;border-top:3px solid var(--line)}
+.tile .who{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2)}
+.tile .big{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+.tile .det{font-size:12.5px;color:var(--ink3)}
+.tile.juan{border-top-color:var(--juan)} .tile.mary{border-top-color:var(--mary)}
+.tile.jimmy{border-top-color:var(--jimmy)} .tile.hib{border-top-color:var(--gold)}
+
+.grid{display:grid;grid-template-columns:minmax(0,7fr) minmax(260px,3fr);gap:16px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px}
+.mapbox{padding:10px}
+.mapbox svg{display:block;width:100%;height:auto}
+.maplegend{display:flex;flex-wrap:wrap;gap:14px;padding:8px 8px 2px;font-size:12.5px;color:var(--ink2)}
+.maplegend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:4px;display:inline-block}
+.sw.ring{background:transparent;border:2.5px dashed var(--mary);border-radius:50%}
+
+.cards{display:flex;flex-direction:column;gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:10px;padding:13px 15px}
+.card.juan{border-left-color:var(--juan)} .card.mary{border-left-color:var(--mary)} .card.jimmy{border-left-color:var(--jimmy)}
+.card h3{margin:0 0 2px;font-size:16px;font-weight:700}
+.card .role{font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink2);font-weight:600}
+.card ul{margin:8px 0 0;padding-left:18px;color:var(--ink2);font-size:13.5px}
+.card li{margin:2px 0}
+.card li b{color:var(--ink);font-weight:600}
+.note{font-size:12.5px;color:var(--ink3);margin-top:8px}
+
+.tablewrap{margin-top:18px}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px;align-items:center}
+.fbtn{border:1px solid var(--line);background:var(--surface);color:var(--ink2);border-radius:999px;
+  padding:5px 13px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.fbtn:hover{border-color:var(--ink3)}
+.fbtn:focus-visible{outline:2px solid var(--juan);outline-offset:2px}
+.fbtn.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.search{margin-left:auto;border:1px solid var(--line);background:var(--surface);color:var(--ink);
+  border-radius:8px;padding:6px 10px;font:inherit;font-size:13.5px;min-width:170px}
+.tscroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:680px}
+th{position:sticky;top:0;text-align:left;font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--ink2);background:var(--surface2);padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:7px 12px;border-bottom:1px solid var(--line);vertical-align:middle;white-space:nowrap}
+tr:last-child td{border-bottom:none}
+td.num{font-variant-numeric:tabular-nums}
+.tno{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12.5px;font-weight:600;background:var(--chip-bg);
+  border:1px solid var(--line);border-radius:6px;padding:2px 7px;display:inline-block}
+.own{display:inline-flex;align-items:center;gap:7px;font-weight:600}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
+.dot.juan{background:var(--juan)} .dot.mary{background:var(--mary)} .dot.jimmy{background:var(--jimmy)}
+.dot.hib{background:linear-gradient(90deg,var(--juan) 50%,var(--jimmy) 50%)}
+.dot.na{background:var(--ink3)}
+.zbar{display:inline-flex;height:9px;width:96px;border-radius:5px;overflow:hidden;background:var(--surface2);vertical-align:middle}
+.zbar i{display:block;height:100%}
+.zbar i+i{margin-left:2px}
+.muted{color:var(--ink3)}
+.hibtag{font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--gold);border:1px solid var(--gold);
+  border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:1px}
+.count{font-size:13px;color:var(--ink2);margin:8px 2px 0}
+.foot{margin-top:26px;font-size:12.5px;color:var(--ink3);max-width:80ch}
+.tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--bg);font-size:12.5px;
+  padding:6px 10px;border-radius:7px;max-width:240px;z-index:9;display:none;line-height:1.35}
+@media (prefers-reduced-motion: no-preference){
+  .fbtn{transition:background .12s,color .12s,border-color .12s}
+}
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">Milestone Supply · TX Ops</div>
+  <h1>Zonas de Despacho</h1>
+  <p class="sub">Reparto de zonas asignado por Tony (1 sep 2026): <b style="color:var(--juan)">Juan</b> lleva Cactus North + South East (RKH y área Tyler), <b style="color:var(--mary)">Mary</b> lleva KT Rhome, KT Whitewright y los ICs de CKJ, y <b style="color:var(--jimmy)">Jimmy</b> lleva KT Powderly + Cactus South West. Propuesta de trokas basada en dónde cargó cada una del 17 ago al 1 sep (NewMile).</p>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="grid">
+    <div class="panel mapbox">
+      <div id="map"></div>
+      <div class="maplegend">
+        <span><i class="sw" style="background:var(--juan-soft);border:1.5px solid var(--juan)"></i>Juan — North + South East</span>
+        <span><i class="sw" style="background:var(--jimmy-soft);border:1.5px solid var(--jimmy)"></i>Jimmy — South West</span>
+        <span><i class="sw ring"></i>Mary — terminales KT (por flota, no por zona)</span>
+      </div>
+    </div>
+    <div class="cards">
+      <div class="card juan">
+        <div class="role">Juan Jose De Alba</div>
+        <h3>North + South East</h3>
+        <ul>
+          <li><b>Cactus North fleet</b> — corredor RKH: Paris, Powderly, Denison, Sawyer OK</li>
+          <li><b>Cactus South East fleet</b> — área Tyler: Tyler Rail, Mineola, Canton, Longview</li>
+          <li>Todo lo de <b>RK Hall</b> (cantera Sawyer, plantas Paris / Denison)</li>
+        </ul>
+      </div>
+      <div class="card mary">
+        <div class="role">Mary Marquez</div>
+        <h3>KT Rhome · KT Whitewright · CKJ ICS</h3>
+        <ul>
+          <li><b>KT Rhome</b> — terminal oeste del metroplex</li>
+          <li><b>KT Whitewright</b> — terminal corredor Sherman</li>
+          <li><b>CKJ ICS</b> — owner-operators / subs de CKJ (números de 3 dígitos)</li>
+        </ul>
+        <div class="note">Mary opera por flota y terminal; sus trokas pueden rodar dentro de las zonas de Juan o Jimmy.</div>
+      </div>
+      <div class="card jimmy">
+        <div class="role">Jimmy Takats</div>
+        <h3>KT Powderly + Cactus South West</h3>
+        <ul>
+          <li><b>KT Powderly</b> — terminal junto a Paris (dentro del área norte)</li>
+          <li><b>Cactus South West fleet</b> — todas las plantas Cactus del metroplex al suroeste</li>
+        </ul>
+        <div class="note">La terminal KT Powderly queda geográficamente en el norte de Juan — el reparto ahí es por flota.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tablewrap">
+    <h2>Trokas por despachador <span class="muted" style="font-weight:400">— propuesta para revisar con Tony</span></h2>
+    <div class="filters" id="filters"></div>
+    <div class="tscroll"><table>
+      <thead><tr>
+        <th>Troka</th><th>Flota / Terminal</th><th>Asignada a</th>
+        <th>Actividad por zona (2 sem)</th><th style="text-align:right">Loads</th><th>Dónde cargó</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table></div>
+    <div class="count" id="count"></div>
+  </div>
+
+  <p class="foot" id="foot"></p>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+/* ================= DATA ================= */
+
+// Terminales KT por sufijo del número (P/R/W) — regla fija del board.
+const KT_W = ["0233","0260","0261","1050","1052","1057","1635","1636","1637","1638","1639","1640","1648","1649","1650","1652","1653","1654","1718","1719","1721","1722","2686","2688","2690","2693","3438","3439","3441","3445","3452","3777","3780","3782","3783","5376","6182","6806","7038","7043","7044","7047","7048","7049","7054","7055"];
+const KT_R = ["1641","1642","1643","1644","1645","1646","1647","2687","2692","2695","3788","3791","4246","4247","4248","4249","4250","4517","4799","4805","4806","5375","5830","7037"];
+const KT_P = ["2689","2694","4519","4520","4521","7040","7041","7045","7046","7052","7053"];
+const KT_SIN = ["1651","3554","4518","7056","7057","7058","7067","7068","7070","7073","7074","7076","7077","7079"];
+// CKJ ICS: owner-operators / subs dentro de la flota CKJ (no Kennemer).
+const CKJ_ICS = ["191","211","276","291","314","315","316","321","331","332","333","334","401","404","415","421","431","432","439","440","441","442","443","444","446","450","452","453","456","457","458","459","462","470","471","472","473","474","477","478","479","480","481","583","2018","ARANGO-355","ARANGO-1116"];
+// Unidades numéricas propiedad de Kennemer sin terminal marcada (spares).
+const KT_SPARES = ["1720","3541","3789","5491","5492","5793","5795","5796","7050","7082","7254","8192"];
+// Flota Cactus (roster NewMile). * = down / de-leased / in shop.
+const CACTUS = "1001 1003 1005 1007 1009* 1013 1017 1019 1023* 1026 1027 1031 1033 1035 1036 1037 1047* 1048 1049 1050 1054 1055 1056 1058 1062 1063 1064 1065 1067* 1068 1073 1077 1079 1082 1083 1086 1087 1088* 1090 1091 1092 1093 1094 1095 1096 1097 1100 1101 1102* 1103 1105 1107 1108 1109 1110 1112 1115 1117 1118 1119 1120 1121 1122 1123 1124 1125 1127 1129 1130 1131 1132 1133 1134 1137 1138 1139 1140 1142 1143 1144 1172 1216 1244 1252 1273 1280 1287 1288 1307 1313 1318 1386 1387 1388 1448 1472 1477 1483 1489 1497* 1511 1648 1664 169 1690 170 171 172 1732 196 1970 2000 2004 2005 2006 2007 2008 2009 2010 2011 2012 2013 2014 2015 2022 2025 2072 273 2731 351 354 355 385 4003 5081 603 624* 627 629 633 645 669 670 679 682 683* 684 687 7051 710 716* 718* 720 723 766 899 927 930 9321 9322 9323 9324 963 971* 972 973 974 98 9931 CC2022 ET2751".split(" ");
+
+// Actividad 17 ago – 1 sep (tickets NewMile), clave = número normalizado.
+// z:[NORTH, SE, SW] loads con pickup en cada zona; c = ciudades top.
+const ACT = {/*__ACTIVITY__*/};
+
+/* ============== GEO / MAPA ============== */
+const CITIES = [
+  ["Dallas",-96.797,32.777,1],["Fort Worth",-97.330,32.756,1],["Tyler",-95.301,32.351,1],
+  ["McKinney",-96.616,33.198,0],["Denton",-97.133,33.215,0],["Decatur",-97.586,33.234,0],
+  ["Bridgeport",-97.755,33.210,0],["Sherman",-96.609,33.636,0],["Denison",-96.537,33.756,0],
+  ["Bonham",-96.178,33.577,0],["Paris",-95.556,33.661,1],["Clarksville",-95.053,33.611,0],
+  ["Hugo OK",-95.510,34.011,0],["Sulphur Springs",-95.601,33.138,0],["Greenville",-96.111,33.138,0],
+  ["Mt Pleasant",-94.968,33.157,0],["Emory",-95.766,32.874,0],["Mineola",-95.488,32.663,0],
+  ["Canton",-95.863,32.556,0],["Terrell",-96.275,32.736,0],["Longview",-94.740,32.500,0],
+  ["Athens",-95.855,32.205,0],["Corsicana",-96.469,32.095,0],["Waxahachie",-96.848,32.386,0],
+  ["Cleburne",-97.386,32.348,0],["Ennis",-96.625,32.329,0],["Scurry",-96.390,32.610,0]
+];
+const FACIL = [
+  {n:"RK Hall Sawyer (cantera)",lng:-95.348,lat:34.122,o:"juan"},
+  {n:"RK Hall Paris",lng:-95.556,lat:33.680,o:"juan"},
+  {n:"RKH / Clark Denison",lng:-96.533,lat:33.798,o:"juan"},
+  {n:"MM Tyler Rail",lng:-95.280,lat:32.330,o:"juan"},
+  {n:"LAI Mineola",lng:-95.488,lat:32.678,o:"juan"},
+  {n:"KT Powderly (terminal)",lng:-95.512,lat:33.810,o:"jimmy"},
+  {n:"KT Rhome (terminal)",lng:-97.472,lat:33.054,o:"mary"},
+  {n:"KT Whitewright (terminal)",lng:-96.393,lat:33.512,o:"mary"}
+];
+// Río Rojo (frontera TX/OK), oeste→este
+const RED_RIVER = [[-98.05,34.12],[-97.55,33.90],[-97.16,33.83],[-96.90,33.86],[-96.60,33.82],[-96.30,33.76],[-95.85,33.87],[-95.50,33.89],[-95.24,33.94],[-94.90,33.86],[-94.62,33.70],[-94.43,33.60]];
+const ROADS = [
+  {n:"I-30",pts:[[-97.33,32.76],[-96.80,32.79],[-96.46,32.93],[-96.11,33.14],[-95.60,33.14],[-95.22,33.19],[-94.97,33.16],[-94.25,33.42]]},
+  {n:"I-20",pts:[[-98.00,32.70],[-97.32,32.72],[-96.80,32.71],[-96.28,32.72],[-95.86,32.54],[-95.41,32.51],[-94.74,32.47],[-94.25,32.46]]},
+  {n:"US-75",pts:[[-96.80,32.78],[-96.64,33.05],[-96.62,33.20],[-96.61,33.64],[-96.54,33.76],[-96.50,33.86]]},
+  {n:"US-82",pts:[[-96.61,33.64],[-96.39,33.60],[-96.18,33.58],[-95.56,33.66],[-95.05,33.61],[-94.60,33.53]]},
+  {n:"US-69",pts:[[-96.54,33.76],[-96.61,33.64],[-96.62,33.20],[-96.11,33.14],[-95.90,33.00],[-95.77,32.87],[-95.49,32.66],[-95.30,32.35],[-95.20,32.10]]}
+];
+// Zonas Cactus (polígonos suaves)
+const Z_NORTH = [[-96.95,33.50],[-96.80,33.92],[-96.45,34.02],[-95.95,34.22],[-95.20,34.30],[-94.72,33.95],[-94.80,33.48],[-95.45,33.36],[-96.15,33.40],[-96.70,33.40]];
+const Z_SE = [[-96.28,32.86],[-95.90,33.02],[-95.42,32.98],[-94.62,32.72],[-94.55,32.28],[-95.12,32.02],[-95.80,32.08],[-96.30,32.40],[-96.38,32.66]];
+const Z_SW = [[-97.90,33.32],[-97.30,33.34],[-96.82,33.10],[-96.62,32.62],[-96.70,32.22],[-97.10,32.05],[-97.65,32.12],[-97.95,32.60]];
+
+const B={lng0:-98.05,lng1:-94.20,lat0:31.90,lat1:34.45,W:1000};
+B.H=Math.round(B.W*(B.lat1-B.lat0)/((B.lng1-B.lng0)*Math.cos(33.2*Math.PI/180)));
+const px=lng=>((lng-B.lng0)/(B.lng1-B.lng0)*B.W).toFixed(1);
+const py=lat=>((B.lat1-lat)/(B.lat1-B.lat0)*B.H).toFixed(1);
+const path=(pts,close)=>pts.map((p,i)=>(i?"L":"M")+px(p[0])+" "+py(p[1])).join(" ")+(close?" Z":"");
+function smooth(pts){ // curva cerrada suave (catmull-rom → bezier)
+  const n=pts.length,P=i=>pts[(i+n)%n],f=p=>[+px(p[0]),+py(p[1])];
+  let d="M"+f(P(0)).join(" ");
+  for(let i=0;i<n;i++){const p0=f(P(i-1)),p1=f(P(i)),p2=f(P(i+1)),p3=f(P(i+2));
+    const c1=[p1[0]+(p2[0]-p0[0])/6,p1[1]+(p2[1]-p0[1])/6],c2=[p2[0]-(p3[0]-p1[0])/6,p2[1]-(p3[1]-p1[1])/6];
+    d+=`C${c1[0].toFixed(1)} ${c1[1].toFixed(1)},${c2[0].toFixed(1)} ${c2[1].toFixed(1)},${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;}
+  return d+"Z";
+}
+function buildMap(){
+  const S=[];
+  S.push(`<svg viewBox="0 0 ${B.W} ${B.H}" role="img" aria-label="Mapa de zonas de despacho del noreste de Texas">`);
+  S.push(`<rect width="${B.W}" height="${B.H}" rx="10" fill="var(--map-ground)"/>`);
+  // zonas
+  S.push(`<path d="${smooth(Z_SW)}" fill="var(--jimmy-soft)" stroke="var(--jimmy)" stroke-width="1.8"/>`);
+  S.push(`<path d="${smooth(Z_SE)}" fill="var(--juan-soft)" stroke="var(--juan)" stroke-width="1.8"/>`);
+  S.push(`<path d="${smooth(Z_NORTH)}" fill="var(--juan-soft)" stroke="var(--juan)" stroke-width="1.8"/>`);
+  // río rojo
+  S.push(`<path d="${path(RED_RIVER)}" fill="none" stroke="var(--map-river)" stroke-width="2.2" stroke-linecap="round" opacity=".85"/>`);
+  S.push(`<text x="${px(-97.9)}" y="${+py(34.02)-6}" font-size="12" fill="var(--map-river)" font-style="italic">Río Rojo · línea OK</text>`);
+  // carreteras
+  for(const r of ROADS){
+    S.push(`<path d="${path(r.pts)}" fill="none" stroke="var(--map-road)" stroke-width="2" stroke-linecap="round"/>`);
+    const m=r.pts[Math.floor(r.pts.length/2)];
+    S.push(`<text x="${+px(m[0])+5}" y="${+py(m[1])-5}" font-size="10.5" fill="var(--map-city)" opacity=".9">${r.n}</text>`);
+  }
+  // etiquetas de zona
+  const zl=[["NORTH — JUAN",-95.65,34.02,"juan"],["SOUTH EAST — JUAN",-95.05,32.12,"juan"],["SOUTH WEST — JIMMY",-97.62,32.28,"jimmy"]];
+  for(const [t,lng,lat,c] of zl) S.push(`<text x="${px(lng)}" y="${py(lat)}" font-size="13.5" font-weight="700" letter-spacing="1.5" fill="var(--${c})">${t}</text>`);
+  // radios de terminal de Mary
+  for(const f of FACIL.filter(f=>f.o==="mary"))
+    S.push(`<circle cx="${px(f.lng)}" cy="${py(f.lat)}" r="42" fill="var(--mary-soft)" stroke="var(--mary)" stroke-width="2" stroke-dasharray="6 5"/>`);
+  // ciudades
+  for(const [n,lng,lat,big] of CITIES){
+    S.push(`<circle cx="${px(lng)}" cy="${py(lat)}" r="${big?3.4:2.4}" fill="var(--map-city)"/>`);
+    S.push(`<text x="${+px(lng)+6}" y="${+py(lat)+4}" font-size="${big?12:10.5}" ${big?'font-weight="600"':""} fill="var(--map-city)">${n}</text>`);
+  }
+  // plantas / terminales
+  for(const f of FACIL){
+    const x=+px(f.lng),y=+py(f.lat);
+    S.push(`<g class="pin" data-tip="${f.n}" tabindex="0" aria-label="${f.n}">`+
+      `<path d="M${x} ${y} l-7 -12 a8.2 8.2 0 1 1 14 0 Z" fill="var(--${f.o})" stroke="var(--surface)" stroke-width="1.6"/>`+
+      `<circle cx="${x}" cy="${y-14.5}" r="3" fill="var(--surface)"/></g>`);
+  }
+  S.push("</svg>");
+  document.getElementById("map").innerHTML=S.join("");
+  const tip=document.getElementById("tip");
+  document.querySelectorAll(".pin").forEach(p=>{
+    p.addEventListener("mousemove",e=>{tip.style.display="block";tip.textContent=p.dataset.tip;
+      tip.style.left=(e.clientX+14)+"px";tip.style.top=(e.clientY+10)+"px";});
+    p.addEventListener("mouseleave",()=>tip.style.display="none");
+  });
+}
+
+/* ============ ASIGNACIÓN DE TROKAS ============ */
+const OWNER={juan:"Juan",mary:"Mary",jimmy:"Jimmy"};
+function norm(n){return n.replace(/^C(?=\d)/,"").replace(/^CKJ(?=\d)/,"").replace(/^KT-/,"").replace(/\s+[PRW]$/,"").replace(/^0+/,"")}
+function actFor(key){return ACT[key]||null}
+function domZone(z){const t=z[0]+z[1]+z[2];if(!t)return null;
+  const m=Math.max(z[0],z[1],z[2]);return m===z[2]&&z[2]>=z[0]&&z[2]>=z[1]?"SW":(z[0]>=z[1]?"NORTH":"SE")}
+function isHybrid(z){const t=z[0]+z[1]+z[2];if(t<3)return false;
+  const juan=z[0]+z[1],jim=z[2];const mn=Math.min(juan,jim);return mn>=2&&mn/t>=.2}
+const TRUCKS=[];
+function push(t){TRUCKS.push(t)}
+// KT por terminal
+for(const n of KT_R) push({num:"KT-"+n+" R",fleet:"KT · Rhome",owner:"mary",why:"terminal R"});
+for(const n of KT_W) push({num:"KT-"+n+" W",fleet:"KT · Whitewright",owner:"mary",why:"terminal W"});
+for(const n of KT_P) push({num:"KT-"+n+" P",fleet:"KT · Powderly",owner:"jimmy",why:"terminal P"});
+for(const n of KT_SIN){
+  const a=actFor(norm("KT-"+n));let owner="conf",why="sin terminal marcada";
+  if(a){const d=domZone(a.z);if(d==="SW"){/* Rhome side */owner="mary";why="rodó lado SW/Rhome"}
+    else if(d==="NORTH"){owner="jimmy";why="rodó lado norte/Powderly"}}
+  push({num:"KT-"+n,fleet:"KT · sin terminal",owner,why,act:a});
+}
+for(const n of KT_SPARES) push({num:n,fleet:"KT · spare",owner:"conf",why:"unidad Kennemer sin marcar",act:actFor(norm(n))});
+for(const n of CKJ_ICS) push({num:n,fleet:"CKJ ICS",owner:"mary",why:"IC de CKJ",act:actFor(norm(n))});
+// Cactus por zona de actividad
+for(const raw of CACTUS){
+  const down=raw.endsWith("*"),n=raw.replace("*","");
+  const a=actFor(n);let owner,why,hib=false;
+  if(down){owner="na";why="down / de-leased"}
+  else if(!a){owner="conf";why="sin loads en 2 sem"}
+  else{
+    const d=domZone(a.z);hib=isHybrid(a.z);
+    if(d==="SW"){owner="jimmy";why="corre South West"}
+    else if(d==="SE"){owner="juan";why="corre South East"}
+    else{owner="juan";why="corre North"}
+    if(hib) why="híbrida: "+a.z[0]+"N / "+a.z[1]+"SE / "+a.z[2]+"SW";
+  }
+  push({num:"C"+n,fleet:"Cactus Express",owner,why,act:a,hib,down});
+}
+
+/* ============ RENDER ============ */
+function zbar(a){
+  if(!a)return `<span class="muted">—</span>`;
+  const t=a.z[0]+a.z[1]+a.z[2];if(!t)return `<span class="muted">—</span>`;
+  const w=v=>Math.max(v?6:0,Math.round(v/t*96));
+  return `<span class="zbar" title="N ${a.z[0]} · SE ${a.z[1]} · SW ${a.z[2]}">`+
+    (a.z[0]?`<i style="width:${w(a.z[0])}px;background:var(--juan)"></i>`:"")+
+    (a.z[1]?`<i style="width:${w(a.z[1])}px;background:var(--juan);opacity:.55"></i>`:"")+
+    (a.z[2]?`<i style="width:${w(a.z[2])}px;background:var(--jimmy)"></i>`:"")+`</span>`;
+}
+function ownerCell(t){
+  if(t.owner==="na")return `<span class="own"><i class="dot na"></i><span class="muted">Fuera de servicio</span></span>`;
+  if(t.owner==="conf")return `<span class="own"><i class="dot na"></i><span class="muted">Por confirmar</span></span>`;
+  return `<span class="own"><i class="dot ${t.owner}"></i>${OWNER[t.owner]}${t.hib?'<span class="hibtag">HÍBRIDA</span>':""}</span>`;
+}
+let FILTER="all",Q="";
+const FDEFS=[["all","Todas"],["juan","Juan"],["mary","Mary"],["jimmy","Jimmy"],["hib","Híbridas"],["conf","Por confirmar"]];
+function match(t){
+  if(Q&&!(t.num.toLowerCase().includes(Q)||t.fleet.toLowerCase().includes(Q)))return false;
+  if(FILTER==="all")return t.owner!=="na";
+  if(FILTER==="hib")return !!t.hib;
+  return t.owner===FILTER;
+}
+function render(){
+  const rows=TRUCKS.filter(match);
+  rows.sort((a,b)=>(b.act?b.act.l:0)-(a.act?a.act.l:0)||a.num.localeCompare(b.num));
+  document.getElementById("tbody").innerHTML=rows.map(t=>`<tr>
+    <td><span class="tno">${t.num}</span></td>
+    <td>${t.fleet}</td>
+    <td>${ownerCell(t)}</td>
+    <td>${zbar(t.act)}</td>
+    <td class="num" style="text-align:right">${t.act?t.act.l:0}</td>
+    <td class="muted">${t.act&&t.act.c?t.act.c:t.why}</td>
+  </tr>`).join("");
+  document.getElementById("count").textContent=rows.length+" trokas · "+rows.reduce((s,t)=>s+(t.act?t.act.l:0),0)+" loads en el periodo";
+}
+function buildFilters(){
+  document.getElementById("filters").innerHTML=
+    FDEFS.map(([k,l])=>`<button class="fbtn${k===FILTER?" on":""}" data-f="${k}">${l}</button>`).join("")+
+    `<input class="search" id="q" type="search" placeholder="Buscar troka…" aria-label="Buscar troka">`;
+  document.querySelectorAll(".fbtn").forEach(b=>b.addEventListener("click",()=>{FILTER=b.dataset.f;
+    document.querySelectorAll(".fbtn").forEach(x=>x.classList.toggle("on",x===b));render();}));
+  document.getElementById("q").addEventListener("input",e=>{Q=e.target.value.trim().toLowerCase();render();});
+}
+function tiles(){
+  const cnt=k=>TRUCKS.filter(t=>t.owner===k).length;
+  const hib=TRUCKS.filter(t=>t.hib).length, conf=TRUCKS.filter(t=>t.owner==="conf").length;
+  const loads=k=>TRUCKS.filter(t=>t.owner===k).reduce((s,t)=>s+(t.act?t.act.l:0),0);
+  document.getElementById("tiles").innerHTML=`
+    <div class="tile juan"><div class="who">Juan</div><div class="big">${cnt("juan")}</div><div class="det">trokas · ${loads("juan")} loads (2 sem)</div></div>
+    <div class="tile mary"><div class="who">Mary</div><div class="big">${cnt("mary")}</div><div class="det">trokas · ${loads("mary")} loads (2 sem)</div></div>
+    <div class="tile jimmy"><div class="who">Jimmy</div><div class="big">${cnt("jimmy")}</div><div class="det">trokas · ${loads("jimmy")} loads (2 sem)</div></div>
+    <div class="tile hib"><div class="who">Híbridas / por confirmar</div><div class="big">${hib} / ${conf}</div><div class="det">cruzan zonas · sin dato claro</div></div>`;
+}
+document.getElementById("foot").textContent="Fuente: roster y tickets de NewMile (17 ago – 1 sep 2026). Las trokas KT se asignan por terminal (R/W → Mary, P → Jimmy); los ICs de CKJ van con Mary; la flota Cactus se propone por la zona donde cargó — las híbridas cruzaron zonas y hay que decidirlas con Tony. Coordenadas de plantas desde NewMile; el mapa es esquemático, no a escala de carretera.";
+buildMap();tiles();buildFilters();render();
+</script>
