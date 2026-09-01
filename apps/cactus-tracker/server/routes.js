@@ -505,7 +505,11 @@ function createRouter({ config, newmile, log }) {
   router.post('/api/sync-assignments', async (req, res) => {
     if (String((req.query || {}).key || (req.body || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
     if (!newmile) return res.status(503).json({ error: 'NewMile not configured' });
-    if (_asgPokeBusy || Date.now() - _asgPokeAt < 5000) return res.json({ ok: true, debounced: true });
+    // DEBOUNCE 30s (2026-09-01): el sync jala TODAS las órdenes (~5.5s, muchas llamadas MCP). El
+    // board lo pokea en CADA refresh → durante un push grande dos consumidores machacaban la MISMA
+    // cuenta de NewMile y TODO se frenaba. 30s: el primer poke tras un push corre YA, los seguidos
+    // se saltan; el carril de 90s igual cubre. No compite con el board mientras asignas.
+    if (_asgPokeBusy || Date.now() - _asgPokeAt < 30000) return res.json({ ok: true, debounced: true });
     _asgPokeAt = Date.now(); _asgPokeBusy = true;
     try {
       if (!newmile.connected && !(await newmile.resume())) return res.status(401).json({ error: 'NOT_CONNECTED' });
