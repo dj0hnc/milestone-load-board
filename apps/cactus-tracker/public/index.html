@@ -556,6 +556,7 @@ body.dark .ml-in textarea{background:#0f1420;border-color:#33507a;color:#e8ecf3;
       <button id="grpOwner" onclick="setGroupMode('owner')" title="Group by truck owner / organization">🏢 By owner</button>
       <button onclick="openOrders()" title="NewMile orders for this day — assign and PUSH" style="color:var(--gold-d);font-weight:800;">📋 Orders</button>
       <button onclick="window.open('report.html?date='+date,'_blank')" title="Daily report — print to PDF or download Excel" style="font-weight:800;">📄 Report</button>
+      <button onclick="openExport()" title="Export EXACTLY what the current filters show (tab + status + type + area + search) — CSV for Excel or copy as a list" style="font-weight:800;">⬇ Export</button>
     </div>
   </div>
   <div id="bulkBar" style="display:none;background:var(--blue-bg);border:1.5px solid var(--blue);border-radius:12px;padding:9px 12px;margin:-6px 0 12px;font-size:13.5px;color:var(--blue);align-items:center;gap:10px;flex-wrap:wrap;"></div>
@@ -2101,6 +2102,109 @@ async function copyTony(){
   const txt=`Available but not planned — ${mdy(date)}:\n`+(free.length?free.map(s=>"• "+s).join("\n"):"• none — everyone available is planned")+(out.length?`\n\nNot available:\n`+out.map(s=>"• "+s).join("\n"):"");
   try{await navigator.clipboard.writeText(txt);}catch(e){const ta=document.createElement("textarea");ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);}
   openModal(`<h3>🤠 Tony report — copied ✓</h3><p style="font-size:12px;color:var(--mut);margin-bottom:8px;">already in your clipboard — paste it into the message. This was copied:</p><pre style="white-space:pre-wrap;font-size:12.5px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;max-height:50vh;overflow:auto;">${esc(txt)}</pre><div class="actions"><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
+}
+
+// ---------- ⬇ EXPORT — exactly what the filters show (2026-09-02, Juan) ----------
+// Mirrors render()'s filter chain 1:1 (tab → status seg → type → bulk/search → area) so what
+// you see is what you get. CSV (UTF-8 BOM, Excel-ready) or copy as a plain list for a message.
+const EXPORT_SEG_LBL={"":"ALL",open:"OPEN",cov:"COVERED",asg:"ASSIGNED",wrk:"WORKED",asgnw:"ASSIGNED NOT WORKED",off:"OFF",rip:"RIP",star:"STAR"};
+function visibleTrucks(){
+  if(!board)return [];
+  const virtual=isVirtual();
+  const divTrucks=(board.trucks||[]).filter(t=>!t.archived&&subOnlyOk(t)&&(virtual||t.division===division));
+  const q=$("fSearch").value.trim().toLowerCase();
+  const tokens=q.split(/[\s,;]+/).filter(Boolean);
+  let bulkSet=null;
+  if(tokens.length>=2){
+    bulkSet=new Set();
+    for(const t of divTrucks){
+      if(t.is_new)continue;
+      const keys=[t.number,dnum(t),String(dnum(t)).replace(/[\s-]/g,"")].map(x=>String(x).toLowerCase());
+      if(tokens.some(tk=>keys.includes(tk.toLowerCase())))bulkSet.add(t.org_id+"|"+t.number);
+    }
+  }
+  const areaV=$("fArea").value;
+  const out=[];
+  for(const t of divTrucks){
+    if(t.is_new)continue;
+    if(!matchStatus(t))continue;
+    if(!matchTypeSel(t))continue;
+    if(bulkSet){if(!bulkSet.has(t.org_id+"|"+t.number))continue;}
+    else if(!matchSearch(t,q))continue;
+    if(areaV&&(t.area||"(SIN YARD)")!==areaV)continue;
+    out.push(t);
+  }
+  return out.sort((a,b)=>String(dnum(a)).localeCompare(String(dnum(b)),undefined,{numeric:true}));
+}
+function exportContext(){
+  const tab=isVirtual()?ORG:(ORG+" "+division);
+  const typeSel=$("fType"); const typeTxt=typeSel&&typeSel.value?typeSel.options[typeSel.selectedIndex].text:"all types";
+  const area=$("fArea").value||"all areas";
+  const q=$("fSearch").value.trim();
+  return {tab, seg:EXPORT_SEG_LBL[statusFilter]||statusFilter||"ALL", type:typeTxt, area, q};
+}
+function exportTodayLbl(t){
+  if(t.state==="a")return "ASSIGNED";
+  if(t.state==="d")return "X / DOWN";
+  if(t.state==="n")return "NO WORK";
+  return isOffNow(t)?"OFF":"OPEN";
+}
+function exportRows(list){
+  const hosLeft=(t)=>{ if(!hosFresh(t)||t.hos_drive_ms==null)return ""; const ms=t.hos_drive_ms; if(ms<=0)return "0h"; return Math.floor(ms/3600e3)+"h"+String(Math.floor((ms%3600e3)/60000)).padStart(2,"0"); };
+  const dest=(t)=>(t.nm_dest||[]).map(d=>[d.c||d.n,d.d||d.m].filter(Boolean).join(" → ")).join(" + ");
+  const offE=(t)=>{ const o=offOf(t); return o?((OFF_LBL[o.reason]||o.reason)+" "+mdy(o.from_date)+"–"+mdy(o.to_date)):""; };
+  return list.map(t=>({
+    "Truck":dnum(t), "Driver":t.driver||"", "Phone":t.phone||"", "Org":t.org_id, "Tab":t.division||"", "Area":t.area||"",
+    "Owner":t.owner_name||"", "Trailer":trlTxt(t)||"", "Status":(STATUS_LBL[t.status]||t.status||""), "Today":exportTodayLbl(t),
+    "In NewMile":(t.nm_confirmed||(t.nm_dest&&t.nm_dest.length))?"yes":"", "Order / destination":dest(t),
+    "Loads today":t.loads_today||0, "Last load":t.last_load_date||"", "HOS left":hosLeft(t),
+    "Earned today":t.rev_day?Number(t.rev_day).toFixed(2):"", "Earned week":t.rev_week?Number(t.rev_week).toFixed(2):"",
+    "Time off":offE(t), "Return":t.return_date||"", "Note":[t.status_note,t.note].filter(Boolean).join(" · ")
+  }));
+}
+function exportCsvText(rows){
+  if(!rows.length)return "";
+  const cols=Object.keys(rows[0]);
+  const cell=(v)=>{ v=String(v==null?"":v); return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+  return "﻿"+cols.join(",")+"\r\n"+rows.map(r=>cols.map(c=>cell(r[c])).join(",")).join("\r\n");
+}
+function exportListText(list,ctx){
+  const head=`${ctx.tab} · ${ctx.seg} · ${mdy(date)} — ${list.length} truck${list.length===1?"":"s"}`;
+  return head+"\n"+list.map(t=>`• ${dnum(t)} (${t.driver||"no driver"}) — ${exportTodayLbl(t)}${t.area?" · "+t.area:""}${t.note?" · "+t.note:""}`).join("\n");
+}
+async function exportCopy(kind){
+  const list=visibleTrucks(), ctx=exportContext();
+  const txt=kind==="csv"?exportCsvText(exportRows(list)).replace(/^﻿/,""):exportListText(list,ctx);
+  try{await navigator.clipboard.writeText(txt);}catch(e){const ta=document.createElement("textarea");ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);}
+  toast(`Copied ${list.length} truck${list.length===1?"":"s"} ${kind==="csv"?"as CSV":"as a list"} ✓`);
+}
+function exportCsvDownload(){
+  const list=visibleTrucks(), ctx=exportContext();
+  const csv=exportCsvText(exportRows(list));
+  const safe=(s)=>String(s).replace(/[^A-Za-z0-9_-]+/g,"_").replace(/^_+|_+$/g,"");
+  const name=`tracker_${safe(ctx.tab)}_${safe(ctx.seg)}_${date}.csv`;
+  const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+  toast(`Downloading ${name} (${list.length} trucks)`);
+}
+function openExport(){
+  const list=visibleTrucks(), ctx=exportContext();
+  const chips=[["Tab",ctx.tab],["Filter",ctx.seg],["Type",ctx.type],["Area",ctx.area],["Search",ctx.q||"—"]]
+    .map(([k,v])=>`<span style="display:inline-block;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:3px 8px;font-size:12px;margin:2px 4px 2px 0;"><b>${esc(k)}:</b> ${esc(v)}</span>`).join("");
+  const preview=list.slice(0,12).map(t=>`<div style="font-size:12.5px;padding:2px 0;border-bottom:1px dashed var(--line);">${esc(dnum(t))} · ${esc(t.driver||"no driver")} · <span style="color:var(--mut);">${esc(exportTodayLbl(t))}${t.area?" · "+esc(t.area):""}</span></div>`).join("")
+    +(list.length>12?`<div style="font-size:12px;color:var(--mut);padding:4px 0;">… and ${list.length-12} more</div>`:"");
+  openModal(`<h3>⬇ Export — ${list.length} truck${list.length===1?"":"s"}</h3>
+    <p style="font-size:12.5px;color:var(--mut);margin:0 0 6px;">Exactly what the filters show right now (${esc(mdy(date))}):</p>
+    <div style="margin-bottom:8px;">${chips}</div>
+    <div style="max-height:32vh;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:10px;">${preview||'<div style="color:var(--mut);font-size:12.5px;">No trucks match the current filters.</div>'}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <button class="b-save" onclick="exportCsvDownload()" ${list.length?"":"disabled"}>📥 Download CSV (Excel)</button>
+      <button class="b-save" style="background:var(--navy);" onclick="exportCopy('csv')" ${list.length?"":"disabled"}>📋 Copy CSV</button>
+      <button class="b-save" style="background:var(--navy);grid-column:1 / -1;" onclick="exportCopy('list')" ${list.length?"":"disabled"}>💬 Copy as a list (for a message)</button>
+    </div>
+    <div class="actions"><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
 }
 
 // ---------- 📝 NOTES HISTORY — every note EVER, from every source, one timeline ----------
