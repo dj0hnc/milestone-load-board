@@ -565,6 +565,13 @@ function createRouter({ config, newmile, log }) {
     res.json({ ok: true, config: cfg });
   });
 
+  // 🧹 removed (archived) trucks — for the ZONES clean-up view (restore = /api/truck/:org/:n/restore?yes=1)
+  router.get('/api/trucks/removed', (req, res) => {
+    res.json({ ok: true, trucks: all(`SELECT t.org_id, t.number, t.display_number, t.division, t.driver, t.owner_name, t.is_sub, t.last_load_date, t.updated_at
+                                       FROM trucks t JOIN orgs o ON o.id = t.org_id WHERE o.enabled = 1 AND t.archived = 1
+                                       ORDER BY t.updated_at DESC LIMIT 600`) });
+  });
+
   router.get('/api/states-key', (req, res) => {
     res.json({
       key: statesKey,

@@ -135,6 +135,16 @@ body.dark .pill.off{background:rgba(200,120,60,.2);color:#f0a570;}
 .mv button.auto.on{background:var(--line);color:var(--ink);}
 .mv.manual{box-shadow:0 0 0 2px var(--gold);}
 .empty{padding:22px;text-align:center;color:var(--mut);}
+/* 🧹 clean-up mode */
+.cleaning .row{grid-template-columns:30px 96px minmax(0,1.3fr) minmax(0,1.6fr) 96px auto;}
+.row .ck{display:flex;align-items:center;justify-content:center;}
+.row .ck input{width:20px;height:20px;accent-color:var(--red);cursor:pointer;}
+.row.sel{background:var(--red-bg);}
+.cleanbar{position:sticky;top:64px;z-index:30;background:var(--card);border:1.5px solid var(--red);border-radius:12px;box-shadow:var(--sh-card);padding:8px 12px;margin:0 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;}
+.cleanbar b{font-family:'Barlow Condensed';font-size:17px;letter-spacing:.5px;}
+.cleanbar .sp{flex:1;}
+.row .rs{border:1.5px solid var(--green);color:var(--green);background:transparent;border-radius:9px;padding:6px 10px;font-family:'Barlow Condensed';font-weight:800;font-size:12.5px;letter-spacing:.5px;cursor:pointer;}
+@media (max-width:760px){ .cleaning .row{grid-template-columns:30px 82px minmax(0,1fr) 84px auto;} }
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 16px;border-radius:12px;font-size:13.5px;box-shadow:var(--sh-card);z-index:70;opacity:0;transition:opacity .2s;pointer-events:none;}
 .toast.show{opacity:1;}
 @media (max-width:760px){
@@ -148,6 +158,7 @@ body.dark .pill.off{background:rgba(200,120,60,.2);color:#f0a570;}
 <header>
   <h1>Milestone Texas <small>Dispatcher zones</small></h1>
   <div class="hspacer">
+    <button class="xlink" id="cleanBtn" onclick="toggleClean()" title="Tick trucks and remove them from the tracker (archived, not deleted — they come back by themselves if they haul or get assigned again)">🧹 CLEAN UP</button>
     <button class="xlink" id="editBtn" onclick="toggleEdit()" title="Draw / reshape zones and pick each dispatcher's color">✏️ EDIT ZONES</button>
     <a class="xlink" href="index.html" title="Back to the tracker">🚛 TRACKER</a>
     <a class="xlink" href="/full" target="_blank" title="Open the Load Board">📋 BOARD</a>
@@ -197,7 +208,9 @@ body.dark .pill.off{background:rgba(200,120,60,.2);color:#f0a570;}
       <button data-v="CACTUS" onclick="setOrg('CACTUS')">CACTUS</button>
       <button data-v="KT" onclick="setOrg('KT')">KT / CKJ</button>
     </div>
-    <label class="chk"><input type="checkbox" id="hideSubs" checked onchange="render()"> hide subhaulers</label>
+    <label class="chk"><input type="checkbox" id="hideSubs" onchange="render()"> hide subhaulers</label>
+    <label class="chk"><input type="checkbox" id="showRemoved" onchange="toggleRemoved()"> show removed</label>
+    <span class="chk" id="shownCount" style="cursor:default;"></span>
     <label class="chk"><input type="checkbox" id="onlyManual" onchange="render()"> moved by hand only</label>
   </div>
 
@@ -214,6 +227,7 @@ function toggleTheme(){localStorage.setItem("ct_theme",document.body.classList.c
 
 let board=null, DSP=[], ZONES=[], dispFilter="", orgFilter="";
 let editing=false, CFG=null, DIRTY=false, selZone=null, drawing=null, dragging=null;
+let cleaning=false, SEL=new Set(), REMOVED=null; // 🧹 clean-up selection + archived list
 const collapsed=new Set(JSON.parse(localStorage.getItem("zones.collapsed")||"[]"));
 const dsp=id=>(editing&&CFG?CFG.dispatchers:DSP).find(d=>d.id===id);
 const dname=id=>{const d=dsp(id);return d?d.name:"Unassigned";};
@@ -305,14 +319,76 @@ function render(){
     for(const t of l)html+=rowHtml(t);
     html+=`</div></div>`;
   }
-  $("groups").innerHTML=html||`<div class="empty">No trucks match.</div>`;
+  $("shownCount").textContent=`${shown.length} of ${(board.trucks||[]).filter(t=>!t.archived).length} active trucks shown`;
+  let bar="";
+  if(cleaning){
+    const visKeys=shown.map(t=>t.org_id+"|"+t.number); const nSel=visKeys.filter(k=>SEL.has(k)).length;
+    bar=`<div class="cleanbar">🧹 <b>${SEL.size}</b> selected
+      <button class="b" onclick="selAll(true)">Select all shown (${shown.length})</button>
+      <button class="b" onclick="selAll(false)" ${SEL.size?"":"disabled"}>Clear</button>
+      <span class="sp"></span>
+      <span style="color:var(--mut);font-size:12px;">Removed = archived, not deleted. They come back by themselves if they haul or get assigned in NewMile.</span>
+      <button class="b danger" onclick="removeSelected()" ${SEL.size?"":"disabled"}>🗑 Remove ${SEL.size} from the tracker</button>
+      <button class="b" onclick="toggleClean()">Done</button></div>`;
+    void nSel;
+  }
+  let removed="";
+  if(REMOVED){
+    const q=$("q").value.trim().toLowerCase();
+    const rl=REMOVED.filter(t=>!orgFilter||t.org_id===orgFilter).filter(t=>!q||[t.number,t.display_number,t.driver,t.owner_name].join(" ").toLowerCase().includes(q));
+    removed=`<div class="group none"><h3><span class="chev">🗄</span>Removed from the tracker <span class="n">${rl.length}</span><span class="zones">archived — ↩ Restore puts one back on the board</span></h3><div class="rows">`+
+      (rl.length?rl.map(t=>`<div class="row" style="grid-template-columns:96px minmax(0,1.3fr) minmax(0,1.6fr) auto;">
+        <div class="num">${esc(t.display_number||t.number)}<small>${t.org_id==="KT"?"KT / CKJ":"Cactus"}${t.is_sub?" · sub":""}</small></div>
+        <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ no driver"}</div>
+        <div class="where"><b>${esc(t.owner_name||"")}</b><span class="why">last load ${t.last_load_date?esc(t.last_load_date):"never"} · removed ${t.updated_at?esc(String(t.updated_at).slice(0,10)):""}</span></div>
+        <button class="rs" onclick="restoreTruck('${t.org_id}','${esc(t.number)}')">↩ Restore</button></div>`).join(""):`<div class="empty">Nothing removed.</div>`)+`</div></div>`;
+  }
+  $("groups").innerHTML=bar+(html||`<div class="empty">No trucks match.</div>`)+removed;
+  document.body.classList.toggle("cleaning",cleaning);
+}
+// ---- 🧹 clean-up: tick trucks, remove them in one go (archive), restore from the removed list
+function toggleClean(){ cleaning=!cleaning; if(!cleaning)SEL.clear(); $("cleanBtn").classList.toggle("on",cleaning); $("cleanBtn").textContent=cleaning?"🧹 CLEANING…":"🧹 CLEAN UP"; render(); }
+function selRow(k,on){ on?SEL.add(k):SEL.delete(k); render(); }
+function selAll(on){ if(!on){SEL.clear();render();return;} const all=pool(); const shown=dispFilter===""?all:all.filter(t=>(t.dispatcher_eff||"")===dispFilter); shown.forEach(t=>SEL.add(t.org_id+"|"+t.number)); render(); }
+async function removeSelected(){
+  if(!SEL.size)return;
+  const by=ensureWho(); if(!by){toast("Need your name to log the removals.");return;}
+  const list=[...SEL].map(k=>(board.trucks||[]).find(t=>t.org_id+"|"+t.number===k)).filter(Boolean);
+  const names=list.map(dnum); const preview=names.slice(0,25).join(", ")+(names.length>25?` … and ${names.length-25} more`:"");
+  if(!confirm(`Remove ${list.length} truck(s) from the tracker?\n\n${preview}\n\nNothing is deleted: history stays, and any of them comes back automatically if it hauls or gets assigned in NewMile again. You can also restore them from “show removed”.`))return;
+  let ok=0, fail=0;
+  for(const t of list){
+    try{
+      const r=await fetch(`api/truck/${encodeURIComponent(t.org_id)}/${encodeURIComponent(t.number)}/remove`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({by})});
+      if(r.status===401){location.href="login.html";return;}
+      if(r.ok){ok++; t.archived=1; SEL.delete(t.org_id+"|"+t.number);} else fail++;
+    }catch(e){fail++;}
+  }
+  toast(`Removed ${ok} truck(s)${fail?` · ${fail} failed`:""}.`);
+  if(REMOVED)REMOVED=null; await load(); if($("showRemoved").checked)await toggleRemoved(true);
+}
+async function toggleRemoved(force){
+  if(!force&&!$("showRemoved").checked){REMOVED=null;render();return;}
+  try{ const r=await fetch("api/trucks/removed"); if(r.status===401){location.href="login.html";return;} REMOVED=(await r.json()).trucks||[]; }
+  catch(e){ REMOVED=[]; toast("Could not load the removed list."); }
+  render();
+}
+async function restoreTruck(org,num){
+  const by=ensureWho(); if(!by){toast("Need your name.");return;}
+  try{
+    const r=await fetch(`api/truck/${encodeURIComponent(org)}/${encodeURIComponent(num)}/restore?yes=1`);
+    if(r.status===401){location.href="login.html";return;}
+    const j=await r.json(); if(!r.ok||!j.ok)throw new Error(j.error||r.status);
+    toast(`${j.truck} is back on the tracker.`); await load(); await toggleRemoved(true);
+  }catch(e){ toast("Could not restore: "+(e.message||e)); }
 }
 function rowHtml(t){
   const man=t.dispatcher_manual||"", eff=t.dispatcher_eff||"", list=(editing&&CFG?CFG.dispatchers:DSP);
+  const k=t.org_id+"|"+t.number, ck=cleaning?`<label class="ck"><input type="checkbox" ${SEL.has(k)?"checked":""} onchange="selRow('${esc(k)}',this.checked)"></label>`:"";
   const where=[t.org_id==="KT"?"KT / CKJ":"Cactus", t.division||"no division", t.area||t.parked_city||""].filter(Boolean).join(" · ");
   const mv=list.map(d=>`<button class="${d.id} ${eff===d.id?"on":""}" title="Move to ${esc(d.name)}" onclick="move('${t.org_id}','${esc(t.number)}','${d.id}')">${esc(d.short)}</button>`).join("")
     +`<button class="auto ${man?"":"on"}" title="Back to the automatic rule (${esc(dname(t.dispatcher_auto))})" onclick="move('${t.org_id}','${esc(t.number)}','')">AUTO</button>`;
-  return `<div class="row">
+  return `<div class="row ${cleaning&&SEL.has(k)?"sel":""}">${ck}
     <div class="num">${esc(dnum(t))}<small>${t.is_new?"⚑ new":man?"by hand":"auto"}</small></div>
     <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ no driver"}</div>
     <div class="where"><b>${esc(where)}</b><span class="why">${esc(t.dispatcher_why||"")}${man?` · rule says ${esc(dname(t.dispatcher_auto))}`:""}</span></div>
