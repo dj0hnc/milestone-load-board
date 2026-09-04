@@ -69,8 +69,9 @@ function autoOf(t) {
     return r('', 'KT truck without terminal — confirm', '');
   }
   if (org === 'CACTUS') {
-    if (t.is_sub) return r('', 'subhauler — assign by hand', '');
-    if (div === 'NORTH') return r('juan', 'Cactus North', 'NORTH');
+    // subs that already live in a division belong to that zone's dispatcher (Tony: "Cactus
+    // North" is Juan's whole tab, subs included); only the floating subs (no division) wait.
+    if (div === 'NORTH') return r('juan', t.is_sub ? 'Cactus North subhauler' : 'Cactus North', 'NORTH');
     if (div === 'SOUTH') {
       if (SW_AREAS.test(area)) return r('jimmy', 'Cactus South · yard ' + area + ' (South West)', 'SW');
       if (SE_AREAS.test(area)) return r('juan', 'Cactus South · yard ' + area + ' (South East)', 'SE');
@@ -80,6 +81,7 @@ function autoOf(t) {
       if (gz === 'SE' || gz === 'NORTH') return r('juan', 'Cactus South · GPS South East', 'SE');
       return r('', 'Cactus South — which side? confirm', '');
     }
+    if (t.is_sub) return r('', 'floating subhauler — assign by hand', '');
     return r('', 'no division yet', '');
   }
   return r('', 'assign by hand', '');
