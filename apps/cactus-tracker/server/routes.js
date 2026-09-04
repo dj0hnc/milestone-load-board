@@ -46,7 +46,7 @@ function createRouter({ config, newmile, log }) {
   }
   const crypto = require('crypto');
   const pinCookie = PIN ? crypto.createHash('sha256').update('cactus|' + PIN).digest('hex').slice(0, 40) : '';
-  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/board-truck', '/api/sync-assignments', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
+  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/board-truck', '/api/sync-assignments', '/api/sync-roster', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
   if (PIN) {
     router.use((req, res, next) => {
       if (OPEN_PATHS.includes(req.path)) return next();
@@ -516,6 +516,27 @@ function createRouter({ config, newmile, log }) {
       res.json({ ok: true, summary: await syncAssignments(newmile) });
     } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
     finally { _asgPokeBusy = false; }
+  });
+
+  // ROSTER SYNC por canal de máquina (2026-09-04): re-lee la flota de NewMile (tipo de troque,
+  // chofer, dueño) sin login de sesión. Debounce 60s. `reset_trailer_override` = números cuyo
+  // override manual de trailer se limpia ANTES del sync para que gane el tipo de NewMile.
+  let _rosterPokeAt = 0, _rosterPokeBusy = false;
+  router.post('/api/sync-roster', async (req, res) => {
+    if (String((req.query || {}).key || (req.body || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    if (!newmile) return res.status(503).json({ error: 'NewMile not configured' });
+    if (_rosterPokeBusy || Date.now() - _rosterPokeAt < 60000) return res.json({ ok: true, debounced: true });
+    _rosterPokeAt = Date.now(); _rosterPokeBusy = true;
+    try {
+      const nums = [...new Set(((req.body || {}).reset_trailer_override || []).map(normNum).filter(Boolean))].slice(0, 200);
+      let reset = 0;
+      for (const n of nums) reset += (run('UPDATE trucks SET trailer_override = 0 WHERE (UPPER(number) = UPPER(?) OR UPPER(display_number) = UPPER(?)) AND archived = 0', n, n).changes || 0);
+      if (!newmile.connected && !(await newmile.resume())) return res.status(401).json({ error: 'NOT_CONNECTED' });
+      const roster = await syncRoster(newmile);
+      bumpRev();
+      res.json({ ok: true, reset, roster });
+    } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+    finally { _rosterPokeBusy = false; }
   });
 
   router.get('/api/states-key', (req, res) => {

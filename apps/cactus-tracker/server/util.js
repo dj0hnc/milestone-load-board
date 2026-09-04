@@ -50,7 +50,9 @@ const TRAILER_SHORT = {
   'ALUMINUM END DUMP': 'AL-ED', 'END DUMP': 'ED', 'STEEL END DUMP': 'ST-ED',
   'ROUND BODY END DUMP': 'RB-ED', 'SUPER DUMP W/ STEEL BED': 'SD Steel',
   'SUPER DUMP W/ DEMO BED': 'SD Demo', 'BELLY DUMP': 'BD',
-  'ALUMINUM TRACTOR TRAILER': 'AL-TT', 'DEMO': 'Demo'
+  'ALUMINUM TRACTOR TRAILER': 'AL-TT', 'DEMO': 'Demo',
+  // 2026-09-04: NewMile day-cab / sleeper-cab end dump types (Juan re-typed 23 CE trucks)
+  'END DUMP W/ DAY CAB': 'ED-DC', 'END DUMP W/ SLEEPER CAB': 'ED-SC'
 };
 function shortTrailer(t) {
   const k = normNum(t);
