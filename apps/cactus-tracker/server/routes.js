@@ -459,8 +459,10 @@ function createRouter({ config, newmile, log }) {
     const today = todayCT();
     const trucks = all(`SELECT t.org_id, t.number, t.display_number, t.division, t.driver, t.status, t.status_note,
                                t.note, t.return_date, t.rest_days, t.updated_at,
-                               t.hos_drive_ms, t.hos_cycle_ms, t.hos_at
+                               t.hos_drive_ms, t.hos_cycle_ms, t.hos_at,
+                               t.area, t.parked_city, t.is_sub, t.last_lat, t.last_lon, t.dispatcher
                         FROM trucks t JOIN orgs o ON o.id = t.org_id WHERE o.enabled = 1 AND t.archived = 0`);
+    trucks.forEach(zones.decorate); // 🗺 owner (Juan / Mary / Jimmy) for the board's chips
     const states = new Map(all('SELECT org_id, number, state FROM dispatch_state WHERE date = ?', today)
       .map(r => [r.org_id + '|' + r.number, r.state]));
     // 💰 dinero freight de HOY y de la SEMANA (Lun-Sáb) por troke — para los chips del board
@@ -493,7 +495,9 @@ function createRouter({ config, newmile, log }) {
         hosLeftMs: (t.hos_at && (Date.now() - Date.parse(t.hos_at)) < 20 * 3600e3) ? (t.hos_drive_ms != null ? t.hos_drive_ms : null) : null,
         hosCycleMs: (t.hos_at && (Date.now() - Date.parse(t.hos_at)) < 20 * 3600e3) ? (t.hos_cycle_ms != null ? t.hos_cycle_ms : null) : null,
         revDay: (revs.get(t.org_id + '|' + t.number) || {}).rd || 0,
-        revWeek: (revs.get(t.org_id + '|' + t.number) || {}).rw || 0
+        revWeek: (revs.get(t.org_id + '|' + t.number) || {}).rw || 0,
+        // 🗺 dispatcher zone owner: effective (manual wins), automatic rule, and why
+        owner: t.dispatcher_eff || '', ownerAuto: t.dispatcher_auto || '', ownerManual: t.dispatcher_manual || '', ownerWhy: t.dispatcher_why || ''
       };
     }
     res.setHeader('Cache-Control', 'no-store');
