@@ -241,7 +241,7 @@ async function syncRoster(client) {
       const parsed = splitNameFlag(rawName);
       let number = canonicalTruckNumber(org.id, parsed.number); // "KT-7040 P" → 7040 (llave)
       let display = displayTruckNumber(rawName);                // "KT-7040 P" (como NewMile)
-      const flag = parsed.flag;
+      let flag = parsed.flag; // let: se reasigna abajo (bandera ya descartada) — era const y tronaba TODO el roster sync
       if (!number) continue;
       const driver = (t.driver_name || t.driver || '').trim();
       const trailer = shortTrailer(t.truck_type || t.trailer_type || ''); // "Aluminum End Dump" → AL-ED
