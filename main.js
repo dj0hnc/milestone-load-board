@@ -800,6 +800,26 @@ function openSfWindow() {
   sfWin.on('closed', () => { sfWin = null; });
 }
 ipcMain.handle('nm:sfOpen', () => { openSfWindow(); return true; });
+
+/*
+ * 🗺 ZONAS DE DESPACHO — static map of the dispatcher zone split (Juan / Mary / Jimmy)
+ * with the full truck roster and zone-activity from NewMile tickets. Self-contained page
+ * (renderer/zonas.html); needs no NewMile connection, so the button is always enabled.
+ */
+let zonasWin = null;
+function openZonasWindow() {
+  if (zonasWin && !zonasWin.isDestroyed()) { zonasWin.focus(); return; }
+  zonasWin = new BrowserWindow({
+    width: 1240, height: 940, minWidth: 760, minHeight: 560,
+    backgroundColor: '#181a16',
+    title: 'Zonas de Despacho — Juan / Mary / Jimmy',
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
+  });
+  zonasWin.removeMenu();
+  zonasWin.loadFile(path.join(__dirname, 'renderer', 'zonas.html'));
+  zonasWin.on('closed', () => { zonasWin = null; });
+}
+ipcMain.handle('nm:zonasOpen', () => { openZonasWindow(); return true; });
 ipcMain.handle('nm:sfBuild', async (_e, p) => {
   try {
     const st = client && client.status ? client.status() : null;

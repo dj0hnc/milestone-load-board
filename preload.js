@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('newmile', {
   ocr: (image) => ipcRenderer.invoke('nm:ocr', { image }),
   scanPlan: () => ipcRenderer.invoke('nm:scanPlan'),
   sfOpen: () => ipcRenderer.invoke('nm:sfOpen'),
+  zonasOpen: () => ipcRenderer.invoke('nm:zonasOpen'),
   sfBuild: (p) => ipcRenderer.invoke('nm:sfBuild', p),
   sfSend: (p) => ipcRenderer.invoke('nm:sfSend', p),
   sfSaveCsv: () => ipcRenderer.invoke('nm:sfSaveCsv'),

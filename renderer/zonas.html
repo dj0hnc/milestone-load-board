@@ -1,3 +1,6 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Zonas de Despacho TX</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
@@ -101,6 +104,9 @@ td.num{font-variant-numeric:tabular-nums}
 .zbar i{display:block;height:100%}
 .zbar i+i{margin-left:2px}
 .muted{color:var(--ink3)}
+.osel{font:inherit;font-size:12.5px;font-weight:600;color:var(--ink);background:var(--surface);
+  border:1px solid var(--line);border-radius:6px;padding:2px 4px;max-width:170px;cursor:pointer}
+.osel:focus-visible{outline:2px solid var(--juan);outline-offset:1px}
 .hibtag{font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--gold);border:1px solid var(--gold);
   border-radius:5px;padding:1px 6px;margin-left:6px;vertical-align:1px}
 .count{font-size:13px;color:var(--ink2);margin:8px 2px 0}
@@ -330,6 +336,16 @@ for(const raw of CACTUS){
   push({num:"C"+n,fleet:"Cactus Express",owner,why,act:a,hib,down});
 }
 
+/* ============ REASIGNACIÓN MANUAL ============ */
+// Overrides por troka (se guardan en esta máquina). "" = automático.
+let OVR={};try{OVR=JSON.parse(localStorage.getItem("zonas.ovr")||"{}")||{}}catch(e){OVR={}}
+function effOwner(t){return (t.owner!=="na"&&OVR[t.num])||t.owner}
+function setOvr(num,v){
+  if(v)OVR[num]=v;else delete OVR[num];
+  try{localStorage.setItem("zonas.ovr",JSON.stringify(OVR))}catch(e){}
+  tiles();buildFilters();render();
+}
+
 /* ============ RENDER ============ */
 function zbar(a){
   if(!a)return `<span class="muted">—</span>`;
@@ -342,16 +358,24 @@ function zbar(a){
 }
 function ownerCell(t){
   if(t.owner==="na")return `<span class="own"><i class="dot na"></i><span class="muted">Fuera de servicio</span></span>`;
-  if(t.owner==="conf")return `<span class="own"><i class="dot na"></i><span class="muted">Por confirmar</span></span>`;
-  return `<span class="own"><i class="dot ${t.owner}"></i>${OWNER[t.owner]}${t.hib?'<span class="hibtag">HÍBRIDA</span>':""}</span>`;
+  const eff=effOwner(t),man=!!OVR[t.num];
+  const dot=eff==="conf"?"na":eff;
+  const opt=(v,l)=>`<option value="${v}"${(OVR[t.num]||"")===v?" selected":""}>${l}</option>`;
+  const auto=t.owner==="conf"?"Auto (por confirmar)":"Auto ("+OWNER[t.owner]+")";
+  return `<span class="own"><i class="dot ${dot}"></i>`+
+    `<select class="osel" data-num="${t.num}" aria-label="Reasignar ${t.num}">`+
+    opt("",auto)+opt("juan","Juan")+opt("mary","Mary")+opt("jimmy","Jimmy")+`</select>`+
+    (man?'<span class="hibtag" style="color:var(--ink2);border-color:var(--ink3)">MANUAL</span>':"")+
+    (t.hib?'<span class="hibtag">HÍBRIDA</span>':"")+`</span>`;
 }
 let FILTER="all",Q="";
-const FDEFS=[["all","Todas"],["juan","Juan"],["mary","Mary"],["jimmy","Jimmy"],["hib","Híbridas"],["conf","Por confirmar"]];
+const FDEFS=[["all","Todas"],["juan","Juan"],["mary","Mary"],["jimmy","Jimmy"],["hib","Híbridas"],["conf","Por confirmar"],["man","Manuales"]];
 function match(t){
   if(Q&&!(t.num.toLowerCase().includes(Q)||t.fleet.toLowerCase().includes(Q)))return false;
   if(FILTER==="all")return t.owner!=="na";
   if(FILTER==="hib")return !!t.hib;
-  return t.owner===FILTER;
+  if(FILTER==="man")return !!OVR[t.num];
+  return effOwner(t)===FILTER;
 }
 function render(){
   const rows=TRUCKS.filter(match);
@@ -367,23 +391,32 @@ function render(){
   document.getElementById("count").textContent=rows.length+" trokas · "+rows.reduce((s,t)=>s+(t.act?t.act.l:0),0)+" loads en el periodo";
 }
 function buildFilters(){
+  const nOvr=Object.keys(OVR).length;
   document.getElementById("filters").innerHTML=
-    FDEFS.map(([k,l])=>`<button class="fbtn${k===FILTER?" on":""}" data-f="${k}">${l}</button>`).join("")+
-    `<input class="search" id="q" type="search" placeholder="Buscar troka…" aria-label="Buscar troka">`;
-  document.querySelectorAll(".fbtn").forEach(b=>b.addEventListener("click",()=>{FILTER=b.dataset.f;
+    FDEFS.map(([k,l])=>`<button class="fbtn${k===FILTER?" on":""}" data-f="${k}">${l}${k==="man"&&nOvr?" ("+nOvr+")":""}</button>`).join("")+
+    (nOvr?`<button class="fbtn" id="rst" title="Quitar todas las reasignaciones manuales de esta máquina">↺ Restablecer</button>`:"")+
+    `<input class="search" id="q" type="search" placeholder="Buscar troka…" aria-label="Buscar troka" value="${Q}">`;
+  document.querySelectorAll(".fbtn[data-f]").forEach(b=>b.addEventListener("click",()=>{FILTER=b.dataset.f;
     document.querySelectorAll(".fbtn").forEach(x=>x.classList.toggle("on",x===b));render();}));
+  const rst=document.getElementById("rst");
+  if(rst)rst.addEventListener("click",()=>{if(confirm("¿Quitar las "+nOvr+" reasignaciones manuales?")){OVR={};
+    try{localStorage.removeItem("zonas.ovr")}catch(e){};tiles();buildFilters();render();}});
   document.getElementById("q").addEventListener("input",e=>{Q=e.target.value.trim().toLowerCase();render();});
 }
+document.getElementById("tbody").addEventListener("change",e=>{
+  const s=e.target.closest(".osel");if(!s)return;
+  setOvr(s.dataset.num,s.value||null);
+});
 function tiles(){
-  const cnt=k=>TRUCKS.filter(t=>t.owner===k).length;
-  const hib=TRUCKS.filter(t=>t.hib).length, conf=TRUCKS.filter(t=>t.owner==="conf").length;
-  const loads=k=>TRUCKS.filter(t=>t.owner===k).reduce((s,t)=>s+(t.act?t.act.l:0),0);
+  const cnt=k=>TRUCKS.filter(t=>effOwner(t)===k).length;
+  const hib=TRUCKS.filter(t=>t.hib).length, conf=TRUCKS.filter(t=>effOwner(t)==="conf").length;
+  const loads=k=>TRUCKS.filter(t=>effOwner(t)===k).reduce((s,t)=>s+(t.act?t.act.l:0),0);
   document.getElementById("tiles").innerHTML=`
     <div class="tile juan"><div class="who">Juan</div><div class="big">${cnt("juan")}</div><div class="det">trokas · ${loads("juan")} loads (2 sem)</div></div>
     <div class="tile mary"><div class="who">Mary</div><div class="big">${cnt("mary")}</div><div class="det">trokas · ${loads("mary")} loads (2 sem)</div></div>
     <div class="tile jimmy"><div class="who">Jimmy</div><div class="big">${cnt("jimmy")}</div><div class="det">trokas · ${loads("jimmy")} loads (2 sem)</div></div>
     <div class="tile hib"><div class="who">Híbridas / por confirmar</div><div class="big">${hib} / ${conf}</div><div class="det">cruzan zonas · sin actividad en 2 sem</div></div>`;
 }
-document.getElementById("foot").textContent="Fuente: roster y tickets de NewMile (17 ago – 1 sep 2026). Las trokas KT se asignan por terminal (R/W → Mary, P → Jimmy); los ICs de CKJ van con Mary; la flota Cactus se propone por la zona donde cargó — las híbridas cruzaron zonas y hay que decidirlas con Tony. Coordenadas de plantas desde NewMile; el mapa es esquemático, no a escala de carretera.";
+document.getElementById("foot").textContent="Fuente: roster y tickets de NewMile (17 ago – 1 sep 2026). Las trokas KT se asignan por terminal (R/W → Mary, P → Jimmy); los ICs de CKJ van con Mary; la flota Cactus se propone por la zona donde cargó — las híbridas cruzaron zonas y hay que decidirlas con Tony. Coordenadas de plantas desde NewMile; el mapa es esquemático, no a escala de carretera. Puedes reasignar cualquier troka con el selector de la columna Asignada a — los cambios manuales se guardan en esta máquina y los contadores se actualizan solos.";
 buildMap();tiles();buildFilters();render();
 </script>

@@ -313,6 +313,7 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   $('#btnDisconnect').onclick=async()=>{ stopAuto(); setStatus(await window.newmile.disconnect()); toast('Disconnected.'); };
   $('#btnRefresh').onclick=()=>refreshDay(true);   // manual click forces a sequence re-assert
   $('#btnSf').onclick=()=>window.newmile.sfOpen(); // 📉 weekly service failures + GP of lost loads
+  $('#btnZonas').onclick=()=>window.newmile.zonasOpen(); // 🗺 dispatcher zone map (static, no connection needed)
 
   // Board → shell bridge: push handoff + dashcam snapshot requests.
   window.addEventListener('message', async (e)=>{
