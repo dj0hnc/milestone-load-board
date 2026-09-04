@@ -363,6 +363,7 @@ function createRouter({ config, newmile, log }) {
       }
       sets.push(`${f} = ?`); vals.push(v == null ? '' : v);
     }
+    if ('is_sub' in (req.body || {})) { sets.push('is_sub = ?'); vals.push(req.body.is_sub ? 1 : 0); } // 🧭 SUBS tab ↔ fleet tab (ZONES)
     if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
     // corregir el tipo a mano lo blinda contra el sync de NewMile
     if ('trailer_type' in (req.body || {})) sets.push('trailer_override = 1');
@@ -372,6 +373,7 @@ function createRouter({ config, newmile, log }) {
     // multi-user audit + today's snapshot (quién cambió qué, y cómo quedó el día)
     const by = String((req.body || {}).by || '').slice(0, 40);
     for (const f of EDITABLE) if (f in (req.body || {})) logChange(orgId, number, f, row[f], updated[f], by);
+    if ('is_sub' in (req.body || {}) && (row.is_sub ? 1 : 0) !== (updated.is_sub ? 1 : 0)) logChange(orgId, number, 'is_sub', row.is_sub ? 'SUB' : 'fleet', updated.is_sub ? 'SUB' : 'fleet', by);
     snapshotTruckDay(updated);
     // el switch de disponibilidad cambió aquí → misma bandera al board, al instante
     if ('status' in (req.body || {}) && updated.status !== row.status) {

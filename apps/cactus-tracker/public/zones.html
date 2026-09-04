@@ -122,6 +122,7 @@ body.dark .seg button.on{background:var(--gold);color:#1C2333;}
 .row .where{color:var(--mut);font-size:12px;line-height:1.35;overflow:hidden;}
 .row .where b{color:var(--ink);font-weight:600;}
 .row .why{display:block;font-size:11px;color:var(--mut);opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.row select.tab{display:block;margin-top:4px;font-size:11.5px;padding:3px 6px;max-width:190px;border-radius:7px;font-family:'Barlow Condensed';font-weight:700;letter-spacing:.4px;}
 .pill{font-family:'Barlow Condensed';font-weight:800;font-size:12px;letter-spacing:.7px;text-transform:uppercase;border-radius:8px;padding:5px 8px;text-align:center;white-space:nowrap;}
 .pill.a{background:var(--green-bg);color:var(--green);} .pill.d{background:var(--red-bg);color:var(--red);}
 .pill.n{background:var(--yellow-bg);color:var(--yellow);} .pill.off{background:#fdeedd;color:#a8622f;} .pill.p{background:var(--blue-bg);color:var(--blue);}
@@ -391,10 +392,41 @@ function rowHtml(t){
   return `<div class="row ${cleaning&&SEL.has(k)?"sel":""}">${ck}
     <div class="num">${esc(dnum(t))}<small>${t.is_new?"⚑ new":man?"by hand":"auto"}</small></div>
     <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ no driver"}</div>
-    <div class="where"><b>${esc(where)}</b><span class="why">${esc(t.dispatcher_why||"")}${man?` · rule says ${esc(dname(t.dispatcher_auto))}`:""}</span></div>
+    <div class="where"><b>${esc(where)}</b><span class="why">${esc(t.dispatcher_why||"")}${man?` · rule says ${esc(dname(t.dispatcher_auto))}`:""}</span>${tabSelect(t)}</div>
     ${todayPill(t)}
     <div class="mv ${man?"manual":""}">${mv}</div>
   </div>`;
+}
+// ---- 🧭 which TAB of the tracker the truck lives in (org · division, or SUBS) — editable right here
+function tabValue(t){ return (t.is_sub&&!(t.org_id==="KT"&&t.division==="ICS"))?"SUB":(t.org_id+"|"+(t.division||"")); }
+function tabSelect(t){
+  const cur=tabValue(t);
+  const opts=(board.divisions||[]).map(d=>{const v=d.org_id+"|"+d.id;return `<option value="${esc(v)}" ${cur===v?"selected":""}>${esc(d.org_id==="KT"?"KT/CKJ":"CACTUS")} · ${esc(d.label)}</option>`;}).join("")
+    +`<option value="SUB" ${cur==="SUB"?"selected":""}>SUBS (subhauler)</option>`
+    +(cur!=="SUB"&&!(board.divisions||[]).some(d=>d.org_id+"|"+d.id===cur)?`<option value="${esc(cur)}" selected>${esc(t.org_id)} · no division</option>`:"");
+  return `<select class="tab" title="Move this truck to another tab of the tracker (org / division / SUBS)" onchange="moveTab('${t.org_id}','${esc(t.number)}',this.value,this)">${opts}</select>`;
+}
+async function moveTab(org,num,to,el){
+  const t=(board.trucks||[]).find(x=>x.org_id===org&&x.number===num); if(!t)return;
+  const by=ensureWho(); if(!by){toast("Need your name to log the move.");if(el)el.value=tabValue(t);return;}
+  try{
+    if(to==="SUB"){
+      const r=await fetch(`api/truck/${encodeURIComponent(org)}/${encodeURIComponent(num)}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({is_sub:1,by})});
+      if(r.status===401){location.href="login.html";return;}
+      if(!r.ok)throw new Error((await r.json()).error||r.status);
+      toast(`${dnum(t)} → SUBS tab`);
+    }else{
+      const [torg,div]=to.split("|"); if(!div)throw new Error("pick a division");
+      const r=await fetch(`api/truck/${encodeURIComponent(org)}/${encodeURIComponent(num)}/confirm-new`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({org:torg,division:div,by})});
+      if(r.status===401){location.href="login.html";return;}
+      if(!r.ok)throw new Error((await r.json()).error||r.status);
+      // fleet tabs are NOT subs (CKJ ICS keeps its IC flag, the tracker treats it as its own tab)
+      const sub=(torg==="KT"&&div==="ICS")?(t.is_sub?1:0):0;
+      if((t.is_sub?1:0)!==sub) await fetch(`api/truck/${encodeURIComponent(torg)}/${encodeURIComponent(num)}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({is_sub:sub,by})});
+      toast(`${dnum(t)} → ${torg==="KT"?"KT/CKJ":"CACTUS"} · ${div}`);
+    }
+    await load();
+  }catch(e){ toast("Could not move: "+(e.message||e)); if(el)el.value=tabValue(t); }
 }
 function toggleGroup(key){collapsed.has(key)?collapsed.delete(key):collapsed.add(key);localStorage.setItem("zones.collapsed",JSON.stringify([...collapsed]));render();}
 
