@@ -316,6 +316,7 @@ function migrate(d) {
   addCol(d, 'trucks', 'baja_dismissed_at', "TEXT DEFAULT ''"); // "keep" reciente: no re-avisar 21 días
   // segunda traila (ej. 1144: AL-ED + round bottom para rip rap). Manual, el sync no la toca.
   addCol(d, 'trucks', 'trailer_type2', "TEXT DEFAULT ''");
+  addCol(d, 'trucks', 'dispatcher', "TEXT DEFAULT ''"); // 🗺 manual zone owner (juan|mary|jimmy); '' = automatic rule (zones.js)
   // nombre/username del vehículo tal como aparece en Samsara (para cotejar en el lápiz)
   addCol(d, 'trucks', 'samsara_name', "TEXT DEFAULT ''");
   // de cuál fleet/org de Samsara salió el vehículo (CACTUS o KT/CKJ)

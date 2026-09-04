@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>🗺 Zones — Milestone</title>
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+/* Same Milestone tokens as the tracker so both pages feel like one product. */
+:root{
+  --navy:#31353A; --navy2:#3B4046; --gold:#B89A4E; --gold-d:#9C8140;
+  --bg:#F2F0EB; --card:#FFFFFF; --ink:#2B2D30; --mut:#8A8D92; --line:#E5E2DB;
+  --green:#4E8C63; --green-bg:#EAF2EC; --red:#B0442F; --red-bg:#F7EAE6;
+  --blue:#3F7080; --blue-bg:#E9F0F2; --warm:#FDF8EC; --yellow:#8a6d00; --yellow-bg:#FBF3D0;
+  --sh-card:0 1px 2px rgba(20,20,20,.06),0 4px 14px rgba(20,20,20,.07);
+  --juan:#3F7080; --mary:#7A2FA8; --jimmy:#4E8C63; --none:#9a9ea6;
+  --map-ground:#ECEAE3; --map-road:#c9c5b8; --map-river:#7fa6bf; --map-city:#6b6e73;
+}
+body.dark{
+  --navy:#141b24; --navy2:#0e1a2e; --gold:#C8991F; --gold-d:#e3b84a;
+  --bg:#1C2333; --card:#141b24; --ink:#e8ecf3; --mut:#8f97ab; --line:#2e3a47;
+  --green:#22c55e; --green-bg:rgba(34,197,94,.14); --red:#ff6b52; --red-bg:rgba(234,78,44,.16);
+  --blue:#5a95f9; --blue-bg:rgba(90,149,249,.14); --warm:#2d2617; --yellow:#e3c452; --yellow-bg:rgba(217,180,48,.16);
+  --sh-card:0 1px 2px rgba(0,0,0,.35),0 4px 14px rgba(0,0,0,.4);
+  --juan:#5a95f9; --mary:#b07be0; --jimmy:#22c55e; --none:#6f7686;
+  --map-ground:#1a2130; --map-road:#3a4557; --map-river:#4f7a99; --map-city:#9aa3b5;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{font-family:'Poppins',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;}
+header{background:var(--navy);color:#fff;padding:12px 14px 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:40;}
+h1{font-family:'Barlow Condensed';font-weight:800;font-size:24px;letter-spacing:1px;text-transform:uppercase;line-height:1;}
+h1 small{font-weight:600;font-size:13px;color:var(--gold);letter-spacing:1.5px;display:block;line-height:1.2;}
+.hspacer{margin-left:auto;display:flex;gap:8px;align-items:center;}
+.xlink{font-family:'Barlow Condensed';font-weight:700;font-size:14px;letter-spacing:1px;color:#fff;text-decoration:none;border:1.5px solid rgba(255,255,255,.35);border-radius:9px;padding:6px 10px;background:transparent;cursor:pointer;}
+.xlink:hover{border-color:var(--gold);color:var(--gold);}
+.wrap{max-width:1180px;margin:0 auto;padding:12px 14px 80px;}
+.hint{font-size:12.5px;color:var(--mut);margin:2px 0 10px;}
+.hint b{color:var(--ink);}
+
+/* tiles */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:8px 0 12px;}
+.tile{background:var(--card);border:1px solid var(--line);border-top:4px solid var(--line);border-radius:12px;padding:10px 12px 9px;box-shadow:var(--sh-card);cursor:pointer;transition:transform .06s;}
+.tile:active{transform:scale(.98);}
+.tile.sel{box-shadow:0 0 0 2px var(--gold),var(--sh-card);}
+.tile .who{font-family:'Barlow Condensed';font-weight:800;font-size:15px;letter-spacing:1px;text-transform:uppercase;}
+.tile .big{font-family:'Barlow Condensed';font-weight:800;font-size:34px;line-height:1;margin:2px 0;font-variant-numeric:tabular-nums;}
+.tile .det{font-size:11.5px;color:var(--mut);line-height:1.35;}
+.tile .det b{color:var(--ink);}
+.tile.juan{border-top-color:var(--juan);} .tile.juan .who{color:var(--juan);}
+.tile.mary{border-top-color:var(--mary);} .tile.mary .who{color:var(--mary);}
+.tile.jimmy{border-top-color:var(--jimmy);} .tile.jimmy .who{color:var(--jimmy);}
+.tile.none{border-top-color:var(--none);} .tile.none .who{color:var(--mut);}
+
+/* map */
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh-card);padding:12px;margin-bottom:12px;}
+.card h2{font-family:'Barlow Condensed';font-weight:800;font-size:16px;letter-spacing:1px;text-transform:uppercase;color:var(--mut);margin-bottom:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.card h2 .lg{margin-left:auto;display:flex;gap:10px;font-family:'Poppins';font-weight:600;font-size:11.5px;letter-spacing:0;text-transform:none;}
+.lg i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px;}
+#map svg{display:block;width:100%;height:auto;border-radius:10px;}
+#map .truck{cursor:pointer;}
+.tip{position:fixed;display:none;background:var(--navy);color:#fff;font-size:12px;padding:5px 9px;border-radius:8px;pointer-events:none;z-index:60;box-shadow:var(--sh-card);white-space:nowrap;}
+
+/* controls */
+.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0 10px;}
+.controls input[type=text]{flex:1 1 200px;min-width:0;border:1.5px solid var(--line);border-radius:10px;padding:9px 12px;font:inherit;font-size:14px;background:var(--card);color:var(--ink);}
+.seg{display:flex;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card);box-shadow:var(--sh-card);}
+.seg button{border:none;background:transparent;color:var(--mut);font-family:'Barlow Condensed';font-weight:700;font-size:13.5px;letter-spacing:.6px;padding:8px 12px;cursor:pointer;border-right:1px solid var(--line);}
+.seg button:last-child{border-right:none;}
+.seg button.on{background:var(--navy);color:#fff;}
+body.dark .seg button.on{background:var(--gold);color:#1C2333;}
+.chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--mut);cursor:pointer;user-select:none;}
+.chk input{width:16px;height:16px;accent-color:var(--gold);}
+
+/* groups + rows */
+.group{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh-card);margin-bottom:12px;overflow:hidden;}
+.group h3{font-family:'Barlow Condensed';font-weight:800;font-size:17px;letter-spacing:1px;text-transform:uppercase;padding:10px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;border-left:6px solid var(--line);}
+.group h3 .n{font-size:13px;color:var(--mut);font-weight:700;}
+.group h3 .zones{margin-left:auto;font-family:'Poppins';font-weight:500;font-size:11.5px;letter-spacing:0;text-transform:none;color:var(--mut);text-align:right;}
+.group h3 .chev{color:var(--mut);}
+.group.juan h3{border-left-color:var(--juan);color:var(--juan);} .group.mary h3{border-left-color:var(--mary);color:var(--mary);}
+.group.jimmy h3{border-left-color:var(--jimmy);color:var(--jimmy);} .group.none h3{border-left-color:var(--none);color:var(--mut);}
+.group.closed .rows{display:none;}
+.row{display:grid;grid-template-columns:96px minmax(0,1.3fr) minmax(0,1.6fr) 96px auto;gap:8px 12px;align-items:center;padding:8px 14px;border-top:1px solid var(--line);font-size:13px;}
+.row:hover{background:var(--warm);}
+.row .num{font-family:'Barlow Condensed';font-weight:800;font-size:21px;line-height:1;letter-spacing:.3px;}
+.row .num small{display:block;font-family:'Poppins';font-weight:600;font-size:10px;letter-spacing:.6px;color:var(--mut);text-transform:uppercase;margin-top:2px;}
+.row .drv{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.row .drv.none{color:var(--red);}
+.row .where{color:var(--mut);font-size:12px;line-height:1.35;overflow:hidden;}
+.row .where b{color:var(--ink);font-weight:600;}
+.row .why{display:block;font-size:11px;color:var(--mut);opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pill{font-family:'Barlow Condensed';font-weight:800;font-size:12px;letter-spacing:.7px;text-transform:uppercase;border-radius:8px;padding:5px 8px;text-align:center;white-space:nowrap;}
+.pill.a{background:var(--green-bg);color:var(--green);} .pill.d{background:var(--red-bg);color:var(--red);}
+.pill.n{background:var(--yellow-bg);color:var(--yellow);} .pill.off{background:#fdeedd;color:#a8622f;} .pill.p{background:var(--blue-bg);color:var(--blue);}
+body.dark .pill.off{background:rgba(200,120,60,.2);color:#f0a570;}
+.mv{display:flex;border:1.5px solid var(--line);border-radius:9px;overflow:hidden;}
+.mv button{border:none;background:transparent;color:var(--mut);font-family:'Barlow Condensed';font-weight:800;font-size:12.5px;letter-spacing:.5px;width:40px;height:32px;cursor:pointer;border-right:1px solid var(--line);}
+.mv button:last-child{border-right:none;}
+.mv button.on{color:#fff;}
+.mv button.on.juan{background:var(--juan);} .mv button.on.mary{background:var(--mary);} .mv button.on.jimmy{background:var(--jimmy);}
+.mv button.auto{font-size:10.5px;width:44px;}
+.mv button.auto.on{background:var(--line);color:var(--ink);}
+.mv.manual{box-shadow:0 0 0 2px var(--gold);}
+.empty{padding:22px;text-align:center;color:var(--mut);}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 16px;border-radius:12px;font-size:13.5px;box-shadow:var(--sh-card);z-index:70;opacity:0;transition:opacity .2s;pointer-events:none;}
+.toast.show{opacity:1;}
+@media (max-width:760px){
+  .row{grid-template-columns:82px minmax(0,1fr) 84px auto;}
+  .row .where{grid-column:1 / -1;order:5;font-size:11.5px;}
+  .tile .big{font-size:28px;}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Milestone Texas <small>Dispatcher zones</small></h1>
+  <div class="hspacer">
+    <a class="xlink" href="index.html" title="Back to the tracker">🚛 TRACKER</a>
+    <a class="xlink" href="/full" target="_blank" title="Open the Load Board">📋 BOARD</a>
+    <button class="xlink" id="themeBtn" onclick="toggleTheme()" title="Light/dark theme">🌙</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="hint" id="hint">Who owns which truck. The rule is Tony's split (Sep 1): <b>Juan</b> Cactus North + South East · <b>Mary</b> KT Rhome, Whitewright + CKJ ICS · <b>Jimmy</b> KT Powderly + Cactus South West. Tap a name on any row to move a truck by hand — everybody sees the move.</div>
+  <div class="tiles" id="tiles"></div>
+
+  <div class="card">
+    <h2>🗺 Zone map <span style="font-family:'Poppins';font-weight:500;font-size:11.5px;letter-spacing:0;text-transform:none;">— dots are trucks at their last GPS position</span>
+      <span class="lg" id="legend"></span></h2>
+    <div id="map"></div>
+  </div>
+
+  <div class="controls">
+    <input type="text" id="q" placeholder="🔍 Search # / driver / yard / owner…" oninput="render()">
+    <div class="seg" id="segOrg">
+      <button data-v="" class="on" onclick="setOrg('')">ALL</button>
+      <button data-v="CACTUS" onclick="setOrg('CACTUS')">CACTUS</button>
+      <button data-v="KT" onclick="setOrg('KT')">KT / CKJ</button>
+    </div>
+    <label class="chk"><input type="checkbox" id="hideSubs" checked onchange="render()"> hide subhaulers</label>
+    <label class="chk"><input type="checkbox" id="onlyManual" onchange="render()"> moved by hand only</label>
+  </div>
+
+  <div id="groups"></div>
+</div>
+<div class="tip" id="tip"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function applyTheme(){document.body.classList.toggle("dark",localStorage.getItem("ct_theme")==="dark");$("themeBtn").textContent=document.body.classList.contains("dark")?"☀️":"🌙";}
+function toggleTheme(){localStorage.setItem("ct_theme",document.body.classList.contains("dark")?"light":"dark");applyTheme();}
+applyTheme();
+
+let board=null, DSP=[], dispFilter="", orgFilter="";
+const collapsed=new Set(JSON.parse(localStorage.getItem("zones.collapsed")||"[]"));
+const dsp=id=>DSP.find(d=>d.id===id);
+const dname=id=>{const d=dsp(id);return d?d.name:"Unassigned";};
+const dshort=id=>{const d=dsp(id);return d?d.short:"?";};
+
+// ---- author (same identity rules as the tracker: NewMile login first, then the saved name)
+function whoAmI(){return (board&&board.identity)||localStorage.getItem("cactus-who")||localStorage.getItem("ct_author")||"";}
+function ensureWho(){
+  if(whoAmI())return whoAmI();
+  const n=prompt("Your name? (shows on every move you make)","");
+  if(n&&n.trim()){localStorage.setItem("cactus-who",n.trim());return n.trim();}
+  return "";
+}
+function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove("show"),2200);}
+
+// ---- data
+async function load(){
+  try{
+    const r=await fetch("api/board?org=ALL");
+    if(r.status===401){location.href="login.html";return;}
+    board=await r.json();
+    DSP=board.dispatchers||[];
+    render();
+  }catch(e){ $("groups").innerHTML=`<div class="empty">Could not load the board (${esc(e.message||e)}). Retrying…</div>`; }
+}
+load();
+setInterval(load,60000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)load();});
+
+// ---- filters
+function setOrg(v){orgFilter=v;document.querySelectorAll("#segOrg button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));render();}
+function setDisp(v){dispFilter=dispFilter===v?"":v;render();}
+function isSub(t){return !!t.is_sub&&!(t.org_id==="KT"&&String(t.number||"").startsWith("CKJ"))&&t.division!=="ICS";}
+function pool(){
+  const q=$("q").value.trim().toLowerCase();
+  const hideSubs=$("hideSubs").checked, onlyManual=$("onlyManual").checked;
+  return (board.trucks||[]).filter(t=>{
+    if(t.archived)return false;
+    if(hideSubs&&isSub(t))return false;
+    if(onlyManual&&!t.dispatcher_manual)return false;
+    if(orgFilter&&t.org_id!==orgFilter)return false;
+    if(q){
+      const hay=[t.number,t.display_number,t.driver,t.area,t.parked_city,t.owner_name,t.division,t.dispatcher_why].join(" ").toLowerCase();
+      if(!hay.includes(q))return false;
+    }
+    return true;
+  });
+}
+const dnum=t=>t.display_number||t.number;
+function todayPill(t){
+  if(t.state==="a")return `<span class="pill a">assigned</span>`;
+  if(t.state==="d")return `<span class="pill d">X / down</span>`;
+  if(t.state==="n")return `<span class="pill n">no work</span>`;
+  const off=(t.status&&t.status!=="ok")||(t.time_off||[]).some(o=>o.from_date<=board.today&&o.to_date>=board.today);
+  if(off)return `<span class="pill off">${esc(t.status&&t.status!=="ok"?t.status.replace("_"," "):"off")}</span>`;
+  return `<span class="pill p">open</span>`;
+}
+
+// ---- render
+function render(){
+  if(!board)return;
+  const all=pool();
+  // tiles (counts over the current org/search filter, ignoring the dispatcher tile filter)
+  const tiles=DSP.map(d=>({id:d.id,name:d.name,cls:d.id,zones:d.zones})).concat([{id:"",name:"Unassigned",cls:"none",zones:"needs a hand — tap a name on the row"}]);
+  $("tiles").innerHTML=tiles.map(x=>{
+    const list=all.filter(t=>(t.dispatcher_eff||"")===x.id);
+    const asg=list.filter(t=>t.state==="a").length, man=list.filter(t=>t.dispatcher_manual).length;
+    return `<div class="tile ${x.cls} ${dispFilter===x.id&&(dispFilter||x.id==="")&&dispFilter===x.id?"sel":""}" onclick="setDisp('${x.id}')" title="${esc(x.zones)}">
+      <div class="who">${esc(x.name)}</div><div class="big">${list.length}</div>
+      <div class="det"><b>${asg}</b> assigned today${man?` · <b>${man}</b> by hand`:""}<br>${esc(x.zones)}</div></div>`;
+  }).join("");
+  $("legend").innerHTML=DSP.map(d=>`<span><i style="background:var(--${d.id})"></i>${esc(d.name)}</span>`).join("")+`<span><i style="background:var(--none)"></i>Unassigned</span>`;
+  const shown=dispFilter===""?all:all.filter(t=>(t.dispatcher_eff||"")===dispFilter);
+  buildMap(shown);
+  // groups
+  const order=DSP.map(d=>d.id).concat([""]);
+  let html="";
+  for(const id of order){
+    if(dispFilter!==""&&id!==dispFilter)continue;
+    const list=shown.filter(t=>(t.dispatcher_eff||"")===id)
+      .sort((a,b)=>String(a.org_id).localeCompare(b.org_id)||String(a.division||"~").localeCompare(String(b.division||"~"))||String(dnum(a)).localeCompare(String(dnum(b)),undefined,{numeric:true}));
+    if(!list.length&&id!=="")continue;
+    const d=dsp(id); const cls=d?d.id:"none"; const key="g:"+(id||"none"); const closed=collapsed.has(key);
+    html+=`<div class="group ${cls} ${closed?"closed":""}"><h3 onclick="toggleGroup('${key}')"><span class="chev">${closed?"▸":"▾"}</span>${esc(d?d.name:"Unassigned")} <span class="n">${list.length}</span><span class="zones">${esc(d?d.zones:"these still need an owner")}</span></h3><div class="rows">`;
+    if(!list.length)html+=`<div class="empty">Nothing here — every truck has an owner. 🎉</div>`;
+    for(const t of list)html+=rowHtml(t);
+    html+=`</div></div>`;
+  }
+  $("groups").innerHTML=html||`<div class="empty">No trucks match.</div>`;
+}
+function rowHtml(t){
+  const man=t.dispatcher_manual||"", eff=t.dispatcher_eff||"";
+  const where=[t.org_id==="KT"?"KT / CKJ":"Cactus", t.division||"no division", t.area||t.parked_city||""].filter(Boolean).join(" · ");
+  const mv=DSP.map(d=>`<button class="${d.id} ${eff===d.id?"on":""}" title="Move to ${esc(d.name)}" onclick="move('${t.org_id}','${esc(t.number)}','${d.id}')">${esc(d.short)}</button>`).join("")
+    +`<button class="auto ${man?"":"on"}" title="Back to the automatic rule (${esc(dname(t.dispatcher_auto))})" onclick="move('${t.org_id}','${esc(t.number)}','')">AUTO</button>`;
+  return `<div class="row" id="r-${esc(t.org_id+"-"+t.number).replace(/[^a-zA-Z0-9_-]/g,"_")}">
+    <div class="num">${esc(dnum(t))}<small>${t.is_new?"⚑ new":man?"by hand":"auto"}</small></div>
+    <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ no driver"}</div>
+    <div class="where"><b>${esc(where)}</b><span class="why">${esc(t.dispatcher_why||"")}${man?` · rule says ${esc(dname(t.dispatcher_auto))}`:""}</span></div>
+    ${todayPill(t)}
+    <div class="mv ${man?"manual":""}">${mv}</div>
+  </div>`;
+}
+function toggleGroup(key){collapsed.has(key)?collapsed.delete(key):collapsed.add(key);localStorage.setItem("zones.collapsed",JSON.stringify([...collapsed]));render();}
+
+// ---- move a truck (shared: writes trucks.dispatcher on the server)
+async function move(org,num,to){
+  const t=(board.trucks||[]).find(x=>x.org_id===org&&x.number===num); if(!t)return;
+  const by=ensureWho(); if(!by){toast("Need your name to log the move.");return;}
+  const prev={m:t.dispatcher_manual,e:t.dispatcher_eff};
+  t.dispatcher_manual=to; t.dispatcher_eff=to||t.dispatcher_auto; t.dispatcher=to; render();
+  try{
+    const r=await fetch(`api/truck/${encodeURIComponent(org)}/${encodeURIComponent(num)}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({dispatcher:to,by})});
+    if(r.status===401){location.href="login.html";return;}
+    if(!r.ok)throw new Error((await r.json()).error||r.status);
+    toast(`${dnum(t)} → ${to?dname(to):"automatic ("+dname(t.dispatcher_auto)+")"}`);
+  }catch(e){ t.dispatcher_manual=prev.m; t.dispatcher_eff=prev.e; render(); toast("Could not save: "+(e.message||e)); }
+}
+
+// ---- map (NE Texas, same geometry as the server rule)
+const CITIES=[["Dallas",-96.797,32.777,1],["Fort Worth",-97.330,32.756,1],["Tyler",-95.301,32.351,1,"e"],["McKinney",-96.616,33.198,0],["Denton",-97.133,33.215,0],["Decatur",-97.586,33.234,0],["Bridgeport",-97.755,33.210,0],["Sherman",-96.609,33.636,0,"e"],["Denison",-96.537,33.756,0],["Bonham",-96.178,33.577,0],["Paris",-95.556,33.661,1],["Clarksville",-95.053,33.611,0],["Hugo OK",-95.510,34.011,0],["Sulphur Springs",-95.601,33.138,0],["Greenville",-96.111,33.138,0],["Mt Pleasant",-94.968,33.157,0],["Emory",-95.766,32.874,0],["Mineola",-95.488,32.663,0],["Canton",-95.863,32.556,0],["Terrell",-96.275,32.736,0],["Longview",-94.740,32.500,0],["Athens",-95.855,32.205,0],["Corsicana",-96.469,32.095,0],["Waxahachie",-96.848,32.386,0],["Cleburne",-97.386,32.348,0],["Ennis",-96.625,32.329,0],["Scurry",-96.390,32.610,0]];
+const FACIL=[{n:"RK Hall Sawyer (quarry)",lng:-95.348,lat:34.122,o:"juan"},{n:"RK Hall Paris",lng:-95.575,lat:33.720,o:"juan"},{n:"RKH / Clark Denison",lng:-96.533,lat:33.798,o:"juan"},{n:"MM Tyler Rail",lng:-95.280,lat:32.330,o:"juan"},{n:"LAI Mineola",lng:-95.488,lat:32.678,o:"juan"},{n:"KT Powderly (terminal)",lng:-95.512,lat:33.810,o:"jimmy"},{n:"KT Rhome (terminal)",lng:-97.472,lat:33.054,o:"mary"},{n:"KT Whitewright (terminal)",lng:-96.393,lat:33.512,o:"mary"}];
+const RED_RIVER=[[-98.05,34.12],[-97.55,33.90],[-97.16,33.83],[-96.90,33.86],[-96.60,33.82],[-96.30,33.76],[-95.85,33.87],[-95.50,33.89],[-95.24,33.94],[-94.90,33.86],[-94.62,33.70],[-94.43,33.60]];
+const ROADS=[{n:"I-30",li:7,pts:[[-97.33,32.76],[-96.80,32.79],[-96.46,32.93],[-96.11,33.14],[-95.60,33.14],[-95.22,33.19],[-94.97,33.16],[-94.25,33.42]]},{n:"I-20",li:0,pts:[[-98.00,32.70],[-97.32,32.72],[-96.80,32.71],[-96.28,32.72],[-95.86,32.54],[-95.41,32.51],[-94.74,32.47],[-94.25,32.46]]},{n:"US-75",li:1,pts:[[-96.80,32.78],[-96.64,33.05],[-96.62,33.20],[-96.61,33.64],[-96.54,33.76],[-96.50,33.86]]},{n:"US-82",li:5,pts:[[-96.61,33.64],[-96.39,33.60],[-96.18,33.58],[-95.56,33.66],[-95.05,33.61],[-94.60,33.53]]},{n:"US-69",li:4,pts:[[-96.54,33.76],[-96.61,33.64],[-96.62,33.20],[-96.11,33.14],[-95.90,33.00],[-95.77,32.87],[-95.49,32.66],[-95.30,32.35],[-95.20,32.10]]}];
+const Z_NORTH=[[-96.95,33.50],[-96.80,33.92],[-96.45,34.02],[-95.95,34.22],[-95.20,34.30],[-94.72,33.95],[-94.80,33.48],[-95.45,33.36],[-96.15,33.40],[-96.70,33.40]];
+const Z_SE=[[-96.28,32.86],[-95.90,33.02],[-95.42,32.98],[-94.62,32.72],[-94.55,32.28],[-95.12,32.02],[-95.80,32.08],[-96.30,32.40],[-96.38,32.66]];
+const Z_SW=[[-97.90,33.32],[-97.30,33.34],[-96.82,33.10],[-96.62,32.62],[-96.70,32.22],[-97.10,32.05],[-97.65,32.12],[-97.95,32.60]];
+const B={lng0:-98.05,lng1:-94.20,lat0:31.90,lat1:34.45,W:1000};
+B.H=Math.round(B.W*(B.lat1-B.lat0)/((B.lng1-B.lng0)*Math.cos(33.2*Math.PI/180)));
+const px=lng=>((lng-B.lng0)/(B.lng1-B.lng0)*B.W).toFixed(1);
+const py=lat=>((B.lat1-lat)/(B.lat1-B.lat0)*B.H).toFixed(1);
+const pathOf=(pts,close)=>pts.map((p,i)=>(i?"L":"M")+px(p[0])+" "+py(p[1])).join(" ")+(close?" Z":"");
+function smooth(pts){
+  const n=pts.length,P=i=>pts[(i+n)%n],f=p=>[+px(p[0]),+py(p[1])];
+  let d="M"+f(P(0)).join(" ");
+  for(let i=0;i<n;i++){const p0=f(P(i-1)),p1=f(P(i)),p2=f(P(i+1)),p3=f(P(i+2));
+    const c1=[p1[0]+(p2[0]-p0[0])/6,p1[1]+(p2[1]-p0[1])/6],c2=[p2[0]-(p3[0]-p1[0])/6,p2[1]-(p3[1]-p1[1])/6];
+    d+=`C${c1[0].toFixed(1)} ${c1[1].toFixed(1)},${c2[0].toFixed(1)} ${c2[1].toFixed(1)},${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;}
+  return d+"Z";
+}
+function buildMap(trucks){
+  const S=[];
+  S.push(`<svg viewBox="0 0 ${B.W} ${B.H}" role="img" aria-label="Dispatcher zone map, northeast Texas">`);
+  S.push(`<rect width="${B.W}" height="${B.H}" rx="10" fill="var(--map-ground)"/>`);
+  S.push(`<path d="${smooth(Z_SW)}" fill="var(--jimmy)" fill-opacity=".13" stroke="var(--jimmy)" stroke-width="1.8"/>`);
+  S.push(`<path d="${smooth(Z_SE)}" fill="var(--juan)" fill-opacity=".13" stroke="var(--juan)" stroke-width="1.8"/>`);
+  S.push(`<path d="${smooth(Z_NORTH)}" fill="var(--juan)" fill-opacity=".13" stroke="var(--juan)" stroke-width="1.8"/>`);
+  S.push(`<path d="${pathOf(RED_RIVER)}" fill="none" stroke="var(--map-river)" stroke-width="2.2" stroke-linecap="round" opacity=".85"/>`);
+  S.push(`<text x="${px(-97.9)}" y="${+py(34.02)-6}" font-size="12" fill="var(--map-river)" font-style="italic">Red River · OK line</text>`);
+  for(const r of ROADS){
+    S.push(`<path d="${pathOf(r.pts)}" fill="none" stroke="var(--map-road)" stroke-width="2" stroke-linecap="round"/>`);
+    const m=r.pts[r.li!=null?r.li:Math.floor(r.pts.length/2)];
+    S.push(`<text x="${+px(m[0])+5}" y="${+py(m[1])-5}" font-size="10.5" fill="var(--map-city)" opacity=".9">${r.n}</text>`);
+  }
+  const zl=[["NORTH — JUAN",-96.42,34.05,"juan"],["SOUTH EAST — JUAN",-95.05,32.12,"juan"],["SOUTH WEST — JIMMY",-97.62,32.28,"jimmy"]];
+  for(const [t,lng,lat,c] of zl) S.push(`<text x="${px(lng)}" y="${py(lat)}" font-size="13.5" font-weight="700" letter-spacing="1.5" fill="var(--${c})" font-family="Barlow Condensed, sans-serif">${t}</text>`);
+  for(const f of FACIL.filter(f=>f.o==="mary"))
+    S.push(`<circle cx="${px(f.lng)}" cy="${py(f.lat)}" r="42" fill="var(--mary)" fill-opacity=".14" stroke="var(--mary)" stroke-width="2" stroke-dasharray="6 5"/>`);
+  for(const [n,lng,lat,big,anc] of CITIES){
+    S.push(`<circle cx="${px(lng)}" cy="${py(lat)}" r="${big?3.4:2.4}" fill="var(--map-city)"/>`);
+    const e=anc==="e";
+    S.push(`<text x="${+px(lng)+(e?-6:6)}" y="${+py(lat)+4}" ${e?'text-anchor="end"':""} font-size="${big?12:10.5}" ${big?'font-weight="600"':""} fill="var(--map-city)">${n}</text>`);
+  }
+  // trucks at their last GPS position (only the ones inside the map)
+  let plotted=0;
+  for(const t of trucks){
+    const lat=Number(t.last_lat),lng=Number(t.last_lon);
+    if(!isFinite(lat)||!isFinite(lng)||!lat||!lng)continue;
+    if(lng<B.lng0||lng>B.lng1||lat<B.lat0||lat>B.lat1)continue;
+    plotted++;
+    const c=t.dispatcher_eff?`var(--${t.dispatcher_eff})`:"var(--none)";
+    S.push(`<circle class="truck" cx="${px(lng)}" cy="${py(lat)}" r="4.2" fill="${c}" stroke="var(--card)" stroke-width="1.2" data-tip="${esc(dnum(t))} · ${esc(t.driver||"no driver")} · ${esc(dname(t.dispatcher_eff))}"/>`);
+  }
+  for(const f of FACIL){
+    const x=+px(f.lng),y=+py(f.lat);
+    S.push(`<g class="truck" data-tip="${esc(f.n)}"><path d="M${x} ${y} l-7 -12 a8.2 8.2 0 1 1 14 0 Z" fill="var(--${f.o})" stroke="var(--card)" stroke-width="1.6"/><circle cx="${x}" cy="${y-14.5}" r="3" fill="var(--card)"/></g>`);
+  }
+  S.push(`<text x="${B.W-10}" y="${B.H-8}" text-anchor="end" font-size="11" fill="var(--map-city)">${plotted} trucks with GPS on the map</text>`);
+  S.push("</svg>");
+  $("map").innerHTML=S.join("");
+  const tip=$("tip");
+  document.querySelectorAll("#map .truck").forEach(p=>{
+    const show=e=>{tip.style.display="block";tip.textContent=p.dataset.tip;tip.style.left=(e.clientX+14)+"px";tip.style.top=(e.clientY+10)+"px";};
+    p.addEventListener("mousemove",show); p.addEventListener("touchstart",e=>show(e.touches[0]),{passive:true});
+    p.addEventListener("mouseleave",()=>tip.style.display="none");
+  });
+}
+</script>
+</body>
+</html>

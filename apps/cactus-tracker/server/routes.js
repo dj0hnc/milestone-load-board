@@ -13,9 +13,10 @@ const { todayCT, weekDatesCT, daysBetween, normNum, canonArea, canonicalTruckNum
 const { syncRoster, syncActivity, syncAssignments, scanRipRap, reconcileICs } = require('./sync-newmile');
 const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking, locateTruck, debugHOS, auditHOS, refreshHOSTruck, cameraSnapshot, cameraCheck } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
+const zones = require('./zones'); // 🗺 dispatcher zones (Juan / Mary / Jimmy)
 
 const VALID_STATUS = ['ok', 'shop', 'down', 'no_driver', 'vacation', 'deleased'];
-const EDITABLE = ['note', 'status', 'status_note', 'return_date', 'rest_days', 'area', 'division', 'rip_rap', 'star', 'phone', 'tags', 'driver', 'trailer_type', 'trailer_type2'];
+const EDITABLE = ['note', 'status', 'status_note', 'return_date', 'rest_days', 'area', 'division', 'rip_rap', 'star', 'phone', 'tags', 'driver', 'trailer_type', 'trailer_type2', 'dispatcher'];
 
 function createRouter({ config, newmile, log }) {
   const router = express.Router();
@@ -233,6 +234,7 @@ function createRouter({ config, newmile, log }) {
         calls_count: callCountMap.get(t.org_id + '|' + t.number) || 0
       };
     });
+    outTrucks.forEach(zones.decorate); // 🗺 dispatcher owner: automatic rule + manual override
 
     res.json({
       org: { id: org.id, label: org.label },
@@ -243,6 +245,7 @@ function createRouter({ config, newmile, log }) {
         .concat(all(`SELECT d.org_id, d.id, d.label FROM divisions d JOIN orgs o ON o.id = d.org_id
                      WHERE o.enabled = 1 ORDER BY o.sort, d.sort`))
         .concat([{ org_id: 'SUBS', id: 'SUBS', label: 'SUBS' }]),
+      dispatchers: zones.DISPATCHERS, // 🗺 who owns which zone (tiles, badges, move buttons)
       date, today, historical,
       // ¿este día ya se cotejó contra las asignaciones de NewMile? (para avisar "planeado
       // aquí pero NO está en NewMile" solo cuando hay datos reales que comparar)
@@ -351,6 +354,7 @@ function createRouter({ config, newmile, log }) {
       if (f === 'status' && !VALID_STATUS.includes(v)) return res.status(400).json({ error: 'invalid status' });
       if (f === 'rip_rap' || f === 'star') v = v ? 1 : 0;
       if (f === 'area' && v) v = canonArea(v); // zonas SIN estado: "PARIS, TX" → "PARIS"
+      if (f === 'dispatcher') { const dv = zones.validId(v); if (v && !dv) return res.status(400).json({ error: 'invalid dispatcher' }); v = dv; } // '' = back to the automatic rule
       if (f === 'division' && v != null && v !== '') {
         const d = get('SELECT 1 AS x FROM divisions WHERE org_id = ? AND id = ?', orgId, normNum(v));
         if (!d) return res.status(400).json({ error: 'invalid division' });

@@ -490,6 +490,11 @@ body.dark .ml-b.tool{background:#1a2233;border-color:#3a4a6a;color:#9aa5c0;}
 body.dark .ml-b .hx{background:#1d2537;border-color:#33507a;color:#e8ecf3;}
 body.dark .ml-in{background:#141a29;border-color:#33507a;}
 body.dark .ml-in textarea{background:#0f1420;border-color:#33507a;color:#e8ecf3;}
+/* 🗺 dispatcher zone owner badge on the chip (J / M / JM / ?) — gold ring = moved by hand */
+.dsp{display:inline-block;font-family:'Barlow Condensed';font-weight:800;font-size:11px;letter-spacing:.5px;color:#fff;border-radius:6px;padding:3px 5px 2px;line-height:1;vertical-align:middle;margin-left:5px;min-width:18px;text-align:center;}
+.dsp-juan{background:#3F7080;} .dsp-mary{background:#7A2FA8;} .dsp-jimmy{background:#4E8C63;} .dsp-none{background:#c4c8d0;color:#4a5164;}
+.dsp.manual{box-shadow:0 0 0 1.5px var(--gold);}
+body.dark .dsp-juan{background:#5a95f9;color:#0f1420;} body.dark .dsp-mary{background:#b07be0;color:#0f1420;} body.dark .dsp-jimmy{background:#22c55e;color:#0f1420;} body.dark .dsp-none{background:#3a4557;color:#c8d0dc;}
 </style>
 </head>
 <body>
@@ -499,6 +504,7 @@ body.dark .ml-in textarea{background:#0f1420;border-color:#33507a;color:#e8ecf3;
     <div class="faltan-pill" id="faltanPill" onclick="toggleFaltan()">—</div>
     <a class="xlink" id="recruitLink" href="recruit.html" style="display:none;" title="Recruiting — the subhauler onboarding cockpit">🤝 RECRUIT</a>
     <a class="xlink" href="/full" target="_blank" title="Open the Load Board">📋 BOARD</a>
+    <a class="xlink" href="zones.html" title="Dispatcher zones — who owns which truck (Juan / Mary / Jimmy) and move trucks between us">🗺 ZONES</a>
     <button class="xlink" style="background:transparent;cursor:pointer;" onclick="copyTony()" title="Copy 'available but not planned' — ready to paste to Tony">🤠 TONY</button>
     <button class="xlink" id="mileyBtn" style="background:transparent;cursor:pointer;border-color:var(--gold);color:var(--gold);" onclick="openMiley()" title="Miley — the fleet &amp; people AI: dictate call notes, truck briefings, who's available, recruiting">👷‍♀️ MILEY</button>
     <button class="theme-btn" id="sizeBtn" onclick="cycleSize()" title="Chip size for THIS device (small / medium / large)">▪▪</button>
@@ -549,6 +555,9 @@ body.dark .ml-in textarea{background:#0f1420;border-color:#33507a;color:#e8ecf3;
       <option value="3X8">3X8</option>
       <option value="SUB">Subhaulers</option>
     </select>
+    <select id="fDisp" onchange="dispFilter=this.value;render()" style="flex:1;max-width:150px;" title="Filter by dispatcher zone owner">
+      <option value="">Owner: all</option><option value="juan">Juan</option><option value="mary">Mary</option><option value="jimmy">Jimmy</option><option value="none">Unassigned</option>
+    </select>
     <select id="fArea" onchange="render()" style="flex:1;max-width:170px;"></select>
     <button class="btn-reset" id="btnReset">Reset day</button>
     <div class="grpseg" style="flex:1 1 100%;display:flex;gap:0;margin-top:2px;">
@@ -597,7 +606,7 @@ let board=null;          // last good server payload
 let ORG="CACTUS";        // org del tab activo (CACTUS | KT | ...)
 let division="NORTH";
 let date=null;           // ISO date being viewed
-let typeFilter=""; let statusFilter=""; let showFaltan=false;
+let typeFilter=""; let statusFilter=""; let showFaltan=false; let dispFilter=""; // 🗺 owner filter (juan|mary|jimmy|none)
 let offline=false;
 // agrupar por ZONA (área/ciudad) o por DUEÑO (organización/truck owner). El dueño mantiene
 // juntos todos los trokes de Elaine Raper, Dustin Smith, etc. sin importar dónde duerman.
@@ -822,6 +831,20 @@ function matchStatus(t){
     case "star": return !!t.star;
   }
   return true;
+}
+// 🗺 DISPATCHER ZONES — dueño de cada troke (regla de Tony + movimiento manual, compartido vía server)
+const DSP_FALLBACK=[{id:"juan",name:"Juan",short:"J"},{id:"mary",name:"Mary",short:"M"},{id:"jimmy",name:"Jimmy",short:"JM"}];
+function dsps(){return (board&&board.dispatchers&&board.dispatchers.length)?board.dispatchers:DSP_FALLBACK;}
+function dspName(id){const d=dsps().find(x=>x.id===id);return d?d.name:"";}
+function matchDisp(t){if(!dispFilter)return true;const e=t.dispatcher_eff||"";return dispFilter==="none"?!e:e===dispFilter;}
+function dispBadge(t){
+  const e=t.dispatcher_eff||"", man=!!t.dispatcher_manual, d=dsps().find(x=>x.id===e);
+  const tip=(d?d.name+(man?" (moved by hand)":" (auto)"):"no owner yet")+(t.dispatcher_why?" · "+t.dispatcher_why:"")+" — ✎ to move";
+  return `<span class="dsp dsp-${e||"none"} ${man?"manual":""}" title="${esc(tip)}">${d?esc(d.short):"?"}</span>`;
+}
+function dispOpts(t){
+  const m=t.dispatcher_manual||"";
+  return `<option value="" ${m?"":"selected"}>Auto — ${esc(dspName(t.dispatcher_auto)||"no owner")}</option>`+dsps().map(d=>`<option value="${d.id}" ${m===d.id?"selected":""}>${esc(d.name)}</option>`).join("");
 }
 function matchTypeSel(t){
   // con dos trailas en el perfil, el filtro pega si CUALQUIERA de las dos es del tipo
@@ -1169,6 +1192,7 @@ function render(){
     if(t.is_new)continue; // NEW trucks live in Review until placed
     if(!matchStatus(t))continue;
     if(!matchTypeSel(t))continue;
+    if(!matchDisp(t))continue;
     if(bulk){if(!bulk.set.has(t.org_id+"|"+t.number))continue;}
     else if(!matchSearch(t,q))continue;
     const a=t.area||"(SIN YARD)";
@@ -1284,7 +1308,7 @@ function chipHtml(t){
     <button class="btn-edit" onclick="event.stopPropagation();openEdit('${t.org_id}','${esc(t.number)}')" title="Edit">✎</button>
     <button class="btn-down" onclick="tapDown(event,'${t.org_id}','${esc(t.number)}')" title="Mark down">✕</button>
     <button class="btn-nw" onclick="tapNW(event,'${t.org_id}','${esc(t.number)}')" title="NO WORK this day (yellow, not counted) — tap again to unmark">NW</button>
-    <div class="top"><span class="num"><button class="star-btn ${t.star?"on":""}" onclick="toggleStar(event,'${t.org_id}','${esc(t.number)}')" title="${t.star?"Star driver — tap to remove":"Mark as star driver"}">${t.star?"★":"☆"}</button>${esc(dnum(t))}${isVirtual()?`<span class="orgtag ${t.org_id==="KT"?(t.is_sub?"ic":"kt"):(t.is_sub?"sub":"")}">${t.org_id==="KT"?(t.is_sub?"IC":"KT"):(t.is_sub?"SUB":"CACTUS")}</span>`:""}</span>${trlTxt(t)?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(trlTxt(t))}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}${liveMoveHtml(t)}${liveLoadHtml(t)}</div>
+    <div class="top"><span class="num"><button class="star-btn ${t.star?"on":""}" onclick="toggleStar(event,'${t.org_id}','${esc(t.number)}')" title="${t.star?"Star driver — tap to remove":"Mark as star driver"}">${t.star?"★":"☆"}</button>${esc(dnum(t))}${isVirtual()?`<span class="orgtag ${t.org_id==="KT"?(t.is_sub?"ic":"kt"):(t.is_sub?"sub":"")}">${t.org_id==="KT"?(t.is_sub?"IC":"KT"):(t.is_sub?"SUB":"CACTUS")}</span>`:""}${dispBadge(t)}</span>${trlTxt(t)?`<span class="trl ${trlClass(t.trailer_type,t.rip_rap)}">${esc(trlTxt(t))}${t.rip_rap?" · RIP":""}${t.tags?" · "+esc(t.tags):""}</span>`:(t.tags?`<span class="trl">${esc(t.tags)}</span>`:"")}${liveMoveHtml(t)}${liveLoadHtml(t)}</div>
     <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ NO DRIVER"}</div>
     ${t.state==="a"&&t.nm_dest&&t.nm_dest.length?`<div class="dest" title="${esc(t.nm_dest.map(d=>[d.n,d.c,d.m,d.d].filter(Boolean).join(" · ")).join("  +  "))}">🚚 ${t.nm_dest.map(d=>esc([d.c||d.n,d.d||d.m].filter(Boolean).join(" → "))).join(" + ")}</div>`:""}
     ${hosHtml(t)}
@@ -1878,6 +1902,10 @@ function openEdit(org,num){
           <div><label>Area / yard</label><input type="text" id="eArea" value="${esc(t.area)}"></div>
         </div>
         <div class="row2">
+          <div><label>Zone owner (dispatcher)</label><select id="eDisp">${dispOpts(t)}</select></div>
+          <div><label>&nbsp;</label><div style="font-size:12px;color:var(--mut);padding-top:10px;line-height:1.3;">${esc(t.dispatcher_why||"")}</div></div>
+        </div>
+        <div class="row2">
           <div><label>Driver</label><input type="text" id="eDriver" value="${esc(t.driver)}"></div>
           <div><label>Phone</label><input type="text" id="ePhone" value="${esc(t.phone)}"></div>
         </div>
@@ -1947,7 +1975,9 @@ function saveEdit(org,num){
   if($("eTrailer").value!==t.trailer_type)body.trailer_type=$("eTrailer").value;
   if($("eTrailer2").value!==(t.trailer_type2||""))body.trailer_type2=$("eTrailer2").value;
   if($("eDriver").value!==t.driver)body.driver=$("eDriver").value;
+  if($("eDisp")&&$("eDisp").value!==(t.dispatcher_manual||""))body.dispatcher=$("eDisp").value; // 🗺 '' = back to auto
   Object.assign(t,body,{rip_rap:body.rip_rap});
+  if("dispatcher" in body){t.dispatcher_manual=body.dispatcher;t.dispatcher_eff=body.dispatcher||t.dispatcher_auto||"";}
   queuePush({path:`/api/truck/${t.org_id}/${encodeURIComponent(num)}`,body});
   closeModal();render();
 }
@@ -2129,6 +2159,7 @@ function visibleTrucks(){
     if(t.is_new)continue;
     if(!matchStatus(t))continue;
     if(!matchTypeSel(t))continue;
+    if(!matchDisp(t))continue;
     if(bulkSet){if(!bulkSet.has(t.org_id+"|"+t.number))continue;}
     else if(!matchSearch(t,q))continue;
     if(areaV&&(t.area||"(SIN YARD)")!==areaV)continue;
