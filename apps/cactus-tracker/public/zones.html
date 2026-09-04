@@ -15,7 +15,7 @@
   --green:#4E8C63; --green-bg:#EAF2EC; --red:#B0442F; --red-bg:#F7EAE6;
   --blue:#3F7080; --blue-bg:#E9F0F2; --warm:#FDF8EC; --yellow:#8a6d00; --yellow-bg:#FBF3D0;
   --sh-card:0 1px 2px rgba(20,20,20,.06),0 4px 14px rgba(20,20,20,.07);
-  --juan:#3F7080; --mary:#7A2FA8; --jimmy:#4E8C63; --none:#9a9ea6;
+  --juan:#3F7080; --mary:#7A2FA8; --jimmy:#4E8C63; --none:#9a9ea6; --ontext:#fff;
   --map-ground:#ECEAE3; --map-road:#c9c5b8; --map-river:#7fa6bf; --map-city:#6b6e73;
 }
 body.dark{
@@ -24,7 +24,7 @@ body.dark{
   --green:#22c55e; --green-bg:rgba(34,197,94,.14); --red:#ff6b52; --red-bg:rgba(234,78,44,.16);
   --blue:#5a95f9; --blue-bg:rgba(90,149,249,.14); --warm:#2d2617; --yellow:#e3c452; --yellow-bg:rgba(217,180,48,.16);
   --sh-card:0 1px 2px rgba(0,0,0,.35),0 4px 14px rgba(0,0,0,.4);
-  --juan:#5a95f9; --mary:#b07be0; --jimmy:#22c55e; --none:#6f7686;
+  --none:#6f7686; --ontext:#0f1420;
   --map-ground:#1a2130; --map-road:#3a4557; --map-river:#4f7a99; --map-city:#9aa3b5;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
@@ -35,9 +35,18 @@ h1 small{font-weight:600;font-size:13px;color:var(--gold);letter-spacing:1.5px;d
 .hspacer{margin-left:auto;display:flex;gap:8px;align-items:center;}
 .xlink{font-family:'Barlow Condensed';font-weight:700;font-size:14px;letter-spacing:1px;color:#fff;text-decoration:none;border:1.5px solid rgba(255,255,255,.35);border-radius:9px;padding:6px 10px;background:transparent;cursor:pointer;}
 .xlink:hover{border-color:var(--gold);color:var(--gold);}
+.xlink.on{background:var(--gold);border-color:var(--gold);color:#1C2333;}
 .wrap{max-width:1180px;margin:0 auto;padding:12px 14px 80px;}
 .hint{font-size:12.5px;color:var(--mut);margin:2px 0 10px;}
 .hint b{color:var(--ink);}
+input[type=text],select{border:1.5px solid var(--line);border-radius:9px;padding:7px 10px;font:inherit;font-size:13.5px;background:var(--card);color:var(--ink);}
+input[type=color]{width:34px;height:30px;border:1.5px solid var(--line);border-radius:8px;padding:0 2px;background:var(--card);cursor:pointer;}
+button.b{font-family:'Barlow Condensed';font-weight:800;font-size:13.5px;letter-spacing:.7px;text-transform:uppercase;border:1.5px solid var(--line);background:var(--card);color:var(--ink);border-radius:9px;padding:8px 12px;cursor:pointer;}
+button.b.pri{background:var(--navy);border-color:var(--navy);color:#fff;}
+body.dark button.b.pri{background:var(--gold);border-color:var(--gold);color:#1C2333;}
+button.b.danger{border-color:var(--red);color:var(--red);}
+button.b.on{background:var(--gold);border-color:var(--gold);color:#1C2333;}
+button.b:disabled{opacity:.45;cursor:default;}
 
 /* tiles */
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:8px 0 12px;}
@@ -60,11 +69,33 @@ h1 small{font-weight:600;font-size:13px;color:var(--gold);letter-spacing:1.5px;d
 .lg i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px;}
 #map svg{display:block;width:100%;height:auto;border-radius:10px;}
 #map .truck{cursor:pointer;}
+#map.drawing svg{cursor:crosshair;touch-action:none;}
+#map .vtx{cursor:grab;}
+#map .zsel{stroke-width:3;stroke-dasharray:7 4;}
 .tip{position:fixed;display:none;background:var(--navy);color:#fff;font-size:12px;padding:5px 9px;border-radius:8px;pointer-events:none;z-index:60;box-shadow:var(--sh-card);white-space:nowrap;}
+.drawbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:13px;color:var(--mut);}
+.drawbar .msg{flex:1 1 200px;}
+.drawbar .msg b{color:var(--ink);}
+
+/* editor */
+.editor{display:none;}
+.editor.show{display:block;}
+.edrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 0;border-top:1px solid var(--line);}
+.edrow:first-of-type{border-top:none;}
+.edrow .sw{width:14px;height:14px;border-radius:50%;flex-shrink:0;}
+.edrow .nm{font-family:'Barlow Condensed';font-weight:800;font-size:16px;letter-spacing:.5px;min-width:60px;}
+.edrow .cnt{font-size:12px;color:var(--mut);white-space:nowrap;}
+.edrow .cnt b{color:var(--ink);}
+.edrow input[type=text].zname{width:170px;}
+.edrow input[type=text].short{width:56px;text-transform:uppercase;}
+.edrow .sp{flex:1;}
+.edfoot{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);}
+.edfoot .sp{flex:1;}
+.dirty{font-size:12px;color:var(--gold-d);font-weight:600;}
 
 /* controls */
 .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:4px 0 10px;}
-.controls input[type=text]{flex:1 1 200px;min-width:0;border:1.5px solid var(--line);border-radius:10px;padding:9px 12px;font:inherit;font-size:14px;background:var(--card);color:var(--ink);}
+.controls input[type=text]{flex:1 1 200px;min-width:0;padding:9px 12px;font-size:14px;}
 .seg{display:flex;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card);box-shadow:var(--sh-card);}
 .seg button{border:none;background:transparent;color:var(--mut);font-family:'Barlow Condensed';font-weight:700;font-size:13.5px;letter-spacing:.6px;padding:8px 12px;cursor:pointer;border-right:1px solid var(--line);}
 .seg button:last-child{border-right:none;}
@@ -98,7 +129,7 @@ body.dark .pill.off{background:rgba(200,120,60,.2);color:#f0a570;}
 .mv{display:flex;border:1.5px solid var(--line);border-radius:9px;overflow:hidden;}
 .mv button{border:none;background:transparent;color:var(--mut);font-family:'Barlow Condensed';font-weight:800;font-size:12.5px;letter-spacing:.5px;width:40px;height:32px;cursor:pointer;border-right:1px solid var(--line);}
 .mv button:last-child{border-right:none;}
-.mv button.on{color:#fff;}
+.mv button.on{color:var(--ontext);}
 .mv button.on.juan{background:var(--juan);} .mv button.on.mary{background:var(--mary);} .mv button.on.jimmy{background:var(--jimmy);}
 .mv button.auto{font-size:10.5px;width:44px;}
 .mv button.auto.on{background:var(--line);color:var(--ink);}
@@ -117,6 +148,7 @@ body.dark .pill.off{background:rgba(200,120,60,.2);color:#f0a570;}
 <header>
   <h1>Milestone Texas <small>Dispatcher zones</small></h1>
   <div class="hspacer">
+    <button class="xlink" id="editBtn" onclick="toggleEdit()" title="Draw / reshape zones and pick each dispatcher's color">✏️ EDIT ZONES</button>
     <a class="xlink" href="index.html" title="Back to the tracker">🚛 TRACKER</a>
     <a class="xlink" href="/full" target="_blank" title="Open the Load Board">📋 BOARD</a>
     <button class="xlink" id="themeBtn" onclick="toggleTheme()" title="Light/dark theme">🌙</button>
@@ -124,13 +156,38 @@ body.dark .pill.off{background:rgba(200,120,60,.2);color:#f0a570;}
 </header>
 
 <div class="wrap">
-  <div class="hint" id="hint">Who owns which truck. The rule is Tony's split (Sep 1): <b>Juan</b> Cactus North + South East · <b>Mary</b> KT Rhome, Whitewright + CKJ ICS · <b>Jimmy</b> KT Powderly + Cactus South West. Tap a name on any row to move a truck by hand — everybody sees the move.</div>
+  <div class="hint" id="hint">Who owns which truck. Rule of thumb (Tony, Sep 1): <b>Juan</b> Cactus North + South East · <b>Mary</b> KT Rhome, Whitewright + CKJ ICS · <b>Jimmy</b> KT Powderly + Cactus South West. A truck sleeping inside a drawn zone belongs to that zone's owner; tap a name on any row to move one by hand — everybody sees it.</div>
   <div class="tiles" id="tiles"></div>
 
   <div class="card">
-    <h2>🗺 Zone map <span style="font-family:'Poppins';font-weight:500;font-size:11.5px;letter-spacing:0;text-transform:none;">— dots are trucks at their last GPS position</span>
+    <h2>🗺 Zone map <span style="font-family:'Poppins';font-weight:500;font-size:11.5px;letter-spacing:0;text-transform:none;">— dots are trucks where they sleep (last GPS night)</span>
       <span class="lg" id="legend"></span></h2>
     <div id="map"></div>
+    <div class="drawbar" id="drawbar" style="display:none;">
+      <span class="msg" id="drawMsg"></span>
+      <button class="b" id="drawStop" onclick="stopDraw()">Done drawing</button>
+    </div>
+
+    <div class="editor" id="editor">
+      <div class="edfoot" style="border-top:none;padding-top:8px;margin-top:6px;">
+        <span style="font-family:'Barlow Condensed';font-weight:800;font-size:14px;letter-spacing:1px;text-transform:uppercase;color:var(--mut);">Dispatchers</span>
+      </div>
+      <div id="edDisp"></div>
+      <div class="edfoot">
+        <span style="font-family:'Barlow Condensed';font-weight:800;font-size:14px;letter-spacing:1px;text-transform:uppercase;color:var(--mut);">Zones</span>
+        <span class="sp"></span>
+        <select id="drawOwner" title="Owner of the zone you are about to draw"></select>
+        <button class="b pri" id="drawBtn" onclick="startDraw()">✏️ Draw a zone</button>
+      </div>
+      <div id="edZones"></div>
+      <div class="edfoot">
+        <span class="dirty" id="dirty"></span>
+        <span class="sp"></span>
+        <button class="b danger" onclick="resetDefaults()" title="Throw away every drawn zone and color and go back to Tony's default split">Reset to defaults</button>
+        <button class="b" onclick="cancelEdit()">Cancel</button>
+        <button class="b pri" id="saveBtn" onclick="saveConfig()">Save zones</button>
+      </div>
+    </div>
   </div>
 
   <div class="controls">
@@ -152,17 +209,21 @@ body.dark .pill.off{background:rgba(200,120,60,.2);color:#f0a570;}
 <script>
 const $=id=>document.getElementById(id);
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
-function applyTheme(){document.body.classList.toggle("dark",localStorage.getItem("ct_theme")==="dark");$("themeBtn").textContent=document.body.classList.contains("dark")?"☀️":"🌙";}
+function applyTheme(){document.body.classList.toggle("dark",localStorage.getItem("ct_theme")==="dark");$("themeBtn").textContent=document.body.classList.contains("dark")?"☀️":"🌙";applyColors();}
 function toggleTheme(){localStorage.setItem("ct_theme",document.body.classList.contains("dark")?"light":"dark");applyTheme();}
-applyTheme();
 
-let board=null, DSP=[], dispFilter="", orgFilter="";
+let board=null, DSP=[], ZONES=[], dispFilter="", orgFilter="";
+let editing=false, CFG=null, DIRTY=false, selZone=null, drawing=null, dragging=null;
 const collapsed=new Set(JSON.parse(localStorage.getItem("zones.collapsed")||"[]"));
-const dsp=id=>DSP.find(d=>d.id===id);
+const dsp=id=>(editing&&CFG?CFG.dispatchers:DSP).find(d=>d.id===id);
 const dname=id=>{const d=dsp(id);return d?d.name:"Unassigned";};
-const dshort=id=>{const d=dsp(id);return d?d.short:"?";};
+const lighten=(c,a)=>{const n=parseInt(c.slice(1),16),f=x=>Math.round(x+(255-x)*a);return "#"+[f(n>>16&255),f(n>>8&255),f(n&255)].map(x=>x.toString(16).padStart(2,"0")).join("");};
+function applyColors(){ // configured colors → CSS vars (lightened on dark so they read on navy)
+  const dark=document.body.classList.contains("dark"), list=(editing&&CFG?CFG.dispatchers:DSP);
+  for(const d of list) document.documentElement.style.setProperty("--"+d.id, dark?lighten(d.color,.35):d.color);
+}
 
-// ---- author (same identity rules as the tracker: NewMile login first, then the saved name)
+// ---- author (same identity rules as the tracker)
 function whoAmI(){return (board&&board.identity)||localStorage.getItem("cactus-who")||localStorage.getItem("ct_author")||"";}
 function ensureWho(){
   if(whoAmI())return whoAmI();
@@ -170,7 +231,7 @@ function ensureWho(){
   if(n&&n.trim()){localStorage.setItem("cactus-who",n.trim());return n.trim();}
   return "";
 }
-function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove("show"),2200);}
+function toast(m){const t=$("toast");t.textContent=m;t.classList.add("show");clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove("show"),2400);}
 
 // ---- data
 async function load(){
@@ -178,13 +239,13 @@ async function load(){
     const r=await fetch("api/board?org=ALL");
     if(r.status===401){location.href="login.html";return;}
     board=await r.json();
-    DSP=board.dispatchers||[];
-    render();
+    DSP=board.dispatchers||[]; ZONES=board.zones||[];
+    applyColors(); render();
   }catch(e){ $("groups").innerHTML=`<div class="empty">Could not load the board (${esc(e.message||e)}). Retrying…</div>`; }
 }
-load();
-setInterval(load,60000);
-document.addEventListener("visibilitychange",()=>{if(!document.hidden)load();});
+applyTheme(); load();
+setInterval(()=>{ if(!editing) load(); },60000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&!editing)load();});
 
 // ---- filters
 function setOrg(v){orgFilter=v;document.querySelectorAll("#segOrg button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));render();}
@@ -218,41 +279,40 @@ function todayPill(t){
 // ---- render
 function render(){
   if(!board)return;
-  const all=pool();
-  // tiles (counts over the current org/search filter, ignoring the dispatcher tile filter)
-  const tiles=DSP.map(d=>({id:d.id,name:d.name,cls:d.id,zones:d.zones})).concat([{id:"",name:"Unassigned",cls:"none",zones:"needs a hand — tap a name on the row"}]);
+  const all=pool(), list=(editing&&CFG?CFG.dispatchers:DSP);
+  const tiles=list.map(d=>({id:d.id,name:d.name,cls:d.id,zones:d.zones})).concat([{id:"",name:"Unassigned",cls:"none",zones:"needs a hand — tap a name on the row"}]);
   $("tiles").innerHTML=tiles.map(x=>{
-    const list=all.filter(t=>(t.dispatcher_eff||"")===x.id);
-    const asg=list.filter(t=>t.state==="a").length, man=list.filter(t=>t.dispatcher_manual).length;
-    return `<div class="tile ${x.cls} ${dispFilter===x.id&&(dispFilter||x.id==="")&&dispFilter===x.id?"sel":""}" onclick="setDisp('${x.id}')" title="${esc(x.zones)}">
-      <div class="who">${esc(x.name)}</div><div class="big">${list.length}</div>
+    const l=all.filter(t=>(t.dispatcher_eff||"")===x.id);
+    const asg=l.filter(t=>t.state==="a").length, man=l.filter(t=>t.dispatcher_manual).length;
+    return `<div class="tile ${x.cls} ${dispFilter===x.id&&(x.id!==""||dispFilter==="")&&dispFilter===x.id?"sel":""}" onclick="setDisp('${x.id}')" title="${esc(x.zones)}">
+      <div class="who">${esc(x.name)}</div><div class="big">${l.length}</div>
       <div class="det"><b>${asg}</b> assigned today${man?` · <b>${man}</b> by hand`:""}<br>${esc(x.zones)}</div></div>`;
   }).join("");
-  $("legend").innerHTML=DSP.map(d=>`<span><i style="background:var(--${d.id})"></i>${esc(d.name)}</span>`).join("")+`<span><i style="background:var(--none)"></i>Unassigned</span>`;
+  $("legend").innerHTML=list.map(d=>`<span><i style="background:var(--${d.id})"></i>${esc(d.name)}</span>`).join("")+`<span><i style="background:var(--none)"></i>Unassigned</span>`;
   const shown=dispFilter===""?all:all.filter(t=>(t.dispatcher_eff||"")===dispFilter);
   buildMap(shown);
-  // groups
-  const order=DSP.map(d=>d.id).concat([""]);
+  if(editing)renderEditor(all);
+  const order=list.map(d=>d.id).concat([""]);
   let html="";
   for(const id of order){
     if(dispFilter!==""&&id!==dispFilter)continue;
-    const list=shown.filter(t=>(t.dispatcher_eff||"")===id)
+    const l=shown.filter(t=>(t.dispatcher_eff||"")===id)
       .sort((a,b)=>String(a.org_id).localeCompare(b.org_id)||String(a.division||"~").localeCompare(String(b.division||"~"))||String(dnum(a)).localeCompare(String(dnum(b)),undefined,{numeric:true}));
-    if(!list.length&&id!=="")continue;
+    if(!l.length&&id!=="")continue;
     const d=dsp(id); const cls=d?d.id:"none"; const key="g:"+(id||"none"); const closed=collapsed.has(key);
-    html+=`<div class="group ${cls} ${closed?"closed":""}"><h3 onclick="toggleGroup('${key}')"><span class="chev">${closed?"▸":"▾"}</span>${esc(d?d.name:"Unassigned")} <span class="n">${list.length}</span><span class="zones">${esc(d?d.zones:"these still need an owner")}</span></h3><div class="rows">`;
-    if(!list.length)html+=`<div class="empty">Nothing here — every truck has an owner. 🎉</div>`;
-    for(const t of list)html+=rowHtml(t);
+    html+=`<div class="group ${cls} ${closed?"closed":""}"><h3 onclick="toggleGroup('${key}')"><span class="chev">${closed?"▸":"▾"}</span>${esc(d?d.name:"Unassigned")} <span class="n">${l.length}</span><span class="zones">${esc(d?d.zones:"these still need an owner")}</span></h3><div class="rows">`;
+    if(!l.length)html+=`<div class="empty">Nothing here — every truck has an owner. 🎉</div>`;
+    for(const t of l)html+=rowHtml(t);
     html+=`</div></div>`;
   }
   $("groups").innerHTML=html||`<div class="empty">No trucks match.</div>`;
 }
 function rowHtml(t){
-  const man=t.dispatcher_manual||"", eff=t.dispatcher_eff||"";
+  const man=t.dispatcher_manual||"", eff=t.dispatcher_eff||"", list=(editing&&CFG?CFG.dispatchers:DSP);
   const where=[t.org_id==="KT"?"KT / CKJ":"Cactus", t.division||"no division", t.area||t.parked_city||""].filter(Boolean).join(" · ");
-  const mv=DSP.map(d=>`<button class="${d.id} ${eff===d.id?"on":""}" title="Move to ${esc(d.name)}" onclick="move('${t.org_id}','${esc(t.number)}','${d.id}')">${esc(d.short)}</button>`).join("")
+  const mv=list.map(d=>`<button class="${d.id} ${eff===d.id?"on":""}" title="Move to ${esc(d.name)}" onclick="move('${t.org_id}','${esc(t.number)}','${d.id}')">${esc(d.short)}</button>`).join("")
     +`<button class="auto ${man?"":"on"}" title="Back to the automatic rule (${esc(dname(t.dispatcher_auto))})" onclick="move('${t.org_id}','${esc(t.number)}','')">AUTO</button>`;
-  return `<div class="row" id="r-${esc(t.org_id+"-"+t.number).replace(/[^a-zA-Z0-9_-]/g,"_")}">
+  return `<div class="row">
     <div class="num">${esc(dnum(t))}<small>${t.is_new?"⚑ new":man?"by hand":"auto"}</small></div>
     <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ no driver"}</div>
     <div class="where"><b>${esc(where)}</b><span class="why">${esc(t.dispatcher_why||"")}${man?` · rule says ${esc(dname(t.dispatcher_auto))}`:""}</span></div>
@@ -276,14 +336,130 @@ async function move(org,num,to){
   }catch(e){ t.dispatcher_manual=prev.m; t.dispatcher_eff=prev.e; render(); toast("Could not save: "+(e.message||e)); }
 }
 
-// ---- map (NE Texas, same geometry as the server rule)
+// ================= ZONE EDITOR =================
+function toggleEdit(){ editing?cancelEdit():beginEdit(); }
+function beginEdit(){
+  CFG=JSON.parse(JSON.stringify({dispatchers:DSP,zones:ZONES})); DIRTY=false; selZone=null; editing=true;
+  $("editor").classList.add("show"); $("editBtn").classList.add("on"); $("editBtn").textContent="✏️ EDITING…";
+  applyColors(); render();
+}
+function cancelEdit(){
+  if(DIRTY&&!confirm("Throw away the unsaved zone changes?"))return;
+  stopDraw(); editing=false; CFG=null; selZone=null;
+  $("editor").classList.remove("show"); $("editBtn").classList.remove("on"); $("editBtn").textContent="✏️ EDIT ZONES";
+  applyColors(); render();
+}
+function mark(){ DIRTY=true; $("dirty").textContent="● unsaved changes"; }
+function inPoly(x,y,poly){let inside=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const [xi,yi]=poly[i],[xj,yj]=poly[j];if((yi>y)!==(yj>y)&&x<(xj-xi)*(y-yi)/(yj-yi)+xi)inside=!inside;}return inside;}
+function zoneAtCfg(lat,lon){ for(const z of CFG.zones) if(inPoly(lon,lat,z.poly)) return z; return null; }
+// how many trucks (of the current pool) sleep inside each zone — FIRST matching zone wins, like the server
+function zoneCounts(all){
+  const c={}; for(const z of CFG.zones)c[z.id]=0;
+  for(const t of all){ if(t.zone_lat==null||t.zone_lon==null)continue; const z=zoneAtCfg(Number(t.zone_lat),Number(t.zone_lon)); if(z)c[z.id]++; }
+  return c;
+}
+function renderEditor(all){
+  $("edDisp").innerHTML=CFG.dispatchers.map((d,i)=>`<div class="edrow">
+    <input type="color" value="${esc(d.color)}" onchange="CFG.dispatchers[${i}].color=this.value;mark();applyColors();render()" title="${esc(d.name)}'s color">
+    <input type="text" value="${esc(d.name)}" maxlength="24" onchange="CFG.dispatchers[${i}].name=this.value.trim()||'${esc(d.id)}';mark();render()" style="width:130px;" title="Name">
+    <input type="text" class="short" value="${esc(d.short)}" maxlength="3" onchange="CFG.dispatchers[${i}].short=this.value.trim().toUpperCase()||'${esc(d.short)}';mark();render()" title="Short tag shown on the chips (max 3)">
+    <span class="cnt"><b>${all.filter(t=>(t.dispatcher_eff||"")===d.id).length}</b> trucks now</span>
+  </div>`).join("");
+  const cnt=zoneCounts(all);
+  $("edZones").innerHTML=CFG.zones.length?CFG.zones.map((z,i)=>`<div class="edrow" style="${selZone===z.id?"background:var(--warm);margin:0 -12px;padding-left:12px;padding-right:12px;":""}">
+    <span class="sw" style="background:var(--${z.owner||"none"})"></span>
+    <input type="text" class="zname" value="${esc(z.name)}" maxlength="32" onchange="CFG.zones[${i}].name=this.value.trim()||'Zone';mark()" title="Zone name">
+    <select onchange="CFG.zones[${i}].owner=this.value;mark();render()" title="Who owns this zone">${CFG.dispatchers.map(d=>`<option value="${d.id}" ${z.owner===d.id?"selected":""}>${esc(d.name)}</option>`).join("")}<option value="" ${z.owner?"":"selected"}>— nobody —</option></select>
+    <span class="cnt"><b>${cnt[z.id]||0}</b> sleep inside · ${z.poly.length} pts</span>
+    <span class="sp"></span>
+    <button class="b ${selZone===z.id?"on":""}" onclick="selectZone('${z.id}')" title="Show the vertices so you can drag them">◎ ${selZone===z.id?"editing":"reshape"}</button>
+    <button class="b" onclick="moveZone(${i},-1)" ${i===0?"disabled":""} title="Earlier in the list wins where zones overlap">▲</button>
+    <button class="b" onclick="moveZone(${i},1)" ${i===CFG.zones.length-1?"disabled":""} title="Later in the list loses where zones overlap">▼</button>
+    <button class="b danger" onclick="delZone(${i})" title="Delete this zone">🗑</button>
+  </div>`).join(""):`<div class="empty">No zones. Draw one.</div>`;
+  const dl=$("drawOwner"); const cur=dl.value;
+  dl.innerHTML=CFG.dispatchers.map(d=>`<option value="${d.id}" ${cur===d.id?"selected":""}>${esc(d.name)}</option>`).join("");
+  $("dirty").textContent=DIRTY?"● unsaved changes":"";
+}
+function selectZone(id){ selZone=selZone===id?null:id; render(); }
+function moveZone(i,dir){ const j=i+dir; if(j<0||j>=CFG.zones.length)return; const a=CFG.zones[i]; CFG.zones[i]=CFG.zones[j]; CFG.zones[j]=a; mark(); render(); }
+function delZone(i){ if(!confirm(`Delete zone “${CFG.zones[i].name}”?`))return; if(selZone===CFG.zones[i].id)selZone=null; CFG.zones.splice(i,1); mark(); render(); }
+async function saveConfig(){
+  const by=ensureWho(); if(!by){toast("Need your name to save.");return;}
+  $("saveBtn").disabled=true;
+  try{
+    const r=await fetch("api/zones/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({dispatchers:CFG.dispatchers,zones:CFG.zones,by})});
+    if(r.status===401){location.href="login.html";return;}
+    const j=await r.json(); if(!r.ok||!j.ok)throw new Error(j.error||r.status);
+    DIRTY=false; toast("Zones saved — owners recalculated for everybody.");
+    stopDraw(); editing=false; CFG=null; selZone=null;
+    $("editor").classList.remove("show"); $("editBtn").classList.remove("on"); $("editBtn").textContent="✏️ EDIT ZONES";
+    await load();
+  }catch(e){ toast("Could not save: "+(e.message||e)); }
+  finally{ $("saveBtn").disabled=false; }
+}
+async function resetDefaults(){
+  if(!confirm("Reset EVERY zone and color back to Tony's default split? Manual truck moves are kept."))return;
+  const by=ensureWho(); if(!by){toast("Need your name to reset.");return;}
+  try{
+    const r=await fetch("api/zones/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reset:1,by})});
+    const j=await r.json(); if(!r.ok||!j.ok)throw new Error(j.error||r.status);
+    toast("Back to the default zones."); editing=false; CFG=null; selZone=null; DIRTY=false;
+    $("editor").classList.remove("show"); $("editBtn").classList.remove("on"); $("editBtn").textContent="✏️ EDIT ZONES";
+    await load();
+  }catch(e){ toast("Could not reset: "+(e.message||e)); }
+}
+
+// ---- drawing: drag a shape on the map (mouse or finger); it gets simplified + smoothed
+function startDraw(){
+  if(!editing)return;
+  drawing={owner:$("drawOwner").value,pts:[]};
+  $("map").classList.add("drawing"); $("drawbar").style.display="flex";
+  $("drawMsg").innerHTML=`Drag on the map to draw <b>${esc(dname(drawing.owner))}</b>'s zone (one stroke = one zone). Lift your finger to close it.`;
+  buildMap(pool());
+}
+function stopDraw(){ drawing=null; $("map").classList.remove("drawing"); $("drawbar").style.display="none"; if(editing)render(); }
+function svgPoint(e){ const svg=$("map").querySelector("svg"); const p=svg.createSVGPoint(); p.x=e.clientX; p.y=e.clientY; return p.matrixTransform(svg.getScreenCTM().inverse()); }
+const toLng=x=>B.lng0+x/B.W*(B.lng1-B.lng0), toLat=y=>B.lat1-y/B.H*(B.lat1-B.lat0);
+function simplify(pts,tol){ // Douglas–Peucker in svg px
+  if(pts.length<3)return pts;
+  const d2=(p,a,b)=>{const dx=b[0]-a[0],dy=b[1]-a[1];if(!dx&&!dy)return (p[0]-a[0])**2+(p[1]-a[1])**2;let t=((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(dx*dx+dy*dy);t=Math.max(0,Math.min(1,t));return (p[0]-a[0]-t*dx)**2+(p[1]-a[1]-t*dy)**2;};
+  const rec=(a,b)=>{let m=0,idx=-1;for(let i=a+1;i<b;i++){const d=d2(pts[i],pts[a],pts[b]);if(d>m){m=d;idx=i;}}
+    if(m>tol*tol&&idx>0)return rec(a,idx).concat(rec(idx,b).slice(1)); return [pts[a],pts[b]];};
+  return rec(0,pts.length-1);
+}
+function onMapDown(e){
+  if(!editing)return;
+  if(drawing){ e.preventDefault(); drawing.pts=[]; const p=svgPoint(e); drawing.pts.push([p.x,p.y]); drawing.active=true; return; }
+  const v=e.target.closest&&e.target.closest(".vtx");
+  if(v&&selZone){ e.preventDefault(); e.stopPropagation(); dragging={z:CFG.zones.find(z=>z.id===selZone),i:+v.dataset.i}; }
+}
+function onMapMove(e){
+  if(drawing&&drawing.active){ e.preventDefault(); const p=svgPoint(e); const last=drawing.pts[drawing.pts.length-1]; if(Math.hypot(p.x-last[0],p.y-last[1])>3)drawing.pts.push([p.x,p.y]); const pl=$("map").querySelector("#drawpath"); if(pl)pl.setAttribute("points",drawing.pts.map(q=>q[0].toFixed(1)+","+q[1].toFixed(1)).join(" ")); return; }
+  if(dragging){ e.preventDefault(); const p=svgPoint(e); dragging.z.poly[dragging.i]=[Math.round(toLng(p.x)*1e4)/1e4,Math.round(toLat(p.y)*1e4)/1e4]; buildMap(pool()); }
+}
+function onMapUp(e){
+  if(drawing&&drawing.active){
+    drawing.active=false;
+    let pts=simplify(drawing.pts,9); if(pts.length>2&&Math.hypot(pts[0][0]-pts[pts.length-1][0],pts[0][1]-pts[pts.length-1][1])<12)pts=pts.slice(0,-1);
+    if(pts.length>40){const k=Math.ceil(pts.length/40);pts=pts.filter((_,i)=>i%k===0);}
+    if(pts.length<3){toast("Too small — draw a bigger shape.");buildMap(pool());return;}
+    const id="z"+Date.now().toString(36);
+    const z={id,name:dname(drawing.owner)+" zone "+(CFG.zones.filter(x=>x.owner===drawing.owner).length+1),owner:drawing.owner,poly:pts.map(p=>[Math.round(toLng(p[0])*1e4)/1e4,Math.round(toLat(p[1])*1e4)/1e4])};
+    CFG.zones.unshift(z); // new zone FIRST so it wins over the big default areas it overlaps
+    selZone=id; mark();
+    const n=zoneCounts(pool())[id]||0;
+    toast(`${z.name}: ${n} trucks sleep inside → ${dname(z.owner)}. Reshape it or draw another.`);
+    drawing.pts=[]; render(); return;
+  }
+  if(dragging){ dragging=null; mark(); render(); }
+}
+
+// ---- map (NE Texas)
 const CITIES=[["Dallas",-96.797,32.777,1],["Fort Worth",-97.330,32.756,1],["Tyler",-95.301,32.351,1,"e"],["McKinney",-96.616,33.198,0],["Denton",-97.133,33.215,0],["Decatur",-97.586,33.234,0],["Bridgeport",-97.755,33.210,0],["Sherman",-96.609,33.636,0,"e"],["Denison",-96.537,33.756,0],["Bonham",-96.178,33.577,0],["Paris",-95.556,33.661,1],["Clarksville",-95.053,33.611,0],["Hugo OK",-95.510,34.011,0],["Sulphur Springs",-95.601,33.138,0],["Greenville",-96.111,33.138,0],["Mt Pleasant",-94.968,33.157,0],["Emory",-95.766,32.874,0],["Mineola",-95.488,32.663,0],["Canton",-95.863,32.556,0],["Terrell",-96.275,32.736,0],["Longview",-94.740,32.500,0],["Athens",-95.855,32.205,0],["Corsicana",-96.469,32.095,0],["Waxahachie",-96.848,32.386,0],["Cleburne",-97.386,32.348,0],["Ennis",-96.625,32.329,0],["Scurry",-96.390,32.610,0]];
 const FACIL=[{n:"RK Hall Sawyer (quarry)",lng:-95.348,lat:34.122,o:"juan"},{n:"RK Hall Paris",lng:-95.575,lat:33.720,o:"juan"},{n:"RKH / Clark Denison",lng:-96.533,lat:33.798,o:"juan"},{n:"MM Tyler Rail",lng:-95.280,lat:32.330,o:"juan"},{n:"LAI Mineola",lng:-95.488,lat:32.678,o:"juan"},{n:"KT Powderly (terminal)",lng:-95.512,lat:33.810,o:"jimmy"},{n:"KT Rhome (terminal)",lng:-97.472,lat:33.054,o:"mary"},{n:"KT Whitewright (terminal)",lng:-96.393,lat:33.512,o:"mary"}];
 const RED_RIVER=[[-98.05,34.12],[-97.55,33.90],[-97.16,33.83],[-96.90,33.86],[-96.60,33.82],[-96.30,33.76],[-95.85,33.87],[-95.50,33.89],[-95.24,33.94],[-94.90,33.86],[-94.62,33.70],[-94.43,33.60]];
 const ROADS=[{n:"I-30",li:7,pts:[[-97.33,32.76],[-96.80,32.79],[-96.46,32.93],[-96.11,33.14],[-95.60,33.14],[-95.22,33.19],[-94.97,33.16],[-94.25,33.42]]},{n:"I-20",li:0,pts:[[-98.00,32.70],[-97.32,32.72],[-96.80,32.71],[-96.28,32.72],[-95.86,32.54],[-95.41,32.51],[-94.74,32.47],[-94.25,32.46]]},{n:"US-75",li:1,pts:[[-96.80,32.78],[-96.64,33.05],[-96.62,33.20],[-96.61,33.64],[-96.54,33.76],[-96.50,33.86]]},{n:"US-82",li:5,pts:[[-96.61,33.64],[-96.39,33.60],[-96.18,33.58],[-95.56,33.66],[-95.05,33.61],[-94.60,33.53]]},{n:"US-69",li:4,pts:[[-96.54,33.76],[-96.61,33.64],[-96.62,33.20],[-96.11,33.14],[-95.90,33.00],[-95.77,32.87],[-95.49,32.66],[-95.30,32.35],[-95.20,32.10]]}];
-const Z_NORTH=[[-96.95,33.50],[-96.80,33.92],[-96.45,34.02],[-95.95,34.22],[-95.20,34.30],[-94.72,33.95],[-94.80,33.48],[-95.45,33.36],[-96.15,33.40],[-96.70,33.40]];
-const Z_SE=[[-96.28,32.86],[-95.90,33.02],[-95.42,32.98],[-94.62,32.72],[-94.55,32.28],[-95.12,32.02],[-95.80,32.08],[-96.30,32.40],[-96.38,32.66]];
-const Z_SW=[[-97.90,33.32],[-97.30,33.34],[-96.82,33.10],[-96.62,32.62],[-96.70,32.22],[-97.10,32.05],[-97.65,32.12],[-97.95,32.60]];
 const B={lng0:-98.05,lng1:-94.20,lat0:31.90,lat1:34.45,W:1000};
 B.H=Math.round(B.W*(B.lat1-B.lat0)/((B.lng1-B.lng0)*Math.cos(33.2*Math.PI/180)));
 const px=lng=>((lng-B.lng0)/(B.lng1-B.lng0)*B.W).toFixed(1);
@@ -298,12 +474,17 @@ function smooth(pts){
   return d+"Z";
 }
 function buildMap(trucks){
+  const zones=(editing&&CFG)?CFG.zones:ZONES;
   const S=[];
   S.push(`<svg viewBox="0 0 ${B.W} ${B.H}" role="img" aria-label="Dispatcher zone map, northeast Texas">`);
   S.push(`<rect width="${B.W}" height="${B.H}" rx="10" fill="var(--map-ground)"/>`);
-  S.push(`<path d="${smooth(Z_SW)}" fill="var(--jimmy)" fill-opacity=".13" stroke="var(--jimmy)" stroke-width="1.8"/>`);
-  S.push(`<path d="${smooth(Z_SE)}" fill="var(--juan)" fill-opacity=".13" stroke="var(--juan)" stroke-width="1.8"/>`);
-  S.push(`<path d="${smooth(Z_NORTH)}" fill="var(--juan)" fill-opacity=".13" stroke="var(--juan)" stroke-width="1.8"/>`);
+  // zones: draw in REVERSE list order so the first (winning) zone paints on top
+  for(const z of zones.slice().reverse()){
+    const c=z.owner?`var(--${z.owner})`:"var(--none)";
+    S.push(`<path class="${selZone===z.id?"zsel":""}" d="${smooth(z.poly)}" fill="${c}" fill-opacity=".14" stroke="${c}" stroke-width="1.8"/>`);
+    const cx=z.poly.reduce((s,p)=>s+p[0],0)/z.poly.length, cy=z.poly.reduce((s,p)=>s+p[1],0)/z.poly.length;
+    S.push(`<text x="${px(cx)}" y="${py(cy)}" text-anchor="middle" font-size="12.5" font-weight="700" letter-spacing="1.2" fill="${c}" font-family="Barlow Condensed, sans-serif" opacity=".9">${esc(z.name.toUpperCase())}${z.owner?" — "+esc(dname(z.owner).toUpperCase()):""}</text>`);
+  }
   S.push(`<path d="${pathOf(RED_RIVER)}" fill="none" stroke="var(--map-river)" stroke-width="2.2" stroke-linecap="round" opacity=".85"/>`);
   S.push(`<text x="${px(-97.9)}" y="${+py(34.02)-6}" font-size="12" fill="var(--map-river)" font-style="italic">Red River · OK line</text>`);
   for(const r of ROADS){
@@ -311,36 +492,39 @@ function buildMap(trucks){
     const m=r.pts[r.li!=null?r.li:Math.floor(r.pts.length/2)];
     S.push(`<text x="${+px(m[0])+5}" y="${+py(m[1])-5}" font-size="10.5" fill="var(--map-city)" opacity=".9">${r.n}</text>`);
   }
-  const zl=[["NORTH — JUAN",-96.42,34.05,"juan"],["SOUTH EAST — JUAN",-95.05,32.12,"juan"],["SOUTH WEST — JIMMY",-97.62,32.28,"jimmy"]];
-  for(const [t,lng,lat,c] of zl) S.push(`<text x="${px(lng)}" y="${py(lat)}" font-size="13.5" font-weight="700" letter-spacing="1.5" fill="var(--${c})" font-family="Barlow Condensed, sans-serif">${t}</text>`);
-  for(const f of FACIL.filter(f=>f.o==="mary"))
-    S.push(`<circle cx="${px(f.lng)}" cy="${py(f.lat)}" r="42" fill="var(--mary)" fill-opacity=".14" stroke="var(--mary)" stroke-width="2" stroke-dasharray="6 5"/>`);
   for(const [n,lng,lat,big,anc] of CITIES){
     S.push(`<circle cx="${px(lng)}" cy="${py(lat)}" r="${big?3.4:2.4}" fill="var(--map-city)"/>`);
     const e=anc==="e";
     S.push(`<text x="${+px(lng)+(e?-6:6)}" y="${+py(lat)+4}" ${e?'text-anchor="end"':""} font-size="${big?12:10.5}" ${big?'font-weight="600"':""} fill="var(--map-city)">${n}</text>`);
   }
-  // trucks at their last GPS position (only the ones inside the map)
   let plotted=0;
   for(const t of trucks){
-    const lat=Number(t.last_lat),lng=Number(t.last_lon);
+    const lat=Number(t.zone_lat),lng=Number(t.zone_lon);
     if(!isFinite(lat)||!isFinite(lng)||!lat||!lng)continue;
     if(lng<B.lng0||lng>B.lng1||lat<B.lat0||lat>B.lat1)continue;
     plotted++;
     const c=t.dispatcher_eff?`var(--${t.dispatcher_eff})`:"var(--none)";
-    S.push(`<circle class="truck" cx="${px(lng)}" cy="${py(lat)}" r="4.2" fill="${c}" stroke="var(--card)" stroke-width="1.2" data-tip="${esc(dnum(t))} · ${esc(t.driver||"no driver")} · ${esc(dname(t.dispatcher_eff))}"/>`);
+    S.push(`<circle class="truck" cx="${px(lng)}" cy="${py(lat)}" r="4.2" fill="${c}" stroke="var(--card)" stroke-width="1.2" data-tip="${esc(dnum(t))} · ${esc(t.driver||"no driver")} · ${esc(dname(t.dispatcher_eff))}${t.zone_src==="live"?" · live GPS":""}"/>`);
   }
   for(const f of FACIL){
     const x=+px(f.lng),y=+py(f.lat);
     S.push(`<g class="truck" data-tip="${esc(f.n)}"><path d="M${x} ${y} l-7 -12 a8.2 8.2 0 1 1 14 0 Z" fill="var(--${f.o})" stroke="var(--card)" stroke-width="1.6"/><circle cx="${x}" cy="${y-14.5}" r="3" fill="var(--card)"/></g>`);
   }
-  S.push(`<text x="${B.W-10}" y="${B.H-8}" text-anchor="end" font-size="11" fill="var(--map-city)">${plotted} trucks with GPS on the map</text>`);
+  // editor overlays: vertices of the selected zone + the stroke being drawn
+  if(editing&&selZone){
+    const z=zones.find(x=>x.id===selZone);
+    if(z)z.poly.forEach((p,i)=>S.push(`<circle class="vtx" data-i="${i}" cx="${px(p[0])}" cy="${py(p[1])}" r="7" fill="var(--card)" stroke="${z.owner?`var(--${z.owner})`:"var(--none)"}" stroke-width="2.5"/>`));
+  }
+  if(drawing)S.push(`<polyline id="drawpath" points="${(drawing.pts||[]).map(q=>q[0].toFixed(1)+","+q[1].toFixed(1)).join(" ")}" fill="var(--${drawing.owner})" fill-opacity=".18" stroke="var(--${drawing.owner})" stroke-width="2.5" stroke-dasharray="6 4"/>`);
+  S.push(`<text x="${B.W-10}" y="${B.H-8}" text-anchor="end" font-size="11" fill="var(--map-city)">${plotted} trucks with a known position on the map</text>`);
   S.push("</svg>");
   $("map").innerHTML=S.join("");
+  const svg=$("map").querySelector("svg");
+  svg.addEventListener("pointerdown",onMapDown); svg.addEventListener("pointermove",onMapMove); svg.addEventListener("pointerup",onMapUp); svg.addEventListener("pointercancel",onMapUp);
   const tip=$("tip");
   document.querySelectorAll("#map .truck").forEach(p=>{
     const show=e=>{tip.style.display="block";tip.textContent=p.dataset.tip;tip.style.left=(e.clientX+14)+"px";tip.style.top=(e.clientY+10)+"px";};
-    p.addEventListener("mousemove",show); p.addEventListener("touchstart",e=>show(e.touches[0]),{passive:true});
+    p.addEventListener("mousemove",show); p.addEventListener("touchstart",e=>{if(!drawing)show(e.touches[0]);},{passive:true});
     p.addEventListener("mouseleave",()=>tip.style.display="none");
   });
 }

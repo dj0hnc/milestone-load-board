@@ -234,7 +234,7 @@ function createRouter({ config, newmile, log }) {
         calls_count: callCountMap.get(t.org_id + '|' + t.number) || 0
       };
     });
-    outTrucks.forEach(zones.decorate); // 🗺 dispatcher owner: automatic rule + manual override
+    zones.decorateAll(outTrucks); // 🗺 dispatcher owner: manual > KT terminal > drawn zone (where it sleeps) > division/yard
 
     res.json({
       org: { id: org.id, label: org.label },
@@ -245,7 +245,8 @@ function createRouter({ config, newmile, log }) {
         .concat(all(`SELECT d.org_id, d.id, d.label FROM divisions d JOIN orgs o ON o.id = d.org_id
                      WHERE o.enabled = 1 ORDER BY o.sort, d.sort`))
         .concat([{ org_id: 'SUBS', id: 'SUBS', label: 'SUBS' }]),
-      dispatchers: zones.DISPATCHERS, // 🗺 who owns which zone (tiles, badges, move buttons)
+      dispatchers: zones.dispatchers(), // 🗺 who owns which zone (tiles, badges, move buttons) — editable in zones.html
+      zones: zones.zonesList(),         // 🗺 drawn zone polygons [lng,lat] with their owner
       date, today, historical,
       // ¿este día ya se cotejó contra las asignaciones de NewMile? (para avisar "planeado
       // aquí pero NO está en NewMile" solo cuando hay datos reales que comparar)
@@ -462,7 +463,7 @@ function createRouter({ config, newmile, log }) {
                                t.hos_drive_ms, t.hos_cycle_ms, t.hos_at,
                                t.area, t.parked_city, t.is_sub, t.last_lat, t.last_lon, t.dispatcher
                         FROM trucks t JOIN orgs o ON o.id = t.org_id WHERE o.enabled = 1 AND t.archived = 0`);
-    trucks.forEach(zones.decorate); // 🗺 owner (Juan / Mary / Jimmy) for the board's chips
+    zones.decorateAll(trucks); // 🗺 owner (Juan / Mary / Jimmy) for the board's chips
     const states = new Map(all('SELECT org_id, number, state FROM dispatch_state WHERE date = ?', today)
       .map(r => [r.org_id + '|' + r.number, r.state]));
     // 💰 dinero freight de HOY y de la SEMANA (Lun-Sáb) por troke — para los chips del board
@@ -545,6 +546,23 @@ function createRouter({ config, newmile, log }) {
       res.json({ ok: true, reset, roster });
     } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
     finally { _rosterPokeBusy = false; }
+  });
+
+  // 🗺 ZONES CONFIG — editable dispatcher colors/names + drawn zone polygons (zones.html).
+  router.get('/api/zones/config', (req, res) => res.json({ ok: true, config: zones.getConfig(), defaults: zones.DEFAULTS() }));
+  router.post('/api/zones/config', async (req, res) => {
+    const b = req.body || {};
+    const by = String(b.by || (await identityOf(req)) || 'web').slice(0, 40);
+    let cfg;
+    if (b.reset) cfg = zones.resetConfig();
+    else {
+      if (!Array.isArray(b.zones) && !Array.isArray(b.dispatchers)) return res.status(400).json({ error: 'zones or dispatchers required' });
+      const cur = zones.getConfig();
+      cfg = zones.saveConfig({ dispatchers: Array.isArray(b.dispatchers) ? b.dispatchers : cur.dispatchers, zones: Array.isArray(b.zones) ? b.zones : cur.zones });
+    }
+    try { logChange('ALL', '-', 'zones_config', '', (b.reset ? 'reset to defaults' : cfg.zones.length + ' zones · ' + cfg.dispatchers.map(d => d.name + ' ' + d.color).join(', ')), by); } catch (e) {}
+    bumpRev();
+    res.json({ ok: true, config: cfg });
   });
 
   router.get('/api/states-key', (req, res) => {
