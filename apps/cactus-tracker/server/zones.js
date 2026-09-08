@@ -225,12 +225,18 @@ function decorate(t, ctx) {
   t.dispatcher_auto = a.id;
   t.dispatcher_manual = manual;
   t.dispatcher_home = home;
-  t.dispatcher_eff = act.reason ? '' : home;
-  t.inactive_reason = act.reason;
+  // MANUAL = REAL (Juan 2026-09-04: "los que le puse a Jimmy todos eran reales"): a truck a
+  // person placed by hand always counts for that person; inactivity is only a hint on it.
+  const parked = !!act.reason && !manual;
+  t.dispatcher_eff = parked ? '' : home;
+  t.inactive_reason = parked ? act.reason : '';
+  t.inactive_hint = act.reason;
   t.no_driver = act.noDriver ? 1 : 0;
   t.owner_active = act.ownerActive ? 1 : 0;
   t.days_idle = act.idle;
-  t.dispatcher_why = act.reason ? ('⏸ ' + act.reason + (home ? ' · home ' + home : '')) : (a.why + (act.noDriver ? ' · NO DRIVER' : ''));
+  t.dispatcher_why = parked
+    ? ('⏸ ' + act.reason + (home ? ' · home ' + home : ''))
+    : ((manual ? 'placed by hand' : a.why) + (act.reason ? ' · ⚠ ' + act.reason : '') + (act.noDriver ? ' · NO DRIVER' : ''));
   t.zone = a.zone;
   t.zone_lat = pos ? pos.lat : null;
   t.zone_lon = pos ? pos.lon : null;
