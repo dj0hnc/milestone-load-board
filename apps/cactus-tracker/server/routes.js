@@ -1474,6 +1474,15 @@ function createRouter({ config, newmile, log }) {
         sets.push(`${k} = ?`); vals.push(v);
       }
       if ('is_sub' in f) { sets.push('is_sub = ?'); vals.push(f.is_sub ? 1 : 0); }
+      // 🗓 timeoff_clear: drop the scheduled time-off rows that cover TODAY (a stray "vacation today"
+      // makes the load board show the truck as down while the tracker says ok — 1386, 2026-09-08)
+      if (f.timeoff_clear) {
+        const today = todayCT();
+        const gone = all('SELECT id, reason, from_date, to_date FROM time_off WHERE org_id = ? AND number = ? AND from_date <= ? AND to_date >= ?', row.org_id, row.number, today, today);
+        for (const o of gone) { run('DELETE FROM time_off WHERE id = ?', o.id); logChange(row.org_id, row.number, 'time_off', o.reason + ' ' + o.from_date + ' → ' + o.to_date, '(cleared)', by); }
+        if (gone.length) bumpRev();
+        if (!sets.length) return res.json({ ok: true, updated: true, timeoff_cleared: gone.length });
+      }
       if ('division' in f && f.division != null && f.division !== '') {
         const d = get('SELECT 1 AS x FROM divisions WHERE org_id = ? AND id = ?', row.org_id, normNum(f.division));
         if (!d) return res.status(400).json({ error: 'invalid division' });
