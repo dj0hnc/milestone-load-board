@@ -463,7 +463,8 @@ function createRouter({ config, newmile, log }) {
     const trucks = all(`SELECT t.org_id, t.number, t.display_number, t.division, t.driver, t.status, t.status_note,
                                t.note, t.return_date, t.rest_days, t.updated_at,
                                t.hos_drive_ms, t.hos_cycle_ms, t.hos_at,
-                               t.area, t.parked_city, t.is_sub, t.last_lat, t.last_lon, t.dispatcher
+                               t.area, t.parked_city, t.is_sub, t.last_lat, t.last_lon, t.dispatcher,
+                               t.last_load_date, t.owner_id, t.owner_name, t.star, t.trailer_type, t.nm_truck_id
                         FROM trucks t JOIN orgs o ON o.id = t.org_id WHERE o.enabled = 1 AND t.archived = 0`);
     zones.decorateAll(trucks); // 🗺 owner (Juan / Mary / Jimmy) for the board's chips
     const states = new Map(all('SELECT org_id, number, state FROM dispatch_state WHERE date = ?', today)
