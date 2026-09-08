@@ -1426,7 +1426,9 @@ function createRouter({ config, newmile, log }) {
     const b = req.body || {};
     const num = normNum(b.number || b.num);
     if (!num) return res.status(400).json({ error: 'number required' });
-    let row = get('SELECT * FROM trucks WHERE (UPPER(number) = UPPER(?) OR UPPER(display_number) = UPPER(?)) AND archived = 0 ORDER BY is_sub ASC LIMIT 1', num, num)
+    const orgF = normNum(b.org || ''); // optional: pin the org when the same number exists in CACTUS and KT
+    let row = (orgF ? get('SELECT * FROM trucks WHERE org_id = ? AND (UPPER(number) = UPPER(?) OR UPPER(display_number) = UPPER(?)) ORDER BY archived ASC, is_sub ASC LIMIT 1', orgF, num, num) : null)
+           || get('SELECT * FROM trucks WHERE (UPPER(number) = UPPER(?) OR UPPER(display_number) = UPPER(?)) AND archived = 0 ORDER BY is_sub ASC LIMIT 1', num, num)
            || get('SELECT * FROM trucks WHERE UPPER(number) = UPPER(?) OR UPPER(display_number) = UPPER(?) LIMIT 1', num, num);
     if (!row) return res.json({ ok: true, matched: false });
     const f = b.fields || null;
@@ -1434,12 +1436,13 @@ function createRouter({ config, newmile, log }) {
       const by = String(b.by || 'board').slice(0, 40);
       // is_sub/tags/division = RECLASIFICAR de qué tab sale el troke (2026-08-30: el 1280 estaba
       // como sub → pegado en SUBS aunque su división fuera SOUTH). Se validan aparte de los textos.
-      const ALLOW = ['status', 'status_note', 'driver', 'phone', 'area', 'note', 'tags'];
+      const ALLOW = ['status', 'status_note', 'driver', 'phone', 'area', 'note', 'tags', 'dispatcher'];
       const sets = [], vals = [];
       for (const k of ALLOW) {
         if (!(k in f)) continue;
         let v = String(f[k] == null ? '' : f[k]).slice(0, 300);
         if (k === 'status' && !VALID_STATUS.includes(v)) return res.status(400).json({ error: 'invalid status' });
+        if (k === 'dispatcher') { const dv = zones.validId(v); if (v && !dv) return res.status(400).json({ error: 'invalid dispatcher' }); v = dv; } // 🗺 zone owner ('' = auto)
         if (k === 'area' && v) v = canonArea(v);
         sets.push(`${k} = ?`); vals.push(v);
       }
