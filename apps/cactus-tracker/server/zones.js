@@ -9,16 +9,29 @@
  * The zones themselves are EDITABLE: polygons (drawn on the map in zones.html) + each
  * dispatcher's name / short tag / color live in meta.zones_config (JSON). Defaults below.
  *
- * Owner of a truck, in order:
- *   1. MANUAL  — trucks.dispatcher set by a person (zones.html / ✎ modal). Always wins.
+ * HOME owner of a truck (who it belongs to), in order:
+ *   1. MANUAL  — trucks.dispatcher set by a person (zones.html / ✎ modal). Always wins, stays
+ *      recorded until somebody changes it by hand again.
  *   2. KT TERMINAL — Rhome / Whitewright → Mary, Powderly → Jimmy, ICS → Mary (company structure).
  *   3. DRAWN ZONE — the zone polygon that contains where the truck SLEEPS (latest parking_log
  *      night, 3-5 AM GPS; falls back to the last live position). Stable: a South truck hauling
  *      to Dallas today does not flip to Jimmy.
  *   4. DIVISION / YARD — Cactus North → Juan; Cactus South by yard / parked-city words.
  *   5. otherwise unassigned ("?") so somebody moves it by hand.
+ *
+ * EFFECTIVE owner (what the tiles count) = HOME, except INACTIVE trucks, which count for nobody:
+ *   - de-leased, or
+ *   - no load in NewMile for 30 days (and not assigned in the last 14 days, not ⭐), or
+ *   - no driver AND the owner org itself is inactive (none of its trucks hauled in 30 days).
+ *   A truck with no driver whose org IS active stays with its owner, flagged NO DRIVER.
+ *   The home owner is kept, so the truck comes back to the same person when it hauls again.
  */
 const { all, metaGet, metaSet } = require('./db');
+const { todayCT, daysBetween } = require('./util');
+
+const INACTIVE_DAYS = 30;     // no NewMile load for this long = not counted
+const RECENT_ASSIGN_DAYS = 14; // planned/assigned recently = active even without a ticket yet
+const OWNER_ACTIVE_DAYS = 30;  // an owner org is active if ANY of its trucks hauled this recently
 
 const DEFAULT_DISPATCHERS = [
   { id: 'juan',  name: 'Juan',  short: 'J',  color: '#3F7080', zones: 'Cactus North · Cactus South East (RKH, Tyler)' },
@@ -95,8 +108,8 @@ function inPoly(x, y, poly) {
   }
   return inside;
 }
-// first configured zone (in list order) that contains the point — smaller "terminal" zones are
-// listed after the big ones by default, so put a small zone FIRST in the list to carve out an area.
+// first configured zone (in list order) that contains the point — a small zone placed FIRST
+// in the list carves its area out of the big ones.
 function zoneAt(lat, lon) {
   lat = Number(lat); lon = Number(lon);
   if (!isFinite(lat) || !isFinite(lon) || !lat || !lon) return null;
@@ -110,7 +123,7 @@ const SW_AREAS = /DALLAS|FORT WORTH|FT\.? WORTH|WAXAHACHIE|CLEBURNE|ENNIS|MIDLOT
 
 function r(id, why, zone) { return { id: id || '', why: why || '', zone: zone || '' }; }
 
-// Where the truck sleeps: latest parking_log night with coordinates, else the last live position.
+// ---------- context shared by one decorate pass (cheap queries, once per request) ----------
 function sleepMap() {
   const m = new Map();
   try {
@@ -121,14 +134,34 @@ function sleepMap() {
   } catch (e) { /* no parking log yet → live positions */ }
   return m;
 }
-function posOf(t, sleeps) {
-  const s = sleeps && sleeps.get(t.org_id + '|' + t.number);
+function buildCtx() {
+  const today = todayCT();
+  const ctx = { today, sleeps: sleepMap(), recent: new Set(), ownerLast: new Map() };
+  try {
+    for (const s of all(`SELECT DISTINCT org_id, number FROM dispatch_state WHERE state = 'a' AND date >= date(?, ?)`, today, '-' + RECENT_ASSIGN_DAYS + ' days')) ctx.recent.add(s.org_id + '|' + s.number);
+  } catch (e) {}
+  try {
+    for (const o of all(`SELECT owner_id, owner_name, MAX(last_load_date) AS m FROM trucks WHERE archived = 0 AND last_load_date IS NOT NULL GROUP BY owner_id, owner_name`)) {
+      if (o.owner_id != null) ctx.ownerLast.set('id:' + o.owner_id, o.m);
+      if (o.owner_name) ctx.ownerLast.set('nm:' + String(o.owner_name).trim().toUpperCase(), o.m);
+    }
+  } catch (e) {}
+  return ctx;
+}
+let _ctxCache = null;
+function ctxCached() {
+  if (_ctxCache && Date.now() - _ctxCache.at < 20000) return _ctxCache.ctx;
+  _ctxCache = { at: Date.now(), ctx: buildCtx() };
+  return _ctxCache.ctx;
+}
+function posOf(t, ctx) {
+  const s = ctx.sleeps.get(t.org_id + '|' + t.number);
   if (s) return s;
   if (t.last_lat != null && t.last_lon != null && Number(t.last_lat) && Number(t.last_lon)) return { lat: Number(t.last_lat), lon: Number(t.last_lon), src: 'live' };
   return null;
 }
 
-// The automatic owner of a truck row. `pos` = {lat, lon, src} or null.
+// The automatic HOME owner of a truck row. `pos` = {lat, lon, src} or null.
 function autoOf(t, pos) {
   const org = String(t.org_id || '').toUpperCase();
   const div = String(t.division || '').toUpperCase();
@@ -161,24 +194,49 @@ function autoOf(t, pos) {
   return r('', 'assign by hand', '');
 }
 
+// Is this truck ALIVE for the counts? Returns '' when active, else the reason it is parked.
+function activityOf(t, ctx) {
+  const key = t.org_id + '|' + t.number;
+  const idle = t.last_load_date ? daysBetween(t.last_load_date, ctx.today) : null;
+  const noDriver = !String(t.driver || '').trim() || t.status === 'no_driver' || /SIN DRIVER|NO DRIVER/i.test(String(t.driver || ''));
+  const ownerLast = (t.owner_id != null ? ctx.ownerLast.get('id:' + t.owner_id) : null) || ctx.ownerLast.get('nm:' + String(t.owner_name || '').trim().toUpperCase()) || null;
+  const ownerActive = !!(ownerLast && daysBetween(ownerLast, ctx.today) <= OWNER_ACTIVE_DAYS);
+  const assignedRecently = ctx.recent.has(key);
+  let reason = '';
+  if (t.status === 'deleased') reason = 'de-leased';
+  else if (!assignedRecently && !t.star && (idle == null || idle > INACTIVE_DAYS)) reason = idle == null ? 'no loads in NewMile yet' : 'no loads in NewMile for ' + idle + ' days';
+  else if (noDriver && !ownerActive) reason = 'no driver · owner org inactive';
+  return { idle, noDriver, ownerActive, assignedRecently, reason };
+}
+
 function validId(v) { const m = String(v || '').toLowerCase().trim(); return IDS.has(m) ? m : ''; }
 
-// Mutates the row: dispatcher_auto / dispatcher_why / zone / dispatcher_manual / dispatcher_eff
-// + zone_lat / zone_lon / zone_src (the position the rule used, so the map can show it).
-function decorate(t, sleeps) {
-  const pos = posOf(t, sleeps);
+// Mutates the row:
+//   dispatcher_auto / dispatcher_manual / dispatcher_home  (who it belongs to)
+//   dispatcher_eff  (who it COUNTS for right now: home, or '' when inactive)
+//   dispatcher_why, zone, zone_lat/zone_lon/zone_src, inactive_reason, no_driver, days_idle, owner_active
+function decorate(t, ctx) {
+  ctx = ctx || ctxCached();
+  const pos = posOf(t, ctx);
   const a = autoOf(t, pos);
   const manual = validId(t.dispatcher);
+  const home = manual || a.id;
+  const act = activityOf(t, ctx);
   t.dispatcher_auto = a.id;
-  t.dispatcher_why = a.why;
-  t.zone = a.zone;
   t.dispatcher_manual = manual;
-  t.dispatcher_eff = manual || a.id;
+  t.dispatcher_home = home;
+  t.dispatcher_eff = act.reason ? '' : home;
+  t.inactive_reason = act.reason;
+  t.no_driver = act.noDriver ? 1 : 0;
+  t.owner_active = act.ownerActive ? 1 : 0;
+  t.days_idle = act.idle;
+  t.dispatcher_why = act.reason ? ('⏸ ' + act.reason + (home ? ' · home ' + home : '')) : (a.why + (act.noDriver ? ' · NO DRIVER' : ''));
+  t.zone = a.zone;
   t.zone_lat = pos ? pos.lat : null;
   t.zone_lon = pos ? pos.lon : null;
   t.zone_src = pos ? pos.src : '';
   return t;
 }
-function decorateAll(rows) { const sleeps = sleepMap(); for (const t of rows) decorate(t, sleeps); return rows; }
+function decorateAll(rows) { const ctx = buildCtx(); for (const t of rows) decorate(t, ctx); return rows; }
 
-module.exports = { DEFAULT_DISPATCHERS, IDS, getConfig, saveConfig, resetConfig, DEFAULTS, dispatchers, zonesList, zoneAt, autoOf, decorate, decorateAll, validId, inPoly };
+module.exports = { DEFAULT_DISPATCHERS, IDS, INACTIVE_DAYS, getConfig, saveConfig, resetConfig, DEFAULTS, dispatchers, zonesList, zoneAt, autoOf, activityOf, decorate, decorateAll, validId, inPoly };

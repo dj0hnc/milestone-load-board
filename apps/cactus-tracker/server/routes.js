@@ -500,7 +500,8 @@ function createRouter({ config, newmile, log }) {
         revDay: (revs.get(t.org_id + '|' + t.number) || {}).rd || 0,
         revWeek: (revs.get(t.org_id + '|' + t.number) || {}).rw || 0,
         // 🗺 dispatcher zone owner: effective (manual wins), automatic rule, and why
-        owner: t.dispatcher_eff || '', ownerAuto: t.dispatcher_auto || '', ownerManual: t.dispatcher_manual || '', ownerWhy: t.dispatcher_why || ''
+        owner: t.dispatcher_eff || '', ownerHome: t.dispatcher_home || '', ownerAuto: t.dispatcher_auto || '', ownerManual: t.dispatcher_manual || '', ownerWhy: t.dispatcher_why || '',
+        inactive: t.inactive_reason || '', noDriver: t.no_driver ? 1 : 0, daysIdle: t.days_idle
       };
     }
     res.setHeader('Cache-Control', 'no-store');
@@ -572,6 +573,61 @@ function createRouter({ config, newmile, log }) {
     res.json({ ok: true, trucks: all(`SELECT t.org_id, t.number, t.display_number, t.division, t.driver, t.owner_name, t.is_sub, t.last_load_date, t.updated_at
                                        FROM trucks t JOIN orgs o ON o.id = t.org_id WHERE o.enabled = 1 AND t.archived = 1
                                        ORDER BY t.updated_at DESC LIMIT 600`) });
+  });
+
+  // 🗺 ZONES: refresh ONLY trucks / drivers / trailers (+ recent activity for the 30-day rule).
+  // No orders, no assignments — cheap and safe to hit from the ZONES page.
+  let _rosterBusy = false;
+  router.post('/api/sync/roster', async (req, res) => {
+    if (!newmile) return res.status(503).json({ error: 'NewMile not configured' });
+    if (_rosterBusy) return res.json({ ok: true, already: true });
+    _rosterBusy = true;
+    try {
+      if (!newmile.connected && !(await newmile.resume())) return res.status(401).json({ error: 'NOT_CONNECTED', hint: 'open /api/newmile/connect' });
+      const roster = await syncRoster(newmile);
+      let activity = null;
+      try { activity = await syncActivity(newmile, 7); } catch (e) { activity = { error: String(e.message || e) }; }
+      bumpRev();
+      res.json({ ok: true, roster, activity });
+    } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+    finally { _rosterBusy = false; }
+  });
+
+  // 🚛 NewMile truck types (reference data, cached 1 h) — for the trailer selector in ZONES.
+  let _ttCache = { at: 0, list: [] };
+  async function truckTypes() {
+    if (_ttCache.list.length && Date.now() - _ttCache.at < 3600e3) return _ttCache.list;
+    if (!newmile.connected && !(await newmile.resume())) throw new Error('NOT_CONNECTED');
+    const r = await newmile.callTool('list_resources', { resource_type: 'truck_type', filters: { page_size: 100 } });
+    const list = ((r && (r.truck_types || r.results || r.rows)) || []).map(x => ({ id: x.id, name: x.name, key: x.key || '' })).filter(x => x.id != null && x.name);
+    if (list.length) _ttCache = { at: Date.now(), list };
+    return list;
+  }
+  router.get('/api/newmile/truck-types', async (req, res) => {
+    try { res.json({ ok: true, types: await truckTypes() }); }
+    catch (e) { res.status(e.message === 'NOT_CONNECTED' ? 401 : 500).json({ error: String(e.message || e) }); }
+  });
+  // ✏️ change a truck's type IN NEWMILE (update_resource truck.truck_type_id) and mirror it here.
+  router.post('/api/truck/:org/:number/truck-type', async (req, res) => {
+    const orgId = normNum(req.params.org), number = normNum(req.params.number);
+    const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number);
+    if (!row) return res.status(404).json({ error: 'truck not found' });
+    if (row.nm_truck_id == null) return res.status(400).json({ error: 'this truck is not linked to NewMile yet (no nm_truck_id)' });
+    const tid = Number((req.body || {}).truck_type_id);
+    if (!tid) return res.status(400).json({ error: 'truck_type_id required' });
+    const by = String((req.body || {}).by || '').slice(0, 40);
+    try {
+      const types = await truckTypes();
+      const tt = types.find(x => Number(x.id) === tid);
+      if (!tt) return res.status(400).json({ error: 'unknown truck_type_id ' + tid });
+      const upd = await newmile.callTool('update_resource', { resource_type: 'truck', id: Number(row.nm_truck_id), attrs: { truck_type_id: tid } });
+      const nmName = (upd && upd.truck_type) || tt.name;
+      const short = shortTrailer(nmName);
+      run('UPDATE trucks SET trailer_type = ?, trailer_override = 0, updated_at = ? WHERE org_id = ? AND number = ?', short, nowISO(), orgId, number);
+      logChange(orgId, number, 'trailer_type', row.trailer_type, short + ' (NewMile: ' + nmName + ')', by);
+      bumpRev();
+      res.json({ ok: true, trailer_type: short, newmile_truck_type: nmName, truck_type_id: tid });
+    } catch (e) { res.status(e.message === 'NOT_CONNECTED' ? 401 : 500).json({ error: String(e.message || e) }); }
   });
 
   router.get('/api/states-key', (req, res) => {

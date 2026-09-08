@@ -845,10 +845,10 @@ function dspColor(d){ // configured color; lightened on the dark theme so it rea
   return "#"+[f(n>>16&255),f(n>>8&255),f(n&255)].map(x=>x.toString(16).padStart(2,"0")).join("");
 }
 function dispBadge(t){
-  const e=t.dispatcher_eff||"", man=!!t.dispatcher_manual, d=dsps().find(x=>x.id===e);
+  const e=t.dispatcher_home||t.dispatcher_eff||"", man=!!t.dispatcher_manual, d=dsps().find(x=>x.id===e), parked=!!t.inactive_reason;
   const tip=(d?d.name+(man?" (moved by hand)":" (auto)"):"no owner yet")+(t.dispatcher_why?" · "+t.dispatcher_why:"")+" — ✎ to move";
   const col=d?dspColor(d):"";
-  return `<span class="dsp dsp-${e||"none"} ${man?"manual":""}" ${col?`style="background:${col};color:${document.body.classList.contains("dark")?"#0f1420":"#fff"};"`:""} title="${esc(tip)}">${d?esc(d.short):"?"}</span>`;
+  return `<span class="dsp dsp-${e||"none"} ${man?"manual":""}" ${col?`style="background:${col};color:${document.body.classList.contains("dark")?"#0f1420":"#fff"};${parked?"opacity:.45;":""}"`:(parked?'style="opacity:.45;"':"")} title="${esc(tip)}">${d?esc(d.short):"?"}</span>`;
 }
 function dispOpts(t){
   const m=t.dispatcher_manual||"";

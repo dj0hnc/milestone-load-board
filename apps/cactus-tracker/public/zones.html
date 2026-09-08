@@ -122,7 +122,11 @@ body.dark .seg button.on{background:var(--gold);color:#1C2333;}
 .row .where{color:var(--mut);font-size:12px;line-height:1.35;overflow:hidden;}
 .row .where b{color:var(--ink);font-weight:600;}
 .row .why{display:block;font-size:11px;color:var(--mut);opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.row select.tab{display:block;margin-top:4px;font-size:11.5px;padding:3px 6px;max-width:190px;border-radius:7px;font-family:'Barlow Condensed';font-weight:700;letter-spacing:.4px;}
+.row select.tab{display:inline-block;margin:4px 6px 0 0;font-size:11.5px;padding:3px 6px;max-width:190px;border-radius:7px;font-family:'Barlow Condensed';font-weight:700;letter-spacing:.4px;}
+.row select.tt{display:inline-block;margin-top:4px;font-size:11.5px;padding:3px 6px;max-width:210px;border-radius:7px;font-family:'Barlow Condensed';font-weight:700;letter-spacing:.4px;border-color:var(--gold);}
+.row select.tt:disabled{opacity:.5;border-color:var(--line);}
+.group.inactive h3{border-left-color:var(--none);color:var(--mut);}
+.group.inactive .row{opacity:.8;}
 .pill{font-family:'Barlow Condensed';font-weight:800;font-size:12px;letter-spacing:.7px;text-transform:uppercase;border-radius:8px;padding:5px 8px;text-align:center;white-space:nowrap;}
 .pill.a{background:var(--green-bg);color:var(--green);} .pill.d{background:var(--red-bg);color:var(--red);}
 .pill.n{background:var(--yellow-bg);color:var(--yellow);} .pill.off{background:#fdeedd;color:#a8622f;} .pill.p{background:var(--blue-bg);color:var(--blue);}
@@ -159,6 +163,7 @@ body.dark .pill.off{background:rgba(200,120,60,.2);color:#f0a570;}
 <header>
   <h1>Milestone Texas <small>Dispatcher zones</small></h1>
   <div class="hspacer">
+    <button class="xlink" id="refreshBtn" onclick="refreshTrucks()" title="Pull trucks, drivers and trailer types from NewMile right now (no orders) — the tracker's own refreshes update this page too">⟳ REFRESH TRUCKS</button>
     <button class="xlink" id="cleanBtn" onclick="toggleClean()" title="Tick trucks and remove them from the tracker (archived, not deleted — they come back by themselves if they haul or get assigned again)">🧹 CLEAN UP</button>
     <button class="xlink" id="editBtn" onclick="toggleEdit()" title="Draw / reshape zones and pick each dispatcher's color">✏️ EDIT ZONES</button>
     <a class="xlink" href="index.html" title="Back to the tracker">🚛 TRACKER</a>
@@ -226,7 +231,7 @@ function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;",
 function applyTheme(){document.body.classList.toggle("dark",localStorage.getItem("ct_theme")==="dark");$("themeBtn").textContent=document.body.classList.contains("dark")?"☀️":"🌙";applyColors();}
 function toggleTheme(){localStorage.setItem("ct_theme",document.body.classList.contains("dark")?"light":"dark");applyTheme();}
 
-let board=null, DSP=[], ZONES=[], dispFilter="", orgFilter="";
+let board=null, DSP=[], ZONES=[], dispFilter=null, orgFilter="", TYPES=null; // dispFilter null = all buckets
 let editing=false, CFG=null, DIRTY=false, selZone=null, drawing=null, dragging=null;
 let cleaning=false, SEL=new Set(), REMOVED=null; // 🧹 clean-up selection + archived list
 const collapsed=new Set(JSON.parse(localStorage.getItem("zones.collapsed")||"[]"));
@@ -264,7 +269,9 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden&&!editing)
 
 // ---- filters
 function setOrg(v){orgFilter=v;document.querySelectorAll("#segOrg button").forEach(b=>b.classList.toggle("on",b.dataset.v===v));render();}
-function setDisp(v){dispFilter=dispFilter===v?"":v;render();}
+function setDisp(v){dispFilter=dispFilter===v?null:v;render();}
+// bucket a truck counts in: its effective owner, "" = active but unassigned, "__inactive" = parked (not counted)
+function bucket(t){return t.inactive_reason?"__inactive":(t.dispatcher_eff||"");}
 function isSub(t){return !!t.is_sub&&!(t.org_id==="KT"&&String(t.number||"").startsWith("CKJ"))&&t.division!=="ICS";}
 function pool(){
   const q=$("q").value.trim().toLowerCase();
@@ -295,27 +302,31 @@ function todayPill(t){
 function render(){
   if(!board)return;
   const all=pool(), list=(editing&&CFG?CFG.dispatchers:DSP);
-  const tiles=list.map(d=>({id:d.id,name:d.name,cls:d.id,zones:d.zones})).concat([{id:"",name:"Unassigned",cls:"none",zones:"needs a hand — tap a name on the row"}]);
+  const tiles=list.map(d=>({id:d.id,name:d.name,cls:d.id,zones:d.zones}))
+    .concat([{id:"",name:"Unassigned",cls:"none",zones:"active, needs a hand — tap a name on the row"},
+             {id:"__inactive",name:"Inactive · not counted",cls:"none",zones:"de-leased · no NewMile load in 30 d · no driver & org inactive. Home owner kept."}]);
   $("tiles").innerHTML=tiles.map(x=>{
-    const l=all.filter(t=>(t.dispatcher_eff||"")===x.id);
-    const asg=l.filter(t=>t.state==="a").length, man=l.filter(t=>t.dispatcher_manual).length;
-    return `<div class="tile ${x.cls} ${dispFilter===x.id&&(x.id!==""||dispFilter==="")&&dispFilter===x.id?"sel":""}" onclick="setDisp('${x.id}')" title="${esc(x.zones)}">
+    const l=all.filter(t=>bucket(t)===x.id);
+    const asg=l.filter(t=>t.state==="a").length, man=l.filter(t=>t.dispatcher_manual).length, nd=l.filter(t=>t.no_driver).length;
+    return `<div class="tile ${x.cls} ${dispFilter===x.id?"sel":""}" onclick="setDisp('${x.id}')" title="${esc(x.zones)}">
       <div class="who">${esc(x.name)}</div><div class="big">${l.length}</div>
-      <div class="det"><b>${asg}</b> assigned today${man?` · <b>${man}</b> by hand`:""}<br>${esc(x.zones)}</div></div>`;
+      <div class="det">${x.id==="__inactive"?`<b>${l.filter(t=>t.dispatcher_home).length}</b> keep a home owner`:`<b>${asg}</b> assigned today`}${nd?` · <b style="color:var(--red)">${nd}</b> no driver`:""}${man?` · <b>${man}</b> by hand`:""}<br>${esc(x.zones)}</div></div>`;
   }).join("");
   $("legend").innerHTML=list.map(d=>`<span><i style="background:var(--${d.id})"></i>${esc(d.name)}</span>`).join("")+`<span><i style="background:var(--none)"></i>Unassigned</span>`;
-  const shown=dispFilter===""?all:all.filter(t=>(t.dispatcher_eff||"")===dispFilter);
+  const shown=dispFilter===null?all:all.filter(t=>bucket(t)===dispFilter);
   buildMap(shown);
   if(editing)renderEditor(all);
-  const order=list.map(d=>d.id).concat([""]);
+  const order=list.map(d=>d.id).concat(["","__inactive"]);
   let html="";
   for(const id of order){
-    if(dispFilter!==""&&id!==dispFilter)continue;
-    const l=shown.filter(t=>(t.dispatcher_eff||"")===id)
+    if(dispFilter!==null&&id!==dispFilter)continue;
+    const l=shown.filter(t=>bucket(t)===id)
       .sort((a,b)=>String(a.org_id).localeCompare(b.org_id)||String(a.division||"~").localeCompare(String(b.division||"~"))||String(dnum(a)).localeCompare(String(dnum(b)),undefined,{numeric:true}));
     if(!l.length&&id!=="")continue;
-    const d=dsp(id); const cls=d?d.id:"none"; const key="g:"+(id||"none"); const closed=collapsed.has(key);
-    html+=`<div class="group ${cls} ${closed?"closed":""}"><h3 onclick="toggleGroup('${key}')"><span class="chev">${closed?"▸":"▾"}</span>${esc(d?d.name:"Unassigned")} <span class="n">${l.length}</span><span class="zones">${esc(d?d.zones:"these still need an owner")}</span></h3><div class="rows">`;
+    const d=dsp(id); const inact=id==="__inactive"; const cls=d?d.id:(inact?"none inactive":"none"); const key="g:"+(id||"none"); const closed=collapsed.has(key);
+    const label=d?d.name:(inact?"Inactive — not counted":"Unassigned");
+    const sub=d?d.zones:(inact?"de-leased, no NewMile load in 30 days, or no driver with an inactive org · they keep their home owner and come back when they haul":"active trucks that still need an owner");
+    html+=`<div class="group ${cls} ${closed?"closed":""}"><h3 onclick="toggleGroup('${key}')"><span class="chev">${closed?"▸":"▾"}</span>${esc(label)} <span class="n">${l.length}</span><span class="zones">${esc(sub)}</span></h3><div class="rows">`;
     if(!l.length)html+=`<div class="empty">Nothing here — every truck has an owner. 🎉</div>`;
     for(const t of l)html+=rowHtml(t);
     html+=`</div></div>`;
@@ -350,7 +361,7 @@ function render(){
 // ---- 🧹 clean-up: tick trucks, remove them in one go (archive), restore from the removed list
 function toggleClean(){ cleaning=!cleaning; if(!cleaning)SEL.clear(); $("cleanBtn").classList.toggle("on",cleaning); $("cleanBtn").textContent=cleaning?"🧹 CLEANING…":"🧹 CLEAN UP"; render(); }
 function selRow(k,on){ on?SEL.add(k):SEL.delete(k); render(); }
-function selAll(on){ if(!on){SEL.clear();render();return;} const all=pool(); const shown=dispFilter===""?all:all.filter(t=>(t.dispatcher_eff||"")===dispFilter); shown.forEach(t=>SEL.add(t.org_id+"|"+t.number)); render(); }
+function selAll(on){ if(!on){SEL.clear();render();return;} const all=pool(); const shown=dispFilter===null?all:all.filter(t=>bucket(t)===dispFilter); shown.forEach(t=>SEL.add(t.org_id+"|"+t.number)); render(); }
 async function removeSelected(){
   if(!SEL.size)return;
   const by=ensureWho(); if(!by){toast("Need your name to log the removals.");return;}
@@ -384,18 +395,61 @@ async function restoreTruck(org,num){
   }catch(e){ toast("Could not restore: "+(e.message||e)); }
 }
 function rowHtml(t){
-  const man=t.dispatcher_manual||"", eff=t.dispatcher_eff||"", list=(editing&&CFG?CFG.dispatchers:DSP);
+  const man=t.dispatcher_manual||"", eff=t.dispatcher_home||t.dispatcher_eff||"", list=(editing&&CFG?CFG.dispatchers:DSP);
   const k=t.org_id+"|"+t.number, ck=cleaning?`<label class="ck"><input type="checkbox" ${SEL.has(k)?"checked":""} onchange="selRow('${esc(k)}',this.checked)"></label>`:"";
   const where=[t.org_id==="KT"?"KT / CKJ":"Cactus", t.division||"no division", t.area||t.parked_city||""].filter(Boolean).join(" · ");
   const mv=list.map(d=>`<button class="${d.id} ${eff===d.id?"on":""}" title="Move to ${esc(d.name)}" onclick="move('${t.org_id}','${esc(t.number)}','${d.id}')">${esc(d.short)}</button>`).join("")
     +`<button class="auto ${man?"":"on"}" title="Back to the automatic rule (${esc(dname(t.dispatcher_auto))})" onclick="move('${t.org_id}','${esc(t.number)}','')">AUTO</button>`;
   return `<div class="row ${cleaning&&SEL.has(k)?"sel":""}">${ck}
     <div class="num">${esc(dnum(t))}<small>${t.is_new?"⚑ new":man?"by hand":"auto"}</small></div>
-    <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ no driver"}</div>
-    <div class="where"><b>${esc(where)}</b><span class="why">${esc(t.dispatcher_why||"")}${man?` · rule says ${esc(dname(t.dispatcher_auto))}`:""}</span>${tabSelect(t)}</div>
+    <div class="drv ${t.no_driver?"none":""}">${t.no_driver?"⚠ NO DRIVER":esc(t.driver)}</div>
+    <div class="where"><b>${esc(where)}</b><span class="why">${esc(t.owner_name||"no owner org")} · last load ${t.days_idle==null?"never":t.days_idle===0?"today":t.days_idle+" d ago"}${t.owner_active===0&&t.no_driver?" · org inactive":""}</span><span class="why">${esc(t.dispatcher_why||"")}${man?` · rule says ${esc(dname(t.dispatcher_auto))}`:""}</span>${tabSelect(t)}${ttSelect(t)}</div>
     ${todayPill(t)}
     <div class="mv ${man?"manual":""}">${mv}</div>
   </div>`;
+}
+// ---- 🚛 trailer / truck type: NewMile's list, editable here → written to NewMile at once
+const TRAILER_SHORT={"ALUMINUM END DUMP":"AL-ED","END DUMP":"ED","STEEL END DUMP":"ST-ED","ROUND BODY END DUMP":"RB-ED","SUPER DUMP W/ STEEL BED":"SD Steel","SUPER DUMP W/ DEMO BED":"SD Demo","BELLY DUMP":"BD","ALUMINUM TRACTOR TRAILER":"AL-TT","DEMO":"Demo","END DUMP W/ DAY CAB":"ED-DC","END DUMP W/ SLEEPER CAB":"ED-SC"};
+const shortOf=n=>TRAILER_SHORT[String(n||"").toUpperCase().replace(/\s+/g," ").trim()]||String(n||"").trim();
+async function loadTypes(){
+  try{ const r=await fetch("api/newmile/truck-types"); if(!r.ok)throw 0; TYPES=(await r.json()).types||[]; render(); }
+  catch(e){ TYPES=[]; }
+}
+loadTypes();
+function ttSelect(t){
+  if(!TYPES||!TYPES.length)return `<span class="why">🚛 ${esc(t.trailer_type||"type ?")}</span>`;
+  const cur=String(t.trailer_type||"").trim().toUpperCase();
+  const match=TYPES.find(x=>shortOf(x.name).toUpperCase()===cur||String(x.name).toUpperCase()===cur);
+  const opts=TYPES.map(x=>`<option value="${x.id}" ${match&&match.id===x.id?"selected":""}>${esc(x.name)}</option>`).join("");
+  const unknown=!match&&cur?`<option value="" selected>${esc(t.trailer_type)} (not in NewMile list)</option>`:(!cur?`<option value="" selected>type ?</option>`:"");
+  const dis=t.nm_truck_id==null;
+  return `<select class="tt" ${dis?"disabled":""} title="${dis?"Not linked to NewMile yet":"Truck type — changing it writes to NewMile right away"}" onchange="setTruckType('${t.org_id}','${esc(t.number)}',this.value,this)">${unknown}${opts}</select>`;
+}
+async function setTruckType(org,num,tid,el){
+  const t=(board.trucks||[]).find(x=>x.org_id===org&&x.number===num); if(!t||!tid){if(el)el.value="";return;}
+  const tt=TYPES.find(x=>String(x.id)===String(tid)); const prev=t.trailer_type;
+  if(!confirm(`Change ${dnum(t)} to “${tt?tt.name:tid}” in NewMile?`)){ render(); return; }
+  const by=ensureWho(); if(!by){toast("Need your name.");render();return;}
+  el.disabled=true;
+  try{
+    const r=await fetch(`api/truck/${encodeURIComponent(org)}/${encodeURIComponent(num)}/truck-type`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({truck_type_id:Number(tid),by})});
+    if(r.status===401){location.href="login.html";return;}
+    const j=await r.json(); if(!r.ok||!j.ok)throw new Error(j.error||r.status);
+    t.trailer_type=j.trailer_type; toast(`${dnum(t)} → ${j.newmile_truck_type} (saved in NewMile)`); render();
+  }catch(e){ t.trailer_type=prev; toast("Could not change the type: "+(e.message||e)); render(); }
+}
+// ---- ⟳ refresh trucks / drivers / trailers from NewMile (no orders)
+async function refreshTrucks(){
+  const b=$("refreshBtn"); if(b.disabled)return; b.disabled=true; const txt=b.textContent; b.textContent="⟳ REFRESHING…";
+  try{
+    const r=await fetch("api/sync/roster",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+    if(r.status===401){location.href="login.html";return;}
+    const j=await r.json(); if(!r.ok||!j.ok)throw new Error(j.error||r.status);
+    if(j.already){toast("A refresh is already running — give it a few seconds.");}
+    else{ const ro=j.roster||{}; toast(`Trucks refreshed · ${ro.updated||0} updated · ${ro.created||0} new · ${ro.driverChanges||0} driver changes · ${ro.driverCleared||0} now NO DRIVER`); }
+    await load(); await loadTypes();
+  }catch(e){ toast("Refresh failed: "+(e.message||e)); }
+  finally{ b.disabled=false; b.textContent=txt; }
 }
 // ---- 🧭 which TAB of the tracker the truck lives in (org · division, or SUBS) — editable right here
 function tabValue(t){ return (t.is_sub&&!(t.org_id==="KT"&&t.division==="ICS"))?"SUB":(t.org_id+"|"+(t.division||"")); }

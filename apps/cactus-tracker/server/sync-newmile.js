@@ -192,6 +192,9 @@ async function reconcileICs(client, opts) {
         if (t.owner_id != null && t.owner_id !== row.owner_id) { sets.push('owner_id = ?'); vals.push(t.owner_id); }
         if (ownerName && ownerName !== row.owner_name) { sets.push('owner_name = ?'); vals.push(ownerName); }
         if (driver && driver !== row.driver) { sets.push('driver = ?'); vals.push(driver); }
+        // NewMile explícitamente SIN chofer (driver_id null) y aquí quedó un nombre viejo → el
+        // chofer se cambió de camión: limpiar para que el board diga NO DRIVER (Juan 2026-09-04)
+        else if (!driver && t.driver_id == null && String(row.driver || '').trim()) { sets.push('driver_prev = ?', 'driver = ?', 'driver_changed_at = ?'); vals.push(row.driver, '', nowISO()); out.driverCleared = (out.driverCleared || 0) + 1; }
         if (trailer && trailer !== row.trailer_type && !row.trailer_override) { sets.push('trailer_type = ?'); vals.push(trailer); }
         // re-clasifica lo que quedó del lado equivocado (Arango/DUMP-ER marcados IC)
         if ((row.tags || '') !== tags) {
@@ -295,6 +298,11 @@ async function syncRoster(client) {
         sets.push('driver_prev = ?', 'driver = ?', 'driver_changed_at = ?');
         vals.push(row.driver || '', driver, nowISO());
         summary.driverChanges++;
+      } else if (!driver && t.driver_id == null && String(row.driver || '').trim()) {
+        // NewMile dice SIN chofer y aquí quedó el nombre viejo (se cambió de camión) → NO DRIVER
+        sets.push('driver_prev = ?', 'driver = ?', 'driver_changed_at = ?');
+        vals.push(row.driver, '', nowISO());
+        summary.driverCleared = (summary.driverCleared || 0) + 1;
       }
       if (trailer && trailer !== row.trailer_type && !row.trailer_override) { sets.push('trailer_type = ?'); vals.push(trailer); }
       if (display && display !== row.display_number) { sets.push('display_number = ?'); vals.push(display); }
