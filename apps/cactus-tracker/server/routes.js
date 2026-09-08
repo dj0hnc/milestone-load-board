@@ -47,7 +47,7 @@ function createRouter({ config, newmile, log }) {
   }
   const crypto = require('crypto');
   const pinCookie = PIN ? crypto.createHash('sha256').update('cactus|' + PIN).digest('hex').slice(0, 40) : '';
-  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/board-truck', '/api/sync-assignments', '/api/sync-roster', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
+  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/board-truck', '/api/sync-assignments', '/api/sync-roster', '/api/sync/parking-key', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
   if (PIN) {
     router.use((req, res, next) => {
       if (OPEN_PATHS.includes(req.path)) return next();
@@ -635,19 +635,27 @@ function createRouter({ config, newmile, log }) {
   // 📍 PARKING REFRESH (ZONES): Samsara nights (last 2, 3-6 AM CT) + NewMile parking location for
   // trucks without Samsara. This is the ONLY source of the dots on the zone map — never live GPS.
   let _parkBusy = false;
+  async function runParkingRefresh(days) {
+    let samsara = null, nm = null;
+    try { samsara = await backfillParking(config, Math.min(7, Number(days) || 2)); } catch (e) { samsara = { error: String(e.message || e) }; }
+    if (newmile) {
+      try { if (newmile.connected || await newmile.resume()) nm = await syncParkingFromNewMile(newmile, {}); else nm = { error: 'NOT_CONNECTED' }; }
+      catch (e) { nm = { error: String(e.message || e) }; }
+    }
+    bumpRev();
+    return { ok: true, samsara, newmile: nm };
+  }
   router.post('/api/sync/parking', async (req, res) => {
     if (_parkBusy) return res.json({ ok: true, already: true });
     _parkBusy = true;
-    try {
-      let samsara = null, nm = null;
-      try { samsara = await backfillParking(config, Math.min(7, Number((req.body || {}).days) || 2)); } catch (e) { samsara = { error: String(e.message || e) }; }
-      if (newmile) {
-        try { if (newmile.connected || await newmile.resume()) nm = await syncParkingFromNewMile(newmile, {}); else nm = { error: 'NOT_CONNECTED' }; }
-        catch (e) { nm = { error: String(e.message || e) }; }
-      }
-      bumpRev();
-      res.json({ ok: true, samsara, newmile: nm });
-    } finally { _parkBusy = false; }
+    try { res.json(await runParkingRefresh((req.body || {}).days)); } finally { _parkBusy = false; }
+  });
+  // same job through the machine channel (states-key) — scripts / the load board
+  router.post('/api/sync/parking-key', async (req, res) => {
+    if (String((req.query || {}).key || (req.body || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    if (_parkBusy) return res.json({ ok: true, already: true });
+    _parkBusy = true;
+    try { res.json(await runParkingRefresh((req.body || {}).days)); } finally { _parkBusy = false; }
   });
 
   router.get('/api/states-key', (req, res) => {
