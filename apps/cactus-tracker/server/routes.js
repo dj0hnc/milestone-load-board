@@ -1439,6 +1439,16 @@ function createRouter({ config, newmile, log }) {
     run('UPDATE trucks SET status = ?, status_note = CASE WHEN ? <> \'\' THEN ? ELSE status_note END, updated_at = ? WHERE org_id = ? AND number = ?',
       status, String(b.reason || ''), String(b.reason || '').slice(0, 300), nowISO(), row.org_id, row.number);
     logChange(row.org_id, row.number, 'status', row.status || '', status + (b.reason ? (' — ' + b.reason) : '') + ' (from board)', String(b.by || 'board'));
+    // DISPONIBLE desde el board = disponible en los dos lados (2026-09-08, 1386/1100): un time off
+    // "hoy" puesto en el tracker seguía tumbando al troke en el board aunque ya lo hubieran marcado
+    // available. Al marcar ok se borran las filas de time off que cubren HOY (queda en el historial).
+    if (status === 'ok') {
+      const today = todayCT();
+      for (const o of all('SELECT id, reason, from_date, to_date FROM time_off WHERE org_id = ? AND number = ? AND from_date <= ? AND to_date >= ?', row.org_id, row.number, today, today)) {
+        run('DELETE FROM time_off WHERE id = ?', o.id);
+        logChange(row.org_id, row.number, 'time_off', o.reason + ' ' + o.from_date + ' → ' + o.to_date, '(cleared: marked available on the board)', String(b.by || 'board'));
+      }
+    }
     say(`board→tracker: ${row.number} → ${status}${b.reason ? ' (' + b.reason + ')' : ''}`);
     bumpRev();
     res.json({ ok: true, matched: true, org: row.org_id, number: row.number, status });
@@ -1502,7 +1512,9 @@ function createRouter({ config, newmile, log }) {
         row = updated;
       }
     }
-    res.json({ ok: true, matched: true, truck: {
+    const _tlog = (() => { try { return all('SELECT ts, field, old_value AS prev, new_value AS next, changed_by AS by FROM truck_log WHERE org_id = ? AND number = ? ORDER BY ts DESC LIMIT 12', row.org_id, row.number); } catch (e) { return []; } })();
+     const _toff = (() => { try { return all('SELECT id, reason, from_date, to_date, created_by, created_at FROM time_off WHERE org_id = ? AND number = ? AND to_date >= ? ORDER BY from_date', row.org_id, row.number, todayCT()); } catch (e) { return []; } })();
+     res.json({ ok: true, matched: true, log: _tlog, time_off: _toff, truck: {
       org: row.org_id, number: row.number, display: row.display_number || row.number,
       status: row.status, status_note: row.status_note || '', driver: row.driver || '',
       phone: row.phone || '', area: row.area || '', division: row.division || '',
