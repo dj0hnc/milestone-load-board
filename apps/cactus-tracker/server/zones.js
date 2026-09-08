@@ -124,14 +124,17 @@ const SW_AREAS = /DALLAS|FORT WORTH|FT\.? WORTH|WAXAHACHIE|CLEBURNE|ENNIS|MIDLOT
 function r(id, why, zone) { return { id: id || '', why: why || '', zone: zone || '' }; }
 
 // ---------- context shared by one decorate pass (cheap queries, once per request) ----------
+// Where each truck SLEEPS: latest parking_log night (Samsara 3-6 AM point, or the NewMile
+// "parking location" imported for trucks without Samsara). NEVER the live position — Juan
+// (2026-09-08): "siempre de donde dice Samsara que se estacionan cada noche".
 function sleepMap() {
   const m = new Map();
   try {
-    for (const p of all(`SELECT org_id, number, lat, lon FROM parking_log
-                          WHERE lat IS NOT NULL AND lon IS NOT NULL AND date >= date('now', '-30 days') ORDER BY date ASC`)) {
-      m.set(p.org_id + '|' + p.number, { lat: p.lat, lon: p.lon, src: 'sleep' });
+    for (const p of all(`SELECT org_id, number, lat, lon, date, COALESCE(source, 'samsara') AS source FROM parking_log
+                          WHERE lat IS NOT NULL AND lon IS NOT NULL AND date >= date('now', '-45 days') ORDER BY date ASC`)) {
+      m.set(p.org_id + '|' + p.number, { lat: p.lat, lon: p.lon, date: p.date, src: p.source === 'newmile' ? 'newmile' : 'sleep' });
     }
-  } catch (e) { /* no parking log yet → live positions */ }
+  } catch (e) { /* no parking log yet */ }
   return m;
 }
 function buildCtx() {
@@ -155,10 +158,7 @@ function ctxCached() {
   return _ctxCache.ctx;
 }
 function posOf(t, ctx) {
-  const s = ctx.sleeps.get(t.org_id + '|' + t.number);
-  if (s) return s;
-  if (t.last_lat != null && t.last_lon != null && Number(t.last_lat) && Number(t.last_lon)) return { lat: Number(t.last_lat), lon: Number(t.last_lon), src: 'live' };
-  return null;
+  return ctx.sleeps.get(t.org_id + '|' + t.number) || null; // sleep / NewMile parking only, never live GPS
 }
 
 // The automatic HOME owner of a truck row. `pos` = {lat, lon, src} or null.
@@ -209,7 +209,9 @@ function activityOf(t, ctx) {
   return { idle, noDriver, ownerActive, assignedRecently, reason };
 }
 
-function validId(v) { const m = String(v || '').toLowerCase().trim(); return IDS.has(m) ? m : ''; }
+// 'none' = UNASSIGNED BY HAND: the truck belongs to nobody until someone places it again
+// (the rule would otherwise keep handing it back to a dispatcher).
+function validId(v) { const m = String(v || '').toLowerCase().trim(); return (IDS.has(m) || m === 'none') ? m : ''; }
 
 // Mutates the row:
 //   dispatcher_auto / dispatcher_manual / dispatcher_home  (who it belongs to)
@@ -220,7 +222,7 @@ function decorate(t, ctx) {
   const pos = posOf(t, ctx);
   const a = autoOf(t, pos);
   const manual = validId(t.dispatcher);
-  const home = manual || a.id;
+  const home = manual === 'none' ? '' : (manual || a.id);
   const act = activityOf(t, ctx);
   t.dispatcher_auto = a.id;
   t.dispatcher_manual = manual;
@@ -236,7 +238,8 @@ function decorate(t, ctx) {
   t.days_idle = act.idle;
   t.dispatcher_why = parked
     ? ('⏸ ' + act.reason + (home ? ' · home ' + home : ''))
-    : ((manual ? 'placed by hand' : a.why) + (act.reason ? ' · ⚠ ' + act.reason : '') + (act.noDriver ? ' · NO DRIVER' : ''));
+    : ((manual === 'none' ? 'unassigned by hand' : manual ? 'placed by hand' : a.why) + (act.reason ? ' · ⚠ ' + act.reason : '') + (act.noDriver ? ' · NO DRIVER' : ''));
+  t.zone_date = pos ? (pos.date || '') : '';
   t.zone = a.zone;
   t.zone_lat = pos ? pos.lat : null;
   t.zone_lon = pos ? pos.lon : null;

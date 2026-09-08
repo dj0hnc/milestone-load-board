@@ -138,6 +138,7 @@ body.dark .pill.off{background:rgba(200,120,60,.2);color:#f0a570;}
 .mv button.on.juan{background:var(--juan);} .mv button.on.mary{background:var(--mary);} .mv button.on.jimmy{background:var(--jimmy);}
 .mv button.auto{font-size:10.5px;width:44px;}
 .mv button.auto.on{background:var(--line);color:var(--ink);}
+.mv button.none{width:34px;font-size:14px;} .mv button.none.on{background:var(--red);color:#fff;}
 .mv.manual{box-shadow:0 0 0 2px var(--gold);}
 .empty{padding:22px;text-align:center;color:var(--mut);}
 /* 🧹 clean-up mode */
@@ -163,6 +164,8 @@ body.dark .pill.off{background:rgba(200,120,60,.2);color:#f0a570;}
 <header>
   <h1>Milestone Texas <small>Dispatcher zones</small></h1>
   <div class="hspacer">
+    <button class="xlink" id="parkBtn" onclick="refreshParking()" title="Re-read where every truck SLEPT: Samsara nights (3–6 AM, last 2 nights) + NewMile parking location for trucks without Samsara. The dots never use live GPS.">📍 REFRESH PARKING</button>
+    <button class="xlink" onclick="exportShown()" title="Download the list exactly as shown here (CSV for Excel) — e.g. filter Unassigned or Inactive and export it for NewMile">⬇ EXPORT</button>
     <button class="xlink" id="refreshBtn" onclick="refreshTrucks()" title="Pull trucks, drivers and trailer types from NewMile right now (no orders) — the tracker's own refreshes update this page too">⟳ REFRESH TRUCKS</button>
     <button class="xlink" id="cleanBtn" onclick="toggleClean()" title="Tick trucks and remove them from the tracker (archived, not deleted — they come back by themselves if they haul or get assigned again)">🧹 CLEAN UP</button>
     <button class="xlink" id="editBtn" onclick="toggleEdit()" title="Draw / reshape zones and pick each dispatcher's color">✏️ EDIT ZONES</button>
@@ -177,7 +180,7 @@ body.dark .pill.off{background:rgba(200,120,60,.2);color:#f0a570;}
   <div class="tiles" id="tiles"></div>
 
   <div class="card">
-    <h2>🗺 Zone map <span style="font-family:'Poppins';font-weight:500;font-size:11.5px;letter-spacing:0;text-transform:none;">— dots are trucks where they sleep (last GPS night)</span>
+    <h2>🗺 Zone map <span style="font-family:'Poppins';font-weight:500;font-size:11.5px;letter-spacing:0;text-transform:none;">— ● where each truck SLEPT (Samsara 3–6 AM night point) · ◇ NewMile parking location (no Samsara) · never live GPS</span>
       <span class="lg" id="legend"></span></h2>
     <div id="map"></div>
     <div class="drawbar" id="drawbar" style="display:none;">
@@ -399,9 +402,10 @@ function rowHtml(t){
   const k=t.org_id+"|"+t.number, ck=cleaning?`<label class="ck"><input type="checkbox" ${SEL.has(k)?"checked":""} onchange="selRow('${esc(k)}',this.checked)"></label>`:"";
   const where=[t.org_id==="KT"?"KT / CKJ":"Cactus", t.division||"no division", t.area||t.parked_city||""].filter(Boolean).join(" · ");
   const mv=list.map(d=>`<button class="${d.id} ${eff===d.id?"on":""}" title="Move to ${esc(d.name)}" onclick="move('${t.org_id}','${esc(t.number)}','${d.id}')">${esc(d.short)}</button>`).join("")
-    +`<button class="auto ${man?"":"on"}" title="Back to the automatic rule (${esc(dname(t.dispatcher_auto))})" onclick="move('${t.org_id}','${esc(t.number)}','')">AUTO</button>`;
+    +`<button class="auto ${man?"":"on"}" title="Back to the automatic rule (${esc(dname(t.dispatcher_auto))})" onclick="move('${t.org_id}','${esc(t.number)}','')">AUTO</button>`
+    +`<button class="auto none ${man==="none"?"on":""}" title="Unassign by hand: belongs to nobody until someone places it again (then remove or report it)" onclick="move('${t.org_id}','${esc(t.number)}','none')">✕</button>`;
   return `<div class="row ${cleaning&&SEL.has(k)?"sel":""}">${ck}
-    <div class="num">${esc(dnum(t))}<small>${t.is_new?"⚑ new":man?"by hand":"auto"}</small></div>
+    <div class="num">${esc(dnum(t))}<small>${t.is_new?"⚑ new":man==="none"?"unassigned":man?"by hand":"auto"}</small></div>
     <div class="drv ${t.no_driver?"none":""}">${t.no_driver?"⚠ NO DRIVER":esc(t.driver)}</div>
     <div class="where"><b>${esc(where)}</b><span class="why">${esc(t.owner_name||"no owner org")} · last load ${t.days_idle==null?"never":t.days_idle===0?"today":t.days_idle+" d ago"}${t.owner_active===0&&t.no_driver?" · org inactive":""}</span><span class="why">${esc(t.dispatcher_why||"")}${man?` · rule says ${esc(dname(t.dispatcher_auto))}`:""}</span>${tabSelect(t)}${ttSelect(t)}</div>
     ${todayPill(t)}
@@ -437,6 +441,32 @@ async function setTruckType(org,num,tid,el){
     const j=await r.json(); if(!r.ok||!j.ok)throw new Error(j.error||r.status);
     t.trailer_type=j.trailer_type; toast(`${dnum(t)} → ${j.newmile_truck_type} (saved in NewMile)`); render();
   }catch(e){ t.trailer_type=prev; toast("Could not change the type: "+(e.message||e)); render(); }
+}
+// ---- 📍 refresh where trucks sleep (Samsara nights + NewMile parking) — the only source of the dots
+async function refreshParking(){
+  const b=$("parkBtn"); if(b.disabled)return; b.disabled=true; const txt=b.textContent; b.textContent="📍 READING NIGHTS…";
+  try{
+    const r=await fetch("api/sync/parking",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({days:2})});
+    if(r.status===401){location.href="login.html";return;}
+    const j=await r.json(); if(!r.ok||!j.ok)throw new Error(j.error||r.status);
+    if(j.already){toast("A parking refresh is already running.");}
+    else{ const s=j.samsara||{}, n=j.newmile||{}; toast(`Parking refreshed · Samsara: ${s.nights!=null?s.nights+" night points":(s.error||"—")} · NewMile parking: ${n.saved!=null?n.saved+" of "+n.checked+" checked":(n.error||"—")}`); }
+    await load();
+  }catch(e){ toast("Parking refresh failed: "+(e.message||e)); }
+  finally{ b.disabled=false; b.textContent=txt; }
+}
+// ---- ⬇ export exactly what is shown (CSV) — e.g. the Unassigned / Inactive list for NewMile
+function exportShown(){
+  if(!board)return;
+  const all=pool(); const shown=dispFilter===null?all:all.filter(t=>bucket(t)===dispFilter);
+  const cols=["truck","org","division","tab","owner_org","driver","trailer","last_load_days_ago","today","zone_owner","counted","reason","newmile_truck_id","parking_source","parking_date"];
+  const q=v=>{const s=String(v==null?"":v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  const rows=shown.map(t=>[dnum(t),t.org_id,t.division||"",tabValue(t)==="SUB"?"SUBS":(t.org_id+" "+(t.division||"")),t.owner_name||"",t.no_driver?"NO DRIVER":(t.driver||""),t.trailer_type||"",t.days_idle==null?"never":t.days_idle,t.state==="a"?"assigned":t.state==="d"?"down":t.state==="n"?"no work":(t.status||"open"),dname(t.dispatcher_home||""),t.inactive_reason?"no":"yes",t.dispatcher_why||"",t.nm_truck_id||"",t.zone_src||"",t.zone_date||""].map(q).join(","));
+  const csv="\uFEFF"+cols.join(",")+"\n"+rows.join("\n");
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+  const tag=dispFilter===null?"all":(dispFilter===""?"unassigned":dispFilter==="__inactive"?"inactive":dispFilter);
+  a.download=`zones-${tag}-${board.today||""}.csv`; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);
+  toast(`Exported ${shown.length} trucks (${tag}).`);
 }
 // ---- ⟳ refresh trucks / drivers / trailers from NewMile (no orders)
 async function refreshTrucks(){
@@ -489,12 +519,12 @@ async function move(org,num,to){
   const t=(board.trucks||[]).find(x=>x.org_id===org&&x.number===num); if(!t)return;
   const by=ensureWho(); if(!by){toast("Need your name to log the move.");return;}
   const prev={m:t.dispatcher_manual,e:t.dispatcher_eff};
-  t.dispatcher_manual=to; t.dispatcher_eff=to||t.dispatcher_auto; t.dispatcher=to; render();
+  t.dispatcher_manual=to; t.dispatcher_home=to==="none"?"":(to||t.dispatcher_auto); t.dispatcher_eff=t.dispatcher_home; if(to)t.inactive_reason=""; t.dispatcher=to; render();
   try{
     const r=await fetch(`api/truck/${encodeURIComponent(org)}/${encodeURIComponent(num)}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({dispatcher:to,by})});
     if(r.status===401){location.href="login.html";return;}
     if(!r.ok)throw new Error((await r.json()).error||r.status);
-    toast(`${dnum(t)} → ${to?dname(to):"automatic ("+dname(t.dispatcher_auto)+")"}`);
+    toast(`${dnum(t)} → ${to==="none"?"unassigned (by hand)":to?dname(to):"automatic ("+dname(t.dispatcher_auto)+")"}`);
   }catch(e){ t.dispatcher_manual=prev.m; t.dispatcher_eff=prev.e; render(); toast("Could not save: "+(e.message||e)); }
 }
 
@@ -666,7 +696,9 @@ function buildMap(trucks){
     if(lng<B.lng0||lng>B.lng1||lat<B.lat0||lat>B.lat1)continue;
     plotted++;
     const c=t.dispatcher_eff?`var(--${t.dispatcher_eff})`:"var(--none)";
-    S.push(`<circle class="truck" cx="${px(lng)}" cy="${py(lat)}" r="4.2" fill="${c}" stroke="var(--card)" stroke-width="1.2" data-tip="${esc(dnum(t))} · ${esc(t.driver||"no driver")} · ${esc(dname(t.dispatcher_eff))}${t.zone_src==="live"?" · live GPS":""}"/>`);
+    const tip=`${esc(dnum(t))} · ${t.no_driver?"NO DRIVER":esc(t.driver)} · ${esc(dname(t.dispatcher_home||t.dispatcher_eff))}${t.inactive_reason?" · inactive":""} · ${t.zone_src==="newmile"?"NewMile parking":"slept "+esc(t.zone_date||"")}`;
+    if(t.zone_src==="newmile") S.push(`<rect class="truck" x="${(+px(lng)-4.2).toFixed(1)}" y="${(+py(lat)-4.2).toFixed(1)}" width="8.4" height="8.4" transform="rotate(45 ${px(lng)} ${py(lat)})" fill="${c}" stroke="var(--card)" stroke-width="1.2" data-tip="${tip}"/>`);
+    else S.push(`<circle class="truck" cx="${px(lng)}" cy="${py(lat)}" r="4.2" fill="${c}" stroke="var(--card)" stroke-width="1.2" data-tip="${tip}"/>`);
   }
   for(const f of FACIL){
     const x=+px(f.lng),y=+py(f.lat);
@@ -678,7 +710,7 @@ function buildMap(trucks){
     if(z)z.poly.forEach((p,i)=>S.push(`<circle class="vtx" data-i="${i}" cx="${px(p[0])}" cy="${py(p[1])}" r="7" fill="var(--card)" stroke="${z.owner?`var(--${z.owner})`:"var(--none)"}" stroke-width="2.5"/>`));
   }
   if(drawing)S.push(`<polyline id="drawpath" points="${(drawing.pts||[]).map(q=>q[0].toFixed(1)+","+q[1].toFixed(1)).join(" ")}" fill="var(--${drawing.owner})" fill-opacity=".18" stroke="var(--${drawing.owner})" stroke-width="2.5" stroke-dasharray="6 4"/>`);
-  S.push(`<text x="${B.W-10}" y="${B.H-8}" text-anchor="end" font-size="11" fill="var(--map-city)">${plotted} trucks with a known position on the map</text>`);
+  S.push(`<text x="${B.W-10}" y="${B.H-8}" text-anchor="end" font-size="11" fill="var(--map-city)">${plotted} trucks with a night position · ${Math.max(0,trucks.length-plotted)} without one (no Samsara night, no NewMile parking)</text>`);
   S.push("</svg>");
   $("map").innerHTML=S.join("");
   const svg=$("map").querySelector("svg");

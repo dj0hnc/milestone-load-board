@@ -10,7 +10,7 @@ const express = require('express');
 const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
 const { todayCT, weekDatesCT, daysBetween, normNum, canonArea, canonicalTruckNumber, shortTrailer } = require('./util');
-const { syncRoster, syncActivity, syncAssignments, scanRipRap, reconcileICs } = require('./sync-newmile');
+const { syncRoster, syncActivity, syncAssignments, scanRipRap, reconcileICs, syncParkingFromNewMile } = require('./sync-newmile');
 const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking, locateTruck, debugHOS, auditHOS, refreshHOSTruck, cameraSnapshot, cameraCheck } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
 const zones = require('./zones'); // 🗺 dispatcher zones (Juan / Mary / Jimmy)
@@ -502,7 +502,8 @@ function createRouter({ config, newmile, log }) {
         revWeek: (revs.get(t.org_id + '|' + t.number) || {}).rw || 0,
         // 🗺 dispatcher zone owner: effective (manual wins), automatic rule, and why
         owner: t.dispatcher_eff || '', ownerHome: t.dispatcher_home || '', ownerAuto: t.dispatcher_auto || '', ownerManual: t.dispatcher_manual || '', ownerWhy: t.dispatcher_why || '',
-        inactive: t.inactive_reason || '', noDriver: t.no_driver ? 1 : 0, daysIdle: t.days_idle
+        inactive: t.inactive_reason || '', noDriver: t.no_driver ? 1 : 0, daysIdle: t.days_idle,
+        zoneSrc: t.zone_src || '', zoneDate: t.zone_date || ''
       };
     }
     res.setHeader('Cache-Control', 'no-store');
@@ -629,6 +630,24 @@ function createRouter({ config, newmile, log }) {
       bumpRev();
       res.json({ ok: true, trailer_type: short, newmile_truck_type: nmName, truck_type_id: tid });
     } catch (e) { res.status(e.message === 'NOT_CONNECTED' ? 401 : 500).json({ error: String(e.message || e) }); }
+  });
+
+  // 📍 PARKING REFRESH (ZONES): Samsara nights (last 2, 3-6 AM CT) + NewMile parking location for
+  // trucks without Samsara. This is the ONLY source of the dots on the zone map — never live GPS.
+  let _parkBusy = false;
+  router.post('/api/sync/parking', async (req, res) => {
+    if (_parkBusy) return res.json({ ok: true, already: true });
+    _parkBusy = true;
+    try {
+      let samsara = null, nm = null;
+      try { samsara = await backfillParking(config, Math.min(7, Number((req.body || {}).days) || 2)); } catch (e) { samsara = { error: String(e.message || e) }; }
+      if (newmile) {
+        try { if (newmile.connected || await newmile.resume()) nm = await syncParkingFromNewMile(newmile, {}); else nm = { error: 'NOT_CONNECTED' }; }
+        catch (e) { nm = { error: String(e.message || e) }; }
+      }
+      bumpRev();
+      res.json({ ok: true, samsara, newmile: nm });
+    } finally { _parkBusy = false; }
   });
 
   router.get('/api/states-key', (req, res) => {

@@ -785,4 +785,38 @@ async function syncAssignments(client) {
   return summary;
 }
 
-module.exports = { syncRoster, syncActivity, syncAssignments, scanRipRap, matchLoadRow, reconcileICs };
+// 📍 NewMile "parking location" (truck.parking_lat / parking_lng) → parking_log (source 'newmile')
+// for trucks WITHOUT a Samsara night in the last `staleDays` (subhaulers, no-GPS units). One
+// get_resource per truck, a few in parallel. It is a fallback: Samsara nights always win.
+async function syncParkingFromNewMile(client, opts) {
+  const o = Object.assign({ staleDays: 7, limit: 400, concurrency: 4 }, opts || {});
+  const today = todayCT();
+  const rows = all(`SELECT t.org_id, t.number, t.nm_truck_id FROM trucks t JOIN orgs og ON og.id = t.org_id
+                    WHERE og.enabled = 1 AND t.archived = 0 AND t.nm_truck_id IS NOT NULL
+                      AND NOT EXISTS (SELECT 1 FROM parking_log p WHERE p.org_id = t.org_id AND p.number = t.number
+                                      AND p.lat IS NOT NULL AND COALESCE(p.source, 'samsara') = 'samsara' AND p.date >= date(?, ?))
+                    ORDER BY t.updated_at DESC LIMIT ?`, today, '-' + o.staleDays + ' days', o.limit);
+  const summary = { candidates: rows.length, checked: 0, withParking: 0, saved: 0, noParking: 0, errors: 0 };
+  let i = 0;
+  async function worker() {
+    while (i < rows.length) {
+      const t = rows[i++];
+      try {
+        const r = await client.callTool('get_resource', { resource_type: 'truck', id: Number(t.nm_truck_id) });
+        summary.checked++;
+        const lat = r ? Number(r.parking_lat) : NaN, lon = r ? Number(r.parking_lng) : NaN;
+        if (isFinite(lat) && isFinite(lon) && lat && lon) {
+          summary.withParking++;
+          run(`INSERT INTO parking_log (org_id, number, date, city, lat, lon, source) VALUES (?,?,?,?,?,?,'newmile')
+               ON CONFLICT(org_id, number, date) DO UPDATE SET lat = excluded.lat, lon = excluded.lon, source = 'newmile'`,
+            t.org_id, t.number, today, '', lat, lon);
+          summary.saved++;
+        } else summary.noParking++;
+      } catch (e) { summary.errors++; }
+    }
+  }
+  await Promise.all(Array.from({ length: o.concurrency }, worker));
+  return summary;
+}
+
+module.exports = { syncRoster, syncActivity, syncAssignments, scanRipRap, matchLoadRow, reconcileICs, syncParkingFromNewMile };
