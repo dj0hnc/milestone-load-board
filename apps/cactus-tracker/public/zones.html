@@ -688,6 +688,7 @@ function renderEditor(all){
     <span class="sw" style="background:var(--${z.owner||"none"})"></span>
     <input type="text" class="zname" value="${esc(z.name)}" maxlength="32" onchange="CFG.zones[${i}].name=this.value.trim()||'Zone';mark();drawZones()" title="Zone name">
     <select onchange="CFG.zones[${i}].owner=this.value;mark();render()" title="Owner">${CFG.dispatchers.map(d=>`<option value="${d.id}" ${z.owner===d.id?"selected":""}>${esc(d.name)}</option>`).join("")}<option value="" ${z.owner?"":"selected"}>— nobody —</option></select>
+    <select onchange="CFG.zones[${i}].org=this.value;mark();render()" title="Which trucks this zone applies to (zones named KT / CKJ / IC / terminal default to KT only)"><option value="" ${!z.org?"selected":""}>applies: all${/\b(KT|CKJ|ICS?|TERMINAL)\b/i.test(z.name)?" (auto: KT only)":""}</option><option value="KT" ${z.org==="KT"?"selected":""}>KT / CKJ only</option><option value="CACTUS" ${z.org==="CACTUS"?"selected":""}>Cactus only</option></select>
     <span class="cnt"><b>${cnt[z.id]||0}</b> sleep inside · ${z.poly.length} pts</span><span class="sp"></span>
     <button class="b ${selZone===z.id?"on":""}" onclick="selectZone('${z.id}')" title="Drag its vertices on the map">◎ ${selZone===z.id?"editing":"reshape"}</button>
     <button class="b" onclick="moveZone(${i},-1)" ${i===0?"disabled":""} title="Earlier in the list wins where zones overlap">▲</button>

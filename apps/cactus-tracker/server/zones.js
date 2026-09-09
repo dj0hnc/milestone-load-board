@@ -90,7 +90,8 @@ function normalize(c) {
     let id = cleanStr(z.id, '', 24).toLowerCase().replace(/[^a-z0-9_-]/g, '') || ('z' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5));
     while (seen.has(id)) id += 'x';
     seen.add(id);
-    out.zones.push({ id, name: cleanStr(z.name, 'Zone', 32), owner: IDS.has(z.owner) ? z.owner : '', poly });
+    const zorg = ['KT', 'CACTUS'].includes(String(z.org || '').toUpperCase()) ? String(z.org).toUpperCase() : ''; // '' = every org
+    out.zones.push({ id, name: cleanStr(z.name, 'Zone', 32), owner: IDS.has(z.owner) ? z.owner : '', org: zorg, poly });
   }
   // migration (2026-09-09, Juan): a saved config from before the Powderly terminal existed gets it
   // added at the top, same as the other terminals — it is Jimmy's by Tony's split.
@@ -129,12 +130,18 @@ function inPoly(x, y, poly) {
 // first configured zone (in list order) that contains the point — a small zone placed FIRST
 // in the list carves its area out of the big ones.
 const TERMINAL_IDS = new Set(TERMINAL_ZONES.map(z => z.id));
-// `skipTerminals`: KT terminal circles only apply to KT trucks — a Cactus truck sleeping near
-// Powderly / Whitewright stays with its Cactus region (Juan 2026-09-09: Jimmy jumped 53→70).
-function zoneAt(lat, lon, skipTerminals) {
+// Which trucks a zone applies to: its explicit `org` (editor: All / KT-CKJ / Cactus); with none set,
+// terminal circles and zones named KT / CKJ / IC(s) / terminal are KT-only — a Cactus truck that
+// sleeps next to a KT terminal or inside a "CKJ ICs" zone keeps its Cactus region.
+function zoneAppliesTo(z, org) {
+  if (z.org) return z.org === org;
+  if (TERMINAL_IDS.has(z.id) || /\b(KT|CKJ|ICS?|TERMINAL)\b/i.test(z.name || '')) return org === 'KT';
+  return true;
+}
+function zoneAt(lat, lon, org) {
   lat = Number(lat); lon = Number(lon);
   if (!isFinite(lat) || !isFinite(lon) || !lat || !lon) return null;
-  for (const z of zonesList()) { if (skipTerminals && (TERMINAL_IDS.has(z.id) || /terminal/i.test(z.name))) continue; if (inPoly(lon, lat, z.poly)) return z; }
+  for (const z of zonesList()) { if (org && !zoneAppliesTo(z, org)) continue; if (inPoly(lon, lat, z.poly)) return z; }
   return null;
 }
 
@@ -210,11 +217,16 @@ function autoOf(t, pos) {
   const div = String(t.division || '').toUpperCase();
   const area = String(t.area || '').toUpperCase();
   const parked = String(t.parked_city || '').toUpperCase();
-  const z = pos ? zoneAt(pos.lat, pos.lon, org !== 'KT') : null; // terminal circles are KT-only
+  const z = pos ? zoneAt(pos.lat, pos.lon, org) : null; // only zones that apply to this truck's org
   const zoneWhy = z ? ((pos.src === 'sleep' ? 'sleeps in ' : pos.src === 'work' ? 'working in ' : 'parks in ') + z.name) : '';
   // SUBHAULERS (2026-09-08, Juan: "déjalos todos asignados a mí"): every sub (except CKJ ICs, which
   // are their own KT tab) belongs to Juan by default and lives in its own SUBS bucket on the page.
-  if (isSubTruck(t)) return r('juan', 'subhauler' + (pos && pos.src === 'work' && pos.name ? ' · working at ' + pos.name : (z ? ' · ' + zoneWhy : '')), z ? z.id : '');
+  // (role swap 2026-09-09: a sub that lives in a Cactus tab follows that tab's owner — North → Jimmy,
+  //  South → Juan; floating subs and KT subs stay with Juan)
+  if (isSubTruck(t)) {
+    const tabOwner = org === 'CACTUS' && div === 'NORTH' ? 'jimmy' : 'juan';
+    return r(tabOwner, 'subhauler' + (org === 'CACTUS' && div ? ' · Cactus ' + div[0] + div.slice(1).toLowerCase() : '') + (pos && pos.src === 'work' && pos.name ? ' · working at ' + pos.name : ''), '');
+  }
   if (org === 'KT') {
     if (div === 'RHOME') return r('mary', 'KT Rhome terminal', 'rhome');
     if (div === 'WHITEWRIGHT') return r('mary', 'KT Whitewright terminal', 'whitewright');
