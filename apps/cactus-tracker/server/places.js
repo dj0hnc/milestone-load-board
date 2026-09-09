@@ -19,7 +19,7 @@
  *   5. manual pins (status 'manual') always win and are never overwritten by a rebuild.
  */
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
-const { todayCT, shiftISO } = require('./util');
+const { todayCT, shiftISO, normNum, canonicalTruckNumber } = require('./util');
 
 run(`CREATE TABLE IF NOT EXISTS places (
   key TEXT PRIMARY KEY,            -- normalized name
@@ -129,8 +129,8 @@ async function importOrgLocations(client, orgId) {
     if (!row) {
       run(`INSERT INTO places (key, name, kind, brand, core, lat, lon, status, geo_addr, src, nm_location_id, updated_at)
            VALUES (?,?,?,?,?,?,?,'exact',?,'org_location',?,?)`, key, String(l.name).trim(), 'site', brand, core, lat, lon, String(l.address || ''), l.id, nowISO());
-    } else if (row.status !== 'manual') {
-      run(`UPDATE places SET lat = ?, lon = ?, status = 'exact', geo_addr = ?, nm_location_id = ?, updated_at = ? WHERE key = ?`, lat, lon, String(l.address || ''), l.id, nowISO(), key);
+    } else if (row.status !== 'manual' && row.status !== 'samsara') {
+      run(`UPDATE places SET lat = ?, lon = ?, status = 'exact', geo_addr = ?, nm_location_id = ?, brand = ?, core = ?, updated_at = ? WHERE key = ?`, lat, lon, String(l.address || ''), l.id, brand, core, nowISO(), key);
     }
     n++;
   }
@@ -140,9 +140,11 @@ async function importOrgLocations(client, orgId) {
 // ---------- 3. resolve coordinates: org_location by core match, then geocode ----------
 function resolveFromCatalog() {
   let n = 0;
-  const known = all(`SELECT key, brand, core, lat, lon FROM places WHERE lat IS NOT NULL AND status IN ('exact','manual') AND core <> ''`);
-  for (const p of all(`SELECT key, brand, core FROM places WHERE lat IS NULL AND status IN ('new','unresolved') AND core <> ''`)) {
-    const hit = known.find(k => k.core === p.core && (k.brand === p.brand || !p.brand || !k.brand));
+  // exact sources (org_location / Samsara / manual) resolve names that are still new, unresolved
+  // or only town-level (approx) — an exact catalog hit always beats a Google town centroid.
+  const known = all(`SELECT key, brand, core, lat, lon FROM places WHERE lat IS NOT NULL AND status IN ('exact','manual','samsara') AND core <> '' AND src <> 'orders' OR (lat IS NOT NULL AND status IN ('manual','samsara') AND core <> '')`);
+  for (const p of all(`SELECT key, brand, core FROM places WHERE status IN ('new','unresolved','approx') AND core <> '' AND src = 'orders'`)) {
+    const hit = known.find(k => k.key !== p.key && k.core === p.core && (k.brand === p.brand || !p.brand || !k.brand));
     if (hit) { run(`UPDATE places SET lat = ?, lon = ?, status = 'exact', geo_addr = 'matched: ' || ?, updated_at = ? WHERE key = ?`, hit.lat, hit.lon, hit.key, nowISO(), p.key); n++; }
   }
   return n;
@@ -245,4 +247,127 @@ async function rebuild(client, opts) {
   return summary;
 }
 
-module.exports = { rebuild, listMerged, coordsIndex, lookup, setManual, hide, addManual, norm, BRANDS };
+// ---------- 5. LEARN plants from Samsara stops (Juan's idea, 2026-09-08) ----------
+// The trucks assigned to an order from "Tyler Rail" all STOPPED at the same spot to load: that
+// spot IS the plant. For each day: the trucks' GPS history (Samsara) → stops (≥ minStopMin at
+// one spot, not the truck's own yard) → every stop is a candidate for each place name on that
+// truck's orders that day. Pickups: the cell visited by the most distinct trucks wins (drop-offs
+// vary per order, the plant does not); drop-offs: same, excluding cells next to a learned pickup.
+// Result status 'samsara' — beats Google, loses only to a manual pin.
+function extractStops(gps, minMin) {
+  const pts = (gps || []).filter(g => g && g.latitude != null && g.longitude != null && g.time).sort((a, b) => a.time < b.time ? -1 : 1);
+  const stops = []; let cur = null;
+  const flush = () => { if (cur && cur.minutes >= minMin) stops.push({ lat: cur.lat / cur.n, lon: cur.lon / cur.n, min: cur.minutes, first: cur.first }); cur = null; };
+  for (const g of pts) {
+    const slow = (g.speedMilesPerHour == null || g.speedMilesPerHour < 2);
+    const t = Date.parse(g.time);
+    if (cur) {
+      const clat = cur.lat / cur.n, clon = cur.lon / cur.n;
+      if (slow && distKm(clat, clon, g.latitude, g.longitude) < 0.15) { cur.n++; cur.lat += g.latitude; cur.lon += g.longitude; cur.minutes = (t - cur.t0) / 60000; continue; }
+      flush();
+    }
+    if (slow) cur = { n: 1, lat: g.latitude, lon: g.longitude, t0: t, minutes: 0, first: t };
+  }
+  flush();
+  return stops;
+}
+// truck → {pickup names, drop-off names} for one day. With a NewMile client: straight from that
+// day's orders + assignments (works for any past day). Without: today's cached nm_info.
+async function namesForDay(day, client) {
+  const names = new Map();
+  const add = (key, v, d) => { if (!key) return; const e = names.get(key) || { v: new Set(), d: new Set() }; if (v) e.v.add(norm(v)); if (d) e.d.add(norm(d)); names.set(key, e); };
+  if (client) {
+    const byDisp = new Map(), byNum = new Map();
+    for (const t of all(`SELECT org_id, number, display_number FROM trucks WHERE archived = 0`)) {
+      if (t.display_number) byDisp.set(String(t.display_number).trim().toUpperCase(), t.org_id + '|' + t.number);
+      byNum.set(t.org_id + '|' + String(t.number).toUpperCase(), t.org_id + '|' + t.number);
+    }
+    const resolve = raw => {
+      const up = String(raw || '').trim().toUpperCase(); if (!up) return null;
+      if (byDisp.has(up)) return byDisp.get(up);
+      const n = normNum(raw);
+      for (const org of ['CACTUS', 'KT']) { const c = canonicalTruckNumber(org, n); if (byNum.has(org + '|' + c.toUpperCase())) return byNum.get(org + '|' + c.toUpperCase()); }
+      const dig = (n.match(/\d{2,}/) || [''])[0];
+      if (dig && byNum.has('KT|CKJ' + dig)) return byNum.get('KT|CKJ' + dig);
+      return null;
+    };
+    let rows = [];
+    try { rows = await client.ordersForDate(day); } catch (e) { return names; }
+    for (const { order: o, assignments } of rows) {
+      const v = o.vendor_location || '', d = o.delivery_location || '';
+      for (const a of (assignments || [])) { if (/cancel/i.test(a.assignment_status || '')) continue; add(resolve(a.truck_number || (a.truck && a.truck.truck_number) || ''), v, d); }
+    }
+    return names;
+  }
+  for (const s of all(`SELECT org_id, number, nm_info FROM dispatch_state WHERE date = ? AND state = 'a' AND nm_info IS NOT NULL AND nm_info <> ''`, day)) {
+    let dest = []; try { dest = JSON.parse(s.nm_info) || []; } catch (e) { continue; }
+    for (const x of dest) add(s.org_id + '|' + s.number, x.v, x.d);
+  }
+  return names;
+}
+async function learnFromSamsara(cfg, opts) {
+  const sam = require('./sync-samsara');
+  const o = Object.assign({ days: 7, minStopMin: 6, cell: 0.006 }, opts || {});
+  const today = todayCT();
+  const orgs = all('SELECT * FROM orgs WHERE enabled = 1 AND samsara = 1');
+  const sleeps = new Map();
+  for (const p of all(`SELECT org_id, number, lat, lon FROM parking_log WHERE lat IS NOT NULL AND date >= date('now', '-30 days') ORDER BY date ASC`)) sleeps.set(p.org_id + '|' + p.number, { lat: p.lat, lon: p.lon });
+  const cand = new Map(); // 'v|KEY' / 'd|KEY' -> Map(cell -> agg)
+  const summary = { at: nowISO(), days: 0, vehicles: 0, stops: 0, learned_pickups: 0, learned_dropoffs: 0, errors: [] };
+  for (let d = 1; d <= o.days; d++) {
+    const day = shiftISO(today, -d);
+    if (new Date(day + 'T12:00:00Z').getUTCDay() === 0) continue; // Sunday
+    const names = await namesForDay(day, o.client);
+    if (!names.size) continue;
+    for (const org of orgs) {
+      const token = sam.tokenFor(cfg, org.samsara_org); if (!token) continue;
+      let vehicles;
+      try { vehicles = await sam.fetchGpsHistory(token, day + 'T10:00:00Z', shiftISO(day, 1) + 'T02:00:00Z'); }
+      catch (e) { summary.errors.push(org.id + ' ' + day + ': ' + String(e.message || e)); continue; }
+      summary.days++;
+      for (const v of vehicles) {
+        const row = sam.resolveSamsaraTruck(org.id, v.name || '').row; if (!row) continue;
+        const key = row.org_id + '|' + row.number; const nm = names.get(key); if (!nm) continue;
+        summary.vehicles++;
+        const home = sleeps.get(key);
+        for (const st of extractStops(v.gps || [], o.minStopMin)) {
+          if (home && distKm(home.lat, home.lon, st.lat, st.lon) < 1.5) continue; // its own yard / home
+          summary.stops++;
+          const cell = Math.round(st.lat / o.cell) + ':' + Math.round(st.lon / (o.cell * 1.2));
+          for (const [kind, set] of [['v', nm.v], ['d', nm.d]]) for (const pk of set) {
+            const ck = kind + '|' + pk; const m = cand.get(ck) || new Map();
+            const c = m.get(cell) || { n: 0, w: 0, lat: 0, lon: 0, trucks: new Set(), days: new Set(), first: Infinity };
+            c.n++; c.w += st.min; c.lat += st.lat * st.min; c.lon += st.lon * st.min; c.trucks.add(key); c.days.add(day); c.first = Math.min(c.first, st.first % 86400000);
+            m.set(cell, c); cand.set(ck, m);
+          }
+        }
+      }
+    }
+  }
+  const learned = new Map();
+  const better = (a, b, wantEarly) => !b || a.trucks.size > b.trucks.size || (a.trucks.size === b.trucks.size && (wantEarly ? a.first < b.first : a.w > b.w));
+  const apply = (pk, best, kind) => {
+    if (!best || best.trucks.size < 2 || best.n < 3) return false;
+    const lat = Math.round(best.lat / best.w * 1e5) / 1e5, lon = Math.round(best.lon / best.w * 1e5) / 1e5;
+    const p = get('SELECT key, status FROM places WHERE key = ?', pk);
+    if (!p || p.status === 'manual') return false;
+    run(`UPDATE places SET lat = ?, lon = ?, status = 'samsara', geo_addr = ?, updated_at = ? WHERE key = ?`, lat, lon,
+      'Samsara stops: ' + best.trucks.size + ' trucks · ' + best.days.size + ' days · ' + best.n + ' stops', nowISO(), pk);
+    learned.set(pk, { lat, lon }); summary[kind === 'v' ? 'learned_pickups' : 'learned_dropoffs']++;
+    return true;
+  };
+  for (const [ck, m] of cand) if (ck.startsWith('v|')) { let best = null; for (const c of m.values()) if (better(c, best, true)) best = c; apply(ck.slice(2), best, 'v'); }
+  for (const [ck, m] of cand) if (ck.startsWith('d|')) {
+    let best = null;
+    for (const c of m.values()) {
+      const lat = c.lat / c.w, lon = c.lon / c.w; let nearPick = false;
+      for (const L of learned.values()) if (distKm(L.lat, L.lon, lat, lon) < 1.5) { nearPick = true; break; }
+      if (!nearPick && better(c, best, false)) best = c;
+    }
+    apply(ck.slice(2), best, 'd');
+  }
+  metaSet('places_last_learn', JSON.stringify(summary));
+  return summary;
+}
+
+module.exports = { rebuild, learnFromSamsara, listMerged, coordsIndex, lookup, setManual, hide, addManual, norm, BRANDS };

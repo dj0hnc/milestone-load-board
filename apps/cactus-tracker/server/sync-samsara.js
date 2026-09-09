@@ -1121,4 +1121,4 @@ async function locateTruck(cfg, orgRow, truck) {
   return { city: city || '', time: g.time || null, speed, moved, last_moved_at: (finalRow && finalRow.last_moved_at) || null };
 }
 
-module.exports = { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, refreshHOSTruck, cameraSnapshot, cameraCheck, debugHOS, auditHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck };
+module.exports = { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, refreshHOSTruck, cameraSnapshot, cameraCheck, debugHOS, auditHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck, fetchGpsHistory, tokenFor };

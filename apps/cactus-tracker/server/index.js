@@ -416,6 +416,7 @@ function createTracker(opts) {
           try { log('riprap scan → ' + JSON.stringify(await scanRipRap(newmile, 14))); } catch (e) { log('riprap scan error: ' + e.message); }
           // 📍 plants / drop-offs catalog for the zone map: names + counts from 30 days of orders, geocode the new ones
           try { log('places rebuild → ' + JSON.stringify(await places.rebuild(newmile, {}))); } catch (e) { log('places rebuild error: ' + e.message); }
+          try { log('places learn (Samsara stops) → ' + JSON.stringify(await places.learnFromSamsara(config, { days: 2, client: newmile }))); } catch (e) { log('places learn error: ' + e.message); }
         } else log('roster sync saltado: NewMile sin sesión');
       }
       // Samsara diario desde las 4:10; el parking log solo se escribe si de verdad

@@ -677,6 +677,21 @@ function createRouter({ config, newmile, log }) {
     if (String((req.query || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
     res.json({ ok: true, places: places.listMerged({ includeSites: !!req.query.sites }), last_build: (() => { try { return JSON.parse(metaGet('places_last_build', '') || 'null'); } catch (e) { return null; } })() });
   });
+  let _learnBusy = false;
+  async function placesLearn(opts) {
+    if (_learnBusy) return { ok: true, already: true };
+    _learnBusy = true;
+    try {
+      const client = (newmile && (newmile.connected || await newmile.resume())) ? newmile : null; // names from NewMile orders (any past day)
+      const s = await places.learnFromSamsara(config, Object.assign({ client }, opts || {})); bumpRev(); return { ok: true, summary: s };
+    }
+    finally { _learnBusy = false; }
+  }
+  router.post('/api/places/learn', async (req, res) => { try { res.json(await placesLearn(req.body || {})); } catch (e) { res.status(500).json({ error: String(e.message || e) }); } });
+  router.post('/api/places/learn-key', async (req, res) => {
+    if (String((req.query || {}).key || (req.body || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    try { res.json(await placesLearn(req.body || {})); } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+  });
   router.post('/api/places/rebuild', async (req, res) => { try { res.json(await placesRebuild(req.body || {})); } catch (e) { res.status(500).json({ error: String(e.message || e) }); } });
   router.post('/api/places/rebuild-key', async (req, res) => {
     if (String((req.query || {}).key || (req.body || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
