@@ -595,16 +595,37 @@ function flagIcon(p,small){
   const html=`<span class="flag ${p.status==="approx"?"approx":""} ${small?"small":""} ${p.kind==="dropoff"?"drop":""}" style="--fc:${col}"><span class="lg">${logo}${logo?"":esc(init)}</span>${esc(p.name.length>26?p.name.slice(0,25)+"…":p.name)}${p.status==="approx"?" ≈":""}</span>`;
   return L.divIcon({className:"",html,iconSize:null,iconAnchor:[8,10]});
 }
+// What deserves a flag: PLANTS = every pickup (pit, quarry, rail yard) + branded drop-off plants
+// (Quikrete, Texas Materials…) whose location is trustworthy (Samsara-learned, exact or pinned).
+// Customer jobsites (unbranded drop-offs, org_location sites) live in the Jobsites layer (off by
+// default). Town-level (≈) names are NOT drawn — they wait in the list under “Needs a pin”.
+const TRUSTED=new Set(["samsara","exact","manual"]);
+function isPlant(p){ return TRUSTED.has(p.status)&&p.kind!=="site"&&((p.kind==="pickup"||p.kind==="both")||(p.kind==="dropoff"&&!!p.brand)); }
+function isJobsite(p){ return TRUSTED.has(p.status)&&!isPlant(p); }
+// label budget by zoom: far out only the busiest plants carry a name, zoomed in everything does
+function labelLimit(z){ return z<8?12:z<9?22:z<10?45:z<11?90:9999; }
+let plantList=[];
+function updatePlaceVisibility(){
+  const z=map.getZoom(), lim=labelLimit(z), b=map.getBounds().pad(.1);
+  plantList.forEach((m,i)=>{ const on=i<lim||(z>=10&&b.contains(m.getLatLng())); const el=m.getElement(); if(el)el.style.display=on?"":"none"; });
+}
+map.on("zoomend moveend",updatePlaceVisibility);
 function drawPlaces(){
-  LAYERS.plants.clearLayers(); LAYERS.sites.clearLayers(); placeMarkers.clear();
-  const sorted=PLACES.filter(p=>p.lat!=null).sort((a,b)=>b.loads30-a.loads30);
+  LAYERS.plants.clearLayers(); LAYERS.sites.clearLayers(); placeMarkers.clear(); plantList=[];
+  const sorted=PLACES.filter(p=>p.lat!=null&&(isPlant(p)||isJobsite(p))).sort((a,b)=>(isPlant(b)-isPlant(a))||(b.loads30-a.loads30));
   sorted.forEach((p,i)=>{
-    const m=L.marker([p.lat,p.lon],{icon:flagIcon(p,i>=30),draggable:editing,zIndexOffset:p.kind==="site"?0:50});
+    const plant=isPlant(p);
+    const m=L.marker([p.lat,p.lon],{icon:flagIcon(p,!plant||i>=30),draggable:editing,zIndexOffset:plant?50:0});
+    if(plant)plantList.push(m);
     m.bindPopup(()=>`<b>${esc(p.name)}</b>${p.brand_name?" · "+esc(p.brand_name):""}<br><span class="why">${esc(p.kind)} · ${p.loads30} loads / ${p.orders30} orders in 30 d${p.aliases&&p.aliases.length?"<br>also: "+esc(p.aliases.join(" · ")):""}<br>${p.status==="approx"?"≈ town-level only — tap “Move pin” and then the exact spot":p.status==="manual"?"pinned by hand":esc(p.geo_addr||"")}</span>
       <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;"><button class="b" onclick="startPlacing('${esc(p.key)}')">📍 Move pin</button><a class="b" href="https://www.google.com/maps?q=${p.lat},${p.lon}" target="_blank" style="text-decoration:none;">Google Maps ↗</a></div>`,{maxWidth:300});
     m.on("dragend",e=>savePin(p.key,e.target.getLatLng()));
-    (p.kind==="site"?LAYERS.sites:LAYERS.plants).addLayer(m); placeMarkers.set(p.key,m);
+    (plant?LAYERS.plants:LAYERS.sites).addLayer(m); placeMarkers.set(p.key,m);
   });
+  updatePlaceVisibility();
+  const np=PLACES.filter(isPlant).length, nj=PLACES.filter(isJobsite).length, fix=PLACES.filter(p=>p.kind!=="site"&&!TRUSTED.has(p.status)).length;
+  $("chipPlants").innerHTML=`🏭 Plants <span style="opacity:.7">${np}</span>`; $("chipSites").innerHTML=`📌 Jobsites <span style="opacity:.7">${nj}</span>`;
+  const mf=$("mapfoot"); if(mf&&fix)mf.insertAdjacentHTML("beforeend",`<span>⚠ ${fix} names still need a pin (see Plants list)</span>`);
 }
 async function savePin(key,ll){
   const by=ensureWho(); if(!by){toast("Need your name.");return;}
