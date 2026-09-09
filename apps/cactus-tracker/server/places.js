@@ -144,7 +144,9 @@ function resolveFromCatalog() {
   // or only town-level (approx) — an exact catalog hit always beats a Google town centroid.
   const known = all(`SELECT key, brand, core, lat, lon FROM places WHERE lat IS NOT NULL AND status IN ('exact','manual','samsara') AND core <> '' AND src <> 'orders' OR (lat IS NOT NULL AND status IN ('manual','samsara') AND core <> '')`);
   for (const p of all(`SELECT key, brand, core FROM places WHERE status IN ('new','unresolved','approx') AND core <> '' AND src = 'orders'`)) {
-    const hit = known.find(k => k.key !== p.key && k.core === p.core && (k.brand === p.brand || !p.brand || !k.brand));
+    // same brand, or an unbranded order name adopting a branded catalog entry ("Tyler Yard" → MM Tyler).
+    // A BRANDED name never adopts another brand's spot (Texas Materials Tyler ≠ MM Tyler Rail).
+    const hit = known.find(k => k.key !== p.key && k.core === p.core && (k.brand === p.brand || (!p.brand && k.brand)));
     if (hit) { run(`UPDATE places SET lat = ?, lon = ?, status = 'exact', geo_addr = 'matched: ' || ?, updated_at = ? WHERE key = ?`, hit.lat, hit.lon, hit.key, nowISO(), p.key); n++; }
   }
   return n;
@@ -176,6 +178,7 @@ async function geocodeMissing(client, limit) {
 }
 
 // ---------- 4. merged view (aliases collapse into the busiest name) ----------
+const RANK = { manual: 5, samsara: 4, exact: 3, approx: 2, unresolved: 1, new: 0, hidden: 0 };
 function groupKeyOf(p) { return (p.brand || '') + '|' + (p.core || p.key); }
 function listMerged(opts) {
   const o = opts || {};
@@ -197,8 +200,8 @@ function listMerged(opts) {
       g.aliases.push(p.name); g.keys.push(p.key);
       g.orders30 += p.orders30; g.loads30 += p.loads30; g.pickups30 += p.pickups30; g.drops30 += p.drops30;
       if (p.last_seen > g.last_seen) g.last_seen = p.last_seen;
-      if (g.lat == null && p.lat != null) { g.lat = p.lat; g.lon = p.lon; g.status = p.status; g.geo_addr = p.geo_addr; }
-      if (g.status !== 'manual' && p.status === 'manual') { g.lat = p.lat; g.lon = p.lon; g.status = 'manual'; }
+      // the group sits where its BEST-known member is: manual > Samsara stops > exact > town-level
+      if (p.lat != null && (g.lat == null || RANK[p.status] > RANK[g.status])) { g.lat = p.lat; g.lon = p.lon; g.status = p.status; g.geo_addr = p.geo_addr; }
       if (g.kind !== p.kind && p.kind) g.kind = (g.kind === 'site' ? p.kind : (p.kind === 'site' ? g.kind : 'both'));
     }
   }
