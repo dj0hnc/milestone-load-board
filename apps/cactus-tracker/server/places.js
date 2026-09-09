@@ -40,7 +40,7 @@ const BRANDS = [
   { id: 'QUIKRETE', re: /\bQUIKRETE\b|\bQK\b|\bQUICKRETE\b/, name: 'Quikrete', domain: 'quikrete.com', color: '#c8102e' },
   { id: 'TXMAT', re: /TEXAS MATERIALS|\bTX MAT\b|\bTXMAT\b|\bTX MATERIALS\b/, name: 'Texas Materials', domain: 'texasmaterials.com', color: '#0b5394' },
   { id: 'MM', re: /MARTIN MARIETTA|\bMM\b|\bMLM\b/, name: 'Martin Marietta', domain: 'martinmarietta.com', color: '#1f4e79' },
-  { id: 'RKH', re: /\bR\.?K\.? ?HALL\b|\bRKH\b/, name: 'R.K. Hall', domain: 'rkhall.com', color: '#7a5c1e' },
+  { id: 'RKH', re: /\bR\.? ?K\.? ?HALL\b|\bRKH\b|\bRK HALL\b/, name: 'R.K. Hall', domain: 'rkhall.com', color: '#7a5c1e' },
   { id: 'HEIDELBERG', re: /HEIDELBERG|HEILDEBERG|\bHBP\b|\bHM\b/, name: 'Heidelberg Materials', domain: 'heidelbergmaterials.us', color: '#00693e' },
   { id: 'ARCOSA', re: /\bARCOSA\b|\bAC\b(?=\s|$|-)/, name: 'Arcosa', domain: 'arcosa.com', color: '#e07b00' },
   { id: 'VULCAN', re: /\bVULCAN\b/, name: 'Vulcan Materials', domain: 'vulcanmaterials.com', color: '#5b6770' },
