@@ -48,7 +48,7 @@ function createRouter({ config, newmile, log }) {
   }
   const crypto = require('crypto');
   const pinCookie = PIN ? crypto.createHash('sha256').update('cactus|' + PIN).digest('hex').slice(0, 40) : '';
-  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/board-truck', '/api/sync-assignments', '/api/sync-roster', '/api/sync/parking-key', '/api/places-key', '/api/places/rebuild-key', '/api/zones/parking-audit-key', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
+  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/board-truck', '/api/sync-assignments', '/api/sync-roster', '/api/sync/parking-key', '/api/places-key', '/api/places/rebuild-key', '/api/places/learn-key', '/api/zones/parking-audit-key', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
   if (PIN) {
     router.use((req, res, next) => {
       if (OPEN_PATHS.includes(req.path)) return next();
