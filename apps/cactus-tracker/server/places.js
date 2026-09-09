@@ -254,19 +254,23 @@ async function rebuild(client, opts) {
 // truck's orders that day. Pickups: the cell visited by the most distinct trucks wins (drop-offs
 // vary per order, the plant does not); drop-offs: same, excluding cells next to a learned pickup.
 // Result status 'samsara' — beats Google, loses only to a manual pin.
+// Samsara's history stream is ~1 point every 5 minutes, so a stop is simply a run of consecutive
+// points that stay within 250 m of each other (speed is ignored — a single "speed 0" point tells
+// nothing). Duration = last − first + half a cadence on each side; ≥ minMin counts as a stop.
 function extractStops(gps, minMin) {
   const pts = (gps || []).filter(g => g && g.latitude != null && g.longitude != null && g.time).sort((a, b) => a.time < b.time ? -1 : 1);
   const stops = []; let cur = null;
-  const flush = () => { if (cur && cur.minutes >= minMin) stops.push({ lat: cur.lat / cur.n, lon: cur.lon / cur.n, min: cur.minutes, first: cur.first }); cur = null; };
+  const flush = () => {
+    if (cur) { const dur = (cur.t1 - cur.t0) / 60000 + Math.min(5, cur.gapMin); if (cur.n >= 2 && dur >= minMin) stops.push({ lat: cur.lat / cur.n, lon: cur.lon / cur.n, min: dur, first: cur.t0 }); }
+    cur = null;
+  };
+  let prevT = null;
   for (const g of pts) {
-    const slow = (g.speedMilesPerHour == null || g.speedMilesPerHour < 2);
     const t = Date.parse(g.time);
-    if (cur) {
-      const clat = cur.lat / cur.n, clon = cur.lon / cur.n;
-      if (slow && distKm(clat, clon, g.latitude, g.longitude) < 0.15) { cur.n++; cur.lat += g.latitude; cur.lon += g.longitude; cur.minutes = (t - cur.t0) / 60000; continue; }
-      flush();
-    }
-    if (slow) cur = { n: 1, lat: g.latitude, lon: g.longitude, t0: t, minutes: 0, first: t };
+    const gapMin = prevT == null ? 5 : Math.min(30, (t - prevT) / 60000); prevT = t;
+    if (cur && distKm(cur.lat / cur.n, cur.lon / cur.n, g.latitude, g.longitude) < 0.25) { cur.n++; cur.lat += g.latitude; cur.lon += g.longitude; cur.t1 = t; cur.gapMin = Math.max(cur.gapMin, gapMin); continue; }
+    flush();
+    cur = { n: 1, lat: g.latitude, lon: g.longitude, t0: t, t1: t, gapMin };
   }
   flush();
   return stops;
@@ -316,7 +320,7 @@ async function learnFromSamsara(cfg, opts) {
   const summary = { at: nowISO(), days: 0, vehicles: 0, stops: 0, learned_pickups: 0, learned_dropoffs: 0, errors: [] };
   for (let d = 1; d <= o.days; d++) {
     const day = shiftISO(today, -d);
-    if (new Date(day + 'T12:00:00Z').getUTCDay() === 0) continue; // Sunday
+    const dow = new Date(day + 'T12:00:00Z').getUTCDay(); if (dow === 0 || dow === 6) continue; // weekdays only (Juan)
     const names = await namesForDay(day, o.client);
     if (!names.size) continue;
     for (const org of orgs) {
