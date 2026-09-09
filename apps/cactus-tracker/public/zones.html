@@ -126,6 +126,11 @@ body.mapfull{overflow:hidden;}
 /* controls + list */
 .controls{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0 10px;position:sticky;top:106px;z-index:900;background:var(--bg);padding:6px 0;}
 .controls input[type=text]{flex:1 1 160px;min-width:0;}
+/* search box with a clear ✕ */
+.sbox{position:relative;flex:1 1 160px;min-width:0;display:flex;}
+.sbox input[type=text]{width:100%;padding-right:36px;}
+.sbox .clr{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:26px;height:26px;border-radius:50%;border:none;background:var(--line);color:var(--ink);font-size:15px;line-height:26px;text-align:center;cursor:pointer;display:none;padding:0;}
+.sbox input:not(:placeholder-shown)+.clr{display:block;}
 .seg{display:flex;border:1.5px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card);box-shadow:var(--sh-card);}
 .seg button{border:none;background:transparent;color:var(--mut);font-family:'Barlow Condensed';font-weight:700;font-size:13px;letter-spacing:.6px;padding:8px 10px;cursor:pointer;border-right:1px solid var(--line);}
 .seg button:last-child{border-right:none;}
@@ -240,7 +245,7 @@ body.dark .pill.off{background:rgba(200,120,60,.2);color:#f0a570;}
   <details class="card" id="plantsCard" style="padding:10px;">
     <summary class="sect" style="cursor:pointer;list-style:none;display:flex;gap:8px;align-items:center;">🏭 Plants &amp; drop-offs <span id="plantsSub" style="font-family:'Poppins';font-weight:500;font-size:11.5px;letter-spacing:0;text-transform:none;color:var(--mut);"></span></summary>
     <div class="mapbar" style="margin-top:8px;">
-      <input type="text" id="pq" placeholder="🔍 Find a plant…" oninput="renderPlants()" style="flex:1 1 160px;">
+      <div class="sbox"><input type="text" id="pq" placeholder="🔍 Find a plant…" oninput="renderPlants()" autocomplete="off"><button class="clr" type="button" title="Clear" onclick="clearSearch('pq',renderPlants)">✕</button></div>
       <span class="chip on" data-pk="all" onclick="setPk('all')">All</span><span class="chip" data-pk="pickup" onclick="setPk('pickup')">Pickups</span><span class="chip" data-pk="dropoff" onclick="setPk('dropoff')">Drop-offs</span><span class="chip" data-pk="fix" onclick="setPk('fix')">⚠ Needs a pin</span>
     </div>
     <div class="plist" id="plist"></div>
@@ -248,7 +253,7 @@ body.dark .pill.off{background:rgba(200,120,60,.2);color:#f0a570;}
   </details>
 
   <div class="controls">
-    <input type="text" id="q" placeholder="🔍 Search # / driver / yard / owner…" oninput="render()">
+    <div class="sbox"><input type="text" id="q" placeholder="🔍 Search # / driver / yard / owner org…" oninput="render()" autocomplete="off"><button class="clr" type="button" title="Clear search" onclick="clearSearch('q',render)">✕</button></div>
     <div class="seg" id="segOrg">
       <button data-v="" class="on" onclick="setOrg('')">All</button>
       <button data-v="CACTUS" onclick="setOrg('CACTUS')">Cactus</button>
@@ -284,6 +289,7 @@ function ownerColor(id){return id?cssColor("--"+id):cssColor("--none");}
 
 function whoAmI(){return (board&&board.identity)||localStorage.getItem("cactus-who")||localStorage.getItem("ct_author")||"";}
 function ensureWho(){ if(whoAmI())return whoAmI(); const n=prompt("Your name? (shows on every move you make)",""); if(n&&n.trim()){localStorage.setItem("cactus-who",n.trim());return n.trim();} return ""; }
+function clearSearch(id,fn){ const i=$(id); if(!i)return; i.value=""; fn(); i.focus(); }
 function toast(m,ms){const t=$("toast");t.textContent=m;t.classList.add("show");clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove("show"),ms||2600);}
 
 // ================= DATA =================
