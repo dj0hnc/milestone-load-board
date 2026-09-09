@@ -119,10 +119,13 @@ function inPoly(x, y, poly) {
 }
 // first configured zone (in list order) that contains the point — a small zone placed FIRST
 // in the list carves its area out of the big ones.
-function zoneAt(lat, lon) {
+const TERMINAL_IDS = new Set(TERMINAL_ZONES.map(z => z.id));
+// `skipTerminals`: KT terminal circles only apply to KT trucks — a Cactus truck sleeping near
+// Powderly / Whitewright stays with its Cactus region (Juan 2026-09-09: Jimmy jumped 53→70).
+function zoneAt(lat, lon, skipTerminals) {
   lat = Number(lat); lon = Number(lon);
   if (!isFinite(lat) || !isFinite(lon) || !lat || !lon) return null;
-  for (const z of zonesList()) if (inPoly(lon, lat, z.poly)) return z;
+  for (const z of zonesList()) { if (skipTerminals && (TERMINAL_IDS.has(z.id) || /terminal/i.test(z.name))) continue; if (inPoly(lon, lat, z.poly)) return z; }
   return null;
 }
 
@@ -198,7 +201,7 @@ function autoOf(t, pos) {
   const div = String(t.division || '').toUpperCase();
   const area = String(t.area || '').toUpperCase();
   const parked = String(t.parked_city || '').toUpperCase();
-  const z = pos ? zoneAt(pos.lat, pos.lon) : null;
+  const z = pos ? zoneAt(pos.lat, pos.lon, org !== 'KT') : null; // terminal circles are KT-only
   const zoneWhy = z ? ((pos.src === 'sleep' ? 'sleeps in ' : pos.src === 'work' ? 'working in ' : 'parks in ') + z.name) : '';
   // SUBHAULERS (2026-09-08, Juan: "déjalos todos asignados a mí"): every sub (except CKJ ICs, which
   // are their own KT tab) belongs to Juan by default and lives in its own SUBS bucket on the page.
