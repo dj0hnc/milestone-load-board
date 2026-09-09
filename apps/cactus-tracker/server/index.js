@@ -23,6 +23,7 @@ const seed = require('./seed');
 const { createRouter } = require('./routes');
 const { NewMileClient } = require('./newmile-client');
 const { syncRoster, syncActivity, syncAssignments, scanRipRap } = require('./sync-newmile');
+const places = require('./places'); // 📍 plants catalog (nightly rebuild)
 const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking } = require('./sync-samsara');
 const { snapshotAllToday } = require('./history');
 const { ctParts } = require('./util');
@@ -413,6 +414,8 @@ function createTracker(opts) {
           if (rs.created > 0) { try { log('GPS placement (nuevos) → ' + JSON.stringify(await backfillParking(config, 1))); } catch (e) {} }
           // rip-rap scan diario (ventana corta; el backfill largo se corre manual)
           try { log('riprap scan → ' + JSON.stringify(await scanRipRap(newmile, 14))); } catch (e) { log('riprap scan error: ' + e.message); }
+          // 📍 plants / drop-offs catalog for the zone map: names + counts from 30 days of orders, geocode the new ones
+          try { log('places rebuild → ' + JSON.stringify(await places.rebuild(newmile, {}))); } catch (e) { log('places rebuild error: ' + e.message); }
         } else log('roster sync saltado: NewMile sin sesión');
       }
       // Samsara diario desde las 4:10; el parking log solo se escribe si de verdad

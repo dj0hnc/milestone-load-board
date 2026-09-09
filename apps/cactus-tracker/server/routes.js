@@ -10,10 +10,11 @@ const express = require('express');
 const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
 const { todayCT, weekDatesCT, daysBetween, normNum, canonArea, canonicalTruckNumber, shortTrailer } = require('./util');
-const { syncRoster, syncActivity, syncAssignments, scanRipRap, reconcileICs, syncParkingFromNewMile } = require('./sync-newmile');
+const { syncRoster, syncActivity, syncAssignments, scanRipRap, reconcileICs, syncParkingFromNewMile, auditParkingVsNewMile } = require('./sync-newmile');
 const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking, locateTruck, debugHOS, auditHOS, refreshHOSTruck, cameraSnapshot, cameraCheck } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
 const zones = require('./zones'); // 🗺 dispatcher zones (Juan / Mary / Jimmy)
+const places = require('./places'); // 📍 plants / pits / drop-off sites catalog
 
 const VALID_STATUS = ['ok', 'shop', 'down', 'no_driver', 'vacation', 'deleased'];
 const EDITABLE = ['note', 'status', 'status_note', 'return_date', 'rest_days', 'area', 'division', 'rip_rap', 'star', 'phone', 'tags', 'driver', 'trailer_type', 'trailer_type2', 'dispatcher'];
@@ -47,7 +48,7 @@ function createRouter({ config, newmile, log }) {
   }
   const crypto = require('crypto');
   const pinCookie = PIN ? crypto.createHash('sha256').update('cactus|' + PIN).digest('hex').slice(0, 40) : '';
-  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/board-truck', '/api/sync-assignments', '/api/sync-roster', '/api/sync/parking-key', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
+  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/board-truck', '/api/sync-assignments', '/api/sync-roster', '/api/sync/parking-key', '/api/places-key', '/api/places/rebuild-key', '/api/zones/parking-audit-key', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
   if (PIN) {
     router.use((req, res, next) => {
       if (OPEN_PATHS.includes(req.path)) return next();
@@ -656,6 +657,61 @@ function createRouter({ config, newmile, log }) {
     if (_parkBusy) return res.json({ ok: true, already: true });
     _parkBusy = true;
     try { res.json(await runParkingRefresh((req.body || {}).days)); } finally { _parkBusy = false; }
+  });
+
+  // 📍 PLACES — plants / pits / rail yards / drop-offs for the zone map
+  function nmOrgId() { const p = (newmile && newmile.profile) || {}; return p.current_org_id || p.org_id || p.organization_id || (p.org && p.org.id) || (p.current_org && p.current_org.id) || Number(metaGet('nm_org_id', '') || 0) || 1838; } // 1838 = Milestone Supply - Texas (this market)
+  let _placesBusy = false;
+  async function placesRebuild(opts) {
+    if (_placesBusy) return { ok: true, already: true };
+    _placesBusy = true;
+    try {
+      if (!newmile.connected && !(await newmile.resume())) return { error: 'NOT_CONNECTED' };
+      const s = await places.rebuild(newmile, Object.assign({ orgId: nmOrgId() }, opts || {}));
+      bumpRev();
+      return { ok: true, summary: s };
+    } finally { _placesBusy = false; }
+  }
+  router.get('/api/places', (req, res) => res.json({ ok: true, places: places.listMerged({ includeSites: !!req.query.sites }), last_build: (() => { try { return JSON.parse(metaGet('places_last_build', '') || 'null'); } catch (e) { return null; } })() }));
+  router.get('/api/places-key', (req, res) => {
+    if (String((req.query || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    res.json({ ok: true, places: places.listMerged({ includeSites: !!req.query.sites }), last_build: (() => { try { return JSON.parse(metaGet('places_last_build', '') || 'null'); } catch (e) { return null; } })() });
+  });
+  router.post('/api/places/rebuild', async (req, res) => { try { res.json(await placesRebuild(req.body || {})); } catch (e) { res.status(500).json({ error: String(e.message || e) }); } });
+  router.post('/api/places/rebuild-key', async (req, res) => {
+    if (String((req.query || {}).key || (req.body || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    try { res.json(await placesRebuild(req.body || {})); } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+  });
+  // pin / rename / hide a place by hand (the pin always wins over geocoding and rebuilds)
+  router.post('/api/places/pin', async (req, res) => {
+    const b = req.body || {}; const by = String(b.by || (await identityOf(req)) || 'web').slice(0, 40);
+    try {
+      let out;
+      if (b.hide != null && b.key) { places.hide(String(b.key), !!b.hide); out = { hidden: !!b.hide }; }
+      else if (b.key) { out = places.setManual(String(b.key), b.lat, b.lon, by, b.name); if (!out) return res.status(404).json({ error: 'place not found' }); }
+      else if (b.name && b.lat != null && b.lon != null) { out = places.addManual(String(b.name), b.lat, b.lon, String(b.kind || 'both'), by); }
+      else return res.status(400).json({ error: 'key+lat+lon, key+hide, or name+lat+lon' });
+      try { logChange('ALL', '-', 'place', String(b.key || b.name || ''), JSON.stringify({ lat: b.lat, lon: b.lon, hide: b.hide, name: b.name }).slice(0, 200), by); } catch (e) {}
+      bumpRev();
+      res.json({ ok: true, place: out });
+    } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+  });
+  // 📊 parking audit (NewMile parking_location vs where trucks really sleep) — machine channel
+  let _auditBusy = false;
+  router.post('/api/zones/parking-audit-key', async (req, res) => {
+    if (String((req.query || {}).key || (req.body || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    if (_auditBusy) return res.json({ ok: true, already: true });
+    _auditBusy = true;
+    try {
+      if (!newmile.connected && !(await newmile.resume())) return res.status(401).json({ error: 'NOT_CONNECTED' });
+      res.json({ ok: true, summary: await auditParkingVsNewMile(newmile) });
+    } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+    finally { _auditBusy = false; }
+  });
+  router.get('/api/zones/parking-audit-key', (req, res) => {
+    if (String((req.query || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    let j = null; try { j = JSON.parse(metaGet('parking_audit', '') || 'null'); } catch (e) {}
+    res.json({ ok: true, audit: j });
   });
 
   router.get('/api/states-key', (req, res) => {

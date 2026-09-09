@@ -614,7 +614,8 @@ async function coverAssignmentsFor(client, dateISO, label, summary, cactus, toda
           n: String(o.reference || o.project_name || o.customer_name || ('Order ' + o.id)).slice(0, 60),
           c: String(o.customer_name || '').slice(0, 40),
           m: String(o.material_name || o.material || '').slice(0, 40),
-          d: String(o.dropoff_location_name || o.dropoff_org_location_name || o.dropoff_site_name || '').slice(0, 50)
+          v: String(o.vendor_location || '').slice(0, 60),  // pickup plant (places → where a sub is WORKING)
+          d: String(o.delivery_location || o.dropoff_location_name || o.dropoff_org_location_name || o.dropoff_site_name || '').slice(0, 60)
         };
         const act = (assignments || []).filter(a => !/cancel/i.test(a.assignment_status || ''));
         assignCount += act.length;
@@ -819,4 +820,43 @@ async function syncParkingFromNewMile(client, opts) {
   return summary;
 }
 
-module.exports = { syncRoster, syncActivity, syncAssignments, scanRipRap, matchLoadRow, reconcileICs, syncParkingFromNewMile };
+// 📊 PARKING AUDIT — what NewMile thinks each truck's parking is vs where it really slept (Samsara).
+// Read-only. Feeds the note to NewMile dev ("your parking_location is stale for N trucks").
+async function auditParkingVsNewMile(client) {
+  const zones = require('./zones');
+  const sleeps = zones.sleepMapPublic();
+  const rows = all(`SELECT t.org_id, t.number, t.display_number, t.owner_name, t.is_sub, t.nm_truck_id FROM trucks t JOIN orgs og ON og.id = t.org_id
+                    WHERE og.enabled = 1 AND t.archived = 0 AND t.nm_truck_id IS NOT NULL`);
+  const out = [];
+  let i = 0;
+  async function worker() {
+    while (i < rows.length) {
+      const t = rows[i++];
+      const rec = { truck: t.display_number || t.number, org: t.org_id, owner: t.owner_name || '', sub: t.is_sub ? 1 : 0, nm_id: t.nm_truck_id, nm_lat: null, nm_lng: null, our_lat: null, our_lon: null, our_src: '', our_date: '', km: null, verdict: '' };
+      try {
+        const r = await client.callTool('get_resource', { resource_type: 'truck', id: Number(t.nm_truck_id) });
+        const lat = r ? Number(r.parking_lat) : NaN, lng = r ? Number(r.parking_lng) : NaN;
+        if (isFinite(lat) && isFinite(lng) && lat && lng) { rec.nm_lat = lat; rec.nm_lng = lng; }
+      } catch (e) { rec.verdict = 'error'; }
+      const s = sleeps.get(t.org_id + '|' + t.number);
+      if (s && s.src === 'sleep') { rec.our_lat = s.lat; rec.our_lon = s.lon; rec.our_src = 'samsara'; rec.our_date = s.date || ''; }
+      if (!rec.verdict) {
+        if (rec.nm_lat == null && rec.our_lat == null) rec.verdict = 'neither';
+        else if (rec.nm_lat == null) rec.verdict = 'nm_missing';
+        else if (rec.our_lat == null) rec.verdict = 'no_samsara';
+        else { rec.km = Math.round(Math.sqrt(Math.pow((rec.nm_lat - rec.our_lat) * 111, 2) + Math.pow((rec.nm_lng - rec.our_lon) * 92, 2)) * 10) / 10; rec.verdict = rec.km <= 2 ? 'match' : rec.km <= 15 ? 'off' : 'stale'; }
+      }
+      out.push(rec);
+    }
+  }
+  await Promise.all(Array.from({ length: 5 }, worker));
+  const summary = { at: nowISO(), trucks: out.length };
+  for (const r of out) summary[r.verdict] = (summary[r.verdict] || 0) + 1;
+  summary.fleet_stale = out.filter(r => !r.sub && (r.verdict === 'stale' || r.verdict === 'off')).length;
+  summary.fleet_nm_missing = out.filter(r => !r.sub && r.verdict === 'nm_missing').length;
+  summary.subs_nm_missing = out.filter(r => r.sub && r.verdict === 'nm_missing').length;
+  metaSet('parking_audit', JSON.stringify({ summary, rows: out }));
+  return summary;
+}
+
+module.exports = { syncRoster, syncActivity, syncAssignments, scanRipRap, matchLoadRow, reconcileICs, syncParkingFromNewMile, auditParkingVsNewMile };

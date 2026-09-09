@@ -27,7 +27,8 @@
  *   The home owner is kept, so the truck comes back to the same person when it hauls again.
  */
 const { all, metaGet, metaSet } = require('./db');
-const { todayCT, daysBetween } = require('./util');
+const { todayCT, daysBetween, shiftISO } = require('./util');
+const places = require('./places');
 
 const INACTIVE_DAYS = 30;     // no NewMile load for this long = not counted
 const RECENT_ASSIGN_DAYS = 14; // planned/assigned recently = active even without a ticket yet
@@ -137,9 +138,30 @@ function sleepMap() {
   } catch (e) { /* no parking log yet */ }
   return m;
 }
+function isSubTruck(t) { return !!t.is_sub && !(String(t.org_id) === 'KT' && String(t.division || '').toUpperCase() === 'ICS'); }
+// where a truck is WORKING today/tomorrow: the pickup plant (or drop-off) of its NewMile order,
+// resolved through the places catalog — how subhaulers without Samsara land on the map.
+function workMap() {
+  const m = new Map();
+  try {
+    const idx = places.coordsIndex();
+    const today = todayCT(), tomorrow = shiftISO(today, 1);
+    // tomorrow first, then today overwrites → today wins when both exist
+    for (const day of [tomorrow, today]) {
+      for (const s of all(`SELECT org_id, number, nm_info FROM dispatch_state WHERE date = ? AND state = 'a' AND nm_info IS NOT NULL AND nm_info <> ''`, day)) {
+        let dest = []; try { dest = JSON.parse(s.nm_info) || []; } catch (e) { continue; }
+        for (const d of dest) {
+          const hit = (d.v && places.lookup(idx, d.v)) || (d.d && places.lookup(idx, d.d));
+          if (hit) { m.set(s.org_id + '|' + s.number, { lat: hit.lat, lon: hit.lon, src: 'work', date: day, name: hit.name, order: d.n || '' }); break; }
+        }
+      }
+    }
+  } catch (e) { /* places not built yet */ }
+  return m;
+}
 function buildCtx() {
   const today = todayCT();
-  const ctx = { today, sleeps: sleepMap(), recent: new Set(), ownerLast: new Map() };
+  const ctx = { today, sleeps: sleepMap(), work: workMap(), recent: new Set(), ownerLast: new Map() };
   try {
     for (const s of all(`SELECT DISTINCT org_id, number FROM dispatch_state WHERE state = 'a' AND date >= date(?, ?)`, today, '-' + RECENT_ASSIGN_DAYS + ' days')) ctx.recent.add(s.org_id + '|' + s.number);
   } catch (e) {}
@@ -158,7 +180,8 @@ function ctxCached() {
   return _ctxCache.ctx;
 }
 function posOf(t, ctx) {
-  return ctx.sleeps.get(t.org_id + '|' + t.number) || null; // sleep / NewMile parking only, never live GPS
+  // sleep (Samsara night) / NewMile parking → else the plant the truck is WORKING at today. Never live GPS.
+  return ctx.sleeps.get(t.org_id + '|' + t.number) || (ctx.work && ctx.work.get(t.org_id + '|' + t.number)) || null;
 }
 
 // The automatic HOME owner of a truck row. `pos` = {lat, lon, src} or null.
@@ -168,7 +191,10 @@ function autoOf(t, pos) {
   const area = String(t.area || '').toUpperCase();
   const parked = String(t.parked_city || '').toUpperCase();
   const z = pos ? zoneAt(pos.lat, pos.lon) : null;
-  const zoneWhy = z ? ((pos.src === 'sleep' ? 'sleeps in ' : 'last seen in ') + z.name) : '';
+  const zoneWhy = z ? ((pos.src === 'sleep' ? 'sleeps in ' : pos.src === 'work' ? 'working in ' : 'parks in ') + z.name) : '';
+  // SUBHAULERS (2026-09-08, Juan: "déjalos todos asignados a mí"): every sub (except CKJ ICs, which
+  // are their own KT tab) belongs to Juan by default and lives in its own SUBS bucket on the page.
+  if (isSubTruck(t)) return r('juan', 'subhauler' + (pos && pos.src === 'work' && pos.name ? ' · working at ' + pos.name : (z ? ' · ' + zoneWhy : '')), z ? z.id : '');
   if (org === 'KT') {
     if (div === 'RHOME') return r('mary', 'KT Rhome terminal', 'rhome');
     if (div === 'WHITEWRIGHT') return r('mary', 'KT Whitewright terminal', 'whitewright');
@@ -240,6 +266,9 @@ function decorate(t, ctx) {
     ? ('⏸ ' + act.reason + (home ? ' · home ' + home : ''))
     : ((manual === 'none' ? 'unassigned by hand' : manual ? 'placed by hand' : a.why) + (act.reason ? ' · ⚠ ' + act.reason : '') + (act.noDriver ? ' · NO DRIVER' : ''));
   t.zone_date = pos ? (pos.date || '') : '';
+  t.zone_place = pos && pos.name ? pos.name : '';
+  t.zone_order = pos && pos.order ? pos.order : '';
+  t.is_sub_bucket = isSubTruck(t) ? 1 : 0;
   t.zone = a.zone;
   t.zone_lat = pos ? pos.lat : null;
   t.zone_lon = pos ? pos.lon : null;
@@ -248,4 +277,4 @@ function decorate(t, ctx) {
 }
 function decorateAll(rows) { const ctx = buildCtx(); for (const t of rows) decorate(t, ctx); return rows; }
 
-module.exports = { DEFAULT_DISPATCHERS, IDS, INACTIVE_DAYS, getConfig, saveConfig, resetConfig, DEFAULTS, dispatchers, zonesList, zoneAt, autoOf, activityOf, decorate, decorateAll, validId, inPoly };
+module.exports = { DEFAULT_DISPATCHERS, IDS, INACTIVE_DAYS, getConfig, saveConfig, resetConfig, DEFAULTS, dispatchers, zonesList, zoneAt, autoOf, activityOf, decorate, decorateAll, validId, inPoly, isSubTruck, sleepMapPublic: sleepMap };
