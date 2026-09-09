@@ -53,13 +53,18 @@ function circlePoly(lng, lat, km) {
   }
   return pts;
 }
-const DEFAULT_ZONES = [
-  { id: 'north', name: 'North', owner: 'juan', poly: Z_NORTH },
-  { id: 'se', name: 'South East', owner: 'juan', poly: Z_SE },
-  { id: 'sw', name: 'South West', owner: 'jimmy', poly: Z_SW },
+// terminals FIRST: the first zone in the list wins where zones overlap, so the small terminal circles
+// carve their area out of the big regions (Powderly sits inside North, Rhome inside South West).
+const TERMINAL_ZONES = [
+  { id: 'powderly', name: 'Powderly terminal', owner: 'jimmy', poly: circlePoly(-95.512, 33.810, 16) },
   { id: 'rhome', name: 'Rhome terminal', owner: 'mary', poly: circlePoly(-97.472, 33.054, 16) },
   { id: 'whitewright', name: 'Whitewright terminal', owner: 'mary', poly: circlePoly(-96.393, 33.512, 16) },
 ];
+const DEFAULT_ZONES = TERMINAL_ZONES.concat([
+  { id: 'north', name: 'North', owner: 'juan', poly: Z_NORTH },
+  { id: 'se', name: 'South East', owner: 'juan', poly: Z_SE },
+  { id: 'sw', name: 'South West', owner: 'jimmy', poly: Z_SW },
+]);
 
 // ---------- config (meta.zones_config) ----------
 const cleanStr = (v, dflt, max) => { const s = String(v == null ? '' : v).replace(/[<>]/g, '').trim(); return (s || dflt || '').slice(0, max); };
@@ -84,6 +89,9 @@ function normalize(c) {
     seen.add(id);
     out.zones.push({ id, name: cleanStr(z.name, 'Zone', 32), owner: IDS.has(z.owner) ? z.owner : '', poly });
   }
+  // migration (2026-09-09, Juan): a saved config from before the Powderly terminal existed gets it
+  // added at the top, same as the other terminals — it is Jimmy's by Tony's split.
+  if (c && Array.isArray(c.zones) && !out.zones.some(z => z.id === 'powderly')) out.zones.unshift(TERMINAL_ZONES[0]);
   return out;
 }
 let _cfg = null;
