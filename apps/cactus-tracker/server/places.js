@@ -329,8 +329,15 @@ async function learnFromSamsara(cfg, opts) {
         const row = sam.resolveSamsaraTruck(org.id, v.name || '').row; if (!row) continue;
         const key = row.org_id + '|' + row.number; const nm = names.get(key); if (!nm) continue;
         summary.vehicles++;
+        // diagnostics: what does the GPS stream look like? (points, cadence, how many are "slow")
+        const gps = v.gps || []; summary.points = (summary.points || 0) + gps.length;
+        if (gps.length > 1) { const gaps = []; for (let i = 1; i < Math.min(gps.length, 200); i++) gaps.push((Date.parse(gps[i].time) - Date.parse(gps[i - 1].time)) / 1000); gaps.sort((a, b) => a - b); summary.gapSecMedian = gaps[Math.floor(gaps.length / 2)]; }
+        summary.slowPoints = (summary.slowPoints || 0) + gps.filter(g => g.speedMilesPerHour == null || g.speedMilesPerHour < 2).length;
+        summary.noSpeedField = (summary.noSpeedField || 0) + gps.filter(g => g.speedMilesPerHour == null).length;
+        if (!summary.sample && gps.length) summary.sample = JSON.stringify(gps[Math.floor(gps.length / 2)]).slice(0, 300);
+        const allStops = extractStops(gps, o.minStopMin); summary.rawStops = (summary.rawStops || 0) + allStops.length;
         const home = sleeps.get(key);
-        for (const st of extractStops(v.gps || [], o.minStopMin)) {
+        for (const st of allStops) {
           if (home && distKm(home.lat, home.lon, st.lat, st.lon) < 1.5) continue; // its own yard / home
           summary.stops++;
           const cell = Math.round(st.lat / o.cell) + ':' + Math.round(st.lon / (o.cell * 1.2));
