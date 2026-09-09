@@ -344,8 +344,12 @@ async function learnFromSamsara(cfg, opts) {
         if (!summary.sample && gps.length) summary.sample = JSON.stringify(gps[Math.floor(gps.length / 2)]).slice(0, 300);
         const allStops = extractStops(gps, o.minStopMin); summary.rawStops = (summary.rawStops || 0) + allStops.length;
         const home = sleeps.get(key);
-        for (const st of allStops) {
-          if (home && distKm(home.lat, home.lon, st.lat, st.lon) < 1.5) continue; // its own yard / home
+        for (let si = 0; si < allStops.length; si++) {
+          const st = allStops[si];
+          // its own yard / home only counts when it is the FIRST or LAST stop of the day (leaving /
+          // coming back). A mid-day stop there is real work: several trucks sleep AT the plant
+          // (Bells Savoy) and the old blanket skip handed the pickup to the drop-off cluster.
+          if (home && (si === 0 || si === allStops.length - 1) && distKm(home.lat, home.lon, st.lat, st.lon) < 1.5) continue;
           summary.stops++;
           const cell = Math.round(st.lat / o.cell) + ':' + Math.round(st.lon / (o.cell * 1.2));
           for (const [kind, set] of [['v', nm.v], ['d', nm.d]]) for (const pk of set) {
