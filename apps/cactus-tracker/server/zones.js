@@ -34,10 +34,12 @@ const INACTIVE_DAYS = 30;     // no NewMile load for this long = not counted
 const RECENT_ASSIGN_DAYS = 14; // planned/assigned recently = active even without a ticket yet
 const OWNER_ACTIVE_DAYS = 30;  // an owner org is active if ANY of its trucks hauled this recently
 
+// ROLE SWAP 2026-09-09 (Juan): Jimmy takes KT Powderly + ALL Cactus North; Juan keeps ALL the
+// South fleet (East and West) + the subhaulers; Mary unchanged.
 const DEFAULT_DISPATCHERS = [
-  { id: 'juan',  name: 'Juan',  short: 'J',  color: '#3F7080', zones: 'Cactus North · Cactus South East (RKH, Tyler)' },
+  { id: 'juan',  name: 'Juan',  short: 'J',  color: '#3F7080', zones: 'Cactus South (East + West) · Subhaulers' },
   { id: 'mary',  name: 'Mary',  short: 'M',  color: '#7A2FA8', zones: 'KT Rhome · KT Whitewright · CKJ ICS' },
-  { id: 'jimmy', name: 'Jimmy', short: 'JM', color: '#4E8C63', zones: 'KT Powderly · Cactus South West (DFW)' },
+  { id: 'jimmy', name: 'Jimmy', short: 'JM', color: '#4E8C63', zones: 'KT Powderly · Cactus North' },
 ];
 const IDS = new Set(DEFAULT_DISPATCHERS.map(d => d.id));
 
@@ -61,10 +63,11 @@ const TERMINAL_ZONES = [
   { id: 'whitewright', name: 'Whitewright terminal', owner: 'mary', poly: circlePoly(-96.393, 33.512, 16) },
 ];
 const DEFAULT_ZONES = TERMINAL_ZONES.concat([
-  { id: 'north', name: 'North', owner: 'juan', poly: Z_NORTH },
+  { id: 'north', name: 'North', owner: 'jimmy', poly: Z_NORTH },
   { id: 'se', name: 'South East', owner: 'juan', poly: Z_SE },
-  { id: 'sw', name: 'South West', owner: 'jimmy', poly: Z_SW },
+  { id: 'sw', name: 'South West', owner: 'juan', poly: Z_SW },
 ]);
+const ROLE_SWAP_OWNERS = { north: 'jimmy', se: 'juan', sw: 'juan', powderly: 'jimmy' }; // applied to saved configs too
 
 // ---------- config (meta.zones_config) ----------
 const cleanStr = (v, dflt, max) => { const s = String(v == null ? '' : v).replace(/[<>]/g, '').trim(); return (s || dflt || '').slice(0, max); };
@@ -100,6 +103,12 @@ function getConfig() {
   let saved = null;
   try { saved = JSON.parse(metaGet('zones_config', '') || 'null'); } catch (e) { saved = null; }
   _cfg = normalize(saved);
+  // role swap 2026-09-09: ONE-TIME re-owning of the default regions inside a saved config
+  // (later edits in the zone editor are respected — the flag keeps this from re-running)
+  if (saved && !metaGet('zones_role_swap_2026_09_09', '')) {
+    for (const z of _cfg.zones) if (ROLE_SWAP_OWNERS[z.id]) z.owner = ROLE_SWAP_OWNERS[z.id];
+    metaSet('zones_config', JSON.stringify(_cfg)); metaSet('zones_role_swap_2026_09_09', '1');
+  }
   return _cfg;
 }
 function saveConfig(c) { const n = normalize(c); metaSet('zones_config', JSON.stringify(n)); _cfg = n; return n; }
@@ -217,14 +226,9 @@ function autoOf(t, pos) {
   }
   if (org === 'CACTUS') {
     if (z && z.owner) return r(z.owner, (div ? 'Cactus ' + div[0] + div.slice(1).toLowerCase() + ' · ' : '') + zoneWhy + (t.is_sub ? ' (subhauler)' : ''), z.id);
-    if (div === 'NORTH') return r('juan', t.is_sub ? 'Cactus North subhauler' : 'Cactus North', 'north');
-    if (div === 'SOUTH') {
-      if (SW_AREAS.test(area)) return r('jimmy', 'Cactus South · yard ' + area + ' (South West)', 'sw');
-      if (SE_AREAS.test(area)) return r('juan', 'Cactus South · yard ' + area + ' (South East)', 'se');
-      if (SW_AREAS.test(parked)) return r('jimmy', 'Cactus South · parks in ' + parked + ' (South West)', 'sw');
-      if (SE_AREAS.test(parked)) return r('juan', 'Cactus South · parks in ' + parked + ' (South East)', 'se');
-      return r('', 'Cactus South — which side? confirm', '');
-    }
+    // ROLE SWAP 2026-09-09: Cactus North → Jimmy · Cactus South (East AND West) → Juan
+    if (div === 'NORTH') return r('jimmy', 'Cactus North', 'north');
+    if (div === 'SOUTH') return r('juan', 'Cactus South' + (SW_AREAS.test(area) || SW_AREAS.test(parked) ? ' (West)' : SE_AREAS.test(area) || SE_AREAS.test(parked) ? ' (East)' : ''), SW_AREAS.test(area) || SW_AREAS.test(parked) ? 'sw' : 'se');
     if (t.is_sub) return r('', 'floating subhauler — assign by hand', '');
     return r('', 'no division yet', '');
   }
