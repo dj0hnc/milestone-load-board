@@ -820,6 +820,57 @@ async function syncParkingFromNewMile(client, opts) {
   return summary;
 }
 
+// 🎫 INVALID TICKETS per truck (Juan 2026-09-09: "quiero ver invalid tickets en cada cajita").
+// NewMile `load` with current_review_status invalid_pending_driver / invalid = a ticket the driver
+// still has to fix. We pull them all (a few pages), match the load's truck_number to our trucks
+// (display name, KT canonical digits, Arango/CKJ alias) and store count + the newest 25 per truck.
+async function syncInvalidTickets(client) {
+  const summary = { loads: 0, matched: 0, unmatched: 0, trucks: 0, pages: 0, unmatchedSample: [] };
+  const trucks = all(`SELECT org_id, number, display_number FROM trucks WHERE archived = 0`);
+  const byDisp = new Map(), byKey = new Map();
+  for (const t of trucks) {
+    const k = t.org_id + '|' + t.number;
+    if (t.display_number) byDisp.set(normNum(t.display_number).replace(/\s+/g, ''), k);
+    byKey.set(k.toUpperCase(), k);
+  }
+  const resolve = raw => {
+    const compact = normNum(raw).replace(/\s+/g, ''); if (!compact) return null;
+    if (byDisp.has(compact)) return byDisp.get(compact);
+    const alias = ckjAliasKey(raw); if (byKey.has(('KT|' + alias).toUpperCase())) return byKey.get(('KT|' + alias).toUpperCase());
+    for (const org of ['CACTUS', 'KT']) { const c = canonicalTruckNumber(org, normNum(raw)); if (byKey.has((org + '|' + c).toUpperCase())) return byKey.get((org + '|' + c).toUpperCase()); }
+    const dig = (compact.match(/\d{2,}/) || [''])[0];
+    if (dig && byKey.has('KT|CKJ' + dig)) return byKey.get('KT|CKJ' + dig);
+    if (dig && byKey.has('CACTUS|' + dig)) return byKey.get('CACTUS|' + dig);
+    return null;
+  };
+  const per = new Map();
+  for (const status of ['invalid_pending_driver', 'invalid']) {
+    let page = 1, totalPages = 1;
+    do {
+      const r = await client.callTool('list_resources', { resource_type: 'load', filters: { review_status: status, page, page_size: 100 } });
+      const rows = (r && (r.loads || r.results || r.rows)) || [];
+      totalPages = (r && (r.total_pages || r.pages)) || 1; page++; summary.pages++;
+      for (const l of rows) {
+        summary.loads++;
+        const key = resolve(l.truck_number || '');
+        if (!key) { summary.unmatched++; if (summary.unmatchedSample.length < 12 && !summary.unmatchedSample.includes(l.truck_number)) summary.unmatchedSample.push(l.truck_number); continue; }
+        summary.matched++;
+        const e = per.get(key) || []; e.push({ id: l.id, order_id: l.order_id, order: l.order_reference_number || '', driver: l.driver_name || '', at: String(l.inserted_at || '').slice(0, 10), status, type: l.type || '' }); per.set(key, e);
+      }
+    } while (page <= totalPages && page <= 60);
+  }
+  const now = nowISO();
+  run(`UPDATE trucks SET invalid_tickets = 0, invalid_tickets_json = '[]', invalid_tickets_at = ? WHERE archived = 0`, now);
+  for (const [key, list] of per) {
+    const [org, num] = key.split('|');
+    list.sort((a, b) => (a.at < b.at ? 1 : -1));
+    run(`UPDATE trucks SET invalid_tickets = ?, invalid_tickets_json = ?, invalid_tickets_at = ? WHERE org_id = ? AND number = ?`, list.length, JSON.stringify(list.slice(0, 25)), now, org, num);
+    summary.trucks++;
+  }
+  try { metaSet('invalid_tickets_last', JSON.stringify(Object.assign({ at: now }, summary))); } catch (e) {}
+  return summary;
+}
+
 // 📊 PARKING AUDIT — what NewMile thinks each truck's parking is vs where it really slept (Samsara).
 // Read-only. Feeds the note to NewMile dev ("your parking_location is stale for N trucks").
 async function auditParkingVsNewMile(client) {
@@ -859,4 +910,4 @@ async function auditParkingVsNewMile(client) {
   return summary;
 }
 
-module.exports = { syncRoster, syncActivity, syncAssignments, scanRipRap, matchLoadRow, reconcileICs, syncParkingFromNewMile, auditParkingVsNewMile };
+module.exports = { syncRoster, syncActivity, syncAssignments, scanRipRap, matchLoadRow, reconcileICs, syncParkingFromNewMile, auditParkingVsNewMile, syncInvalidTickets };

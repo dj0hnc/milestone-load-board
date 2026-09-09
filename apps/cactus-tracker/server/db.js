@@ -317,7 +317,10 @@ function migrate(d) {
   // segunda traila (ej. 1144: AL-ED + round bottom para rip rap). Manual, el sync no la toca.
   addCol(d, 'trucks', 'trailer_type2', "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'dispatcher', "TEXT DEFAULT ''"); // 🗺 manual zone owner (juan|mary|jimmy|none); '' = automatic rule (zones.js)
-  addCol(d, 'parking_log', 'source', "TEXT DEFAULT 'samsara'"); // 📍 'samsara' (3-6 AM night point) | 'newmile' (truck.parking_lat/lng)
+  addCol(d, 'parking_log', 'source', "TEXT DEFAULT 'samsara'");
+  addCol(d, 'trucks', 'invalid_tickets', 'INTEGER DEFAULT 0');         // 🎫 open invalid tickets in NewMile (review_status invalid*)
+  addCol(d, 'trucks', 'invalid_tickets_json', "TEXT DEFAULT '[]'");    // newest 25: {id, order_id, order, driver, at, status}
+  addCol(d, 'trucks', 'invalid_tickets_at', "TEXT DEFAULT ''"); // 📍 'samsara' (3-6 AM night point) | 'newmile' (truck.parking_lat/lng)
   // nombre/username del vehículo tal como aparece en Samsara (para cotejar en el lápiz)
   addCol(d, 'trucks', 'samsara_name', "TEXT DEFAULT ''");
   // de cuál fleet/org de Samsara salió el vehículo (CACTUS o KT/CKJ)

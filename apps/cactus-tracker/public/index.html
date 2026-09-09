@@ -494,6 +494,11 @@ body.dark .ml-in textarea{background:#0f1420;border-color:#33507a;color:#e8ecf3;
 .dsp{display:inline-block;font-family:'Barlow Condensed';font-weight:800;font-size:11px;letter-spacing:.5px;color:#fff;border-radius:6px;padding:3px 5px 2px;line-height:1;vertical-align:middle;margin-left:5px;min-width:18px;text-align:center;}
 .dsp-juan{background:#3F7080;} .dsp-mary{background:#7A2FA8;} .dsp-jimmy{background:#4E8C63;} .dsp-none{background:#c4c8d0;color:#4a5164;}
 .dsp.manual{box-shadow:0 0 0 1.5px var(--gold);}
+/* 🎫 invalid tickets pending in NewMile */
+.badge.tk{background:#eef0f3;color:#6b7280;border:1px solid #d5d9e0;cursor:pointer;}
+.badge.tk.bad{background:var(--red-bg);color:var(--red);border-color:var(--red);font-weight:800;}
+body.dark .badge.tk{background:#1f2a3c;color:#8f97ab;border-color:#33507a;}
+body.dark .badge.tk.bad{background:rgba(234,78,44,.18);color:#ff8a70;border-color:#ff6b52;}
 body.dark .dsp-juan{background:#5a95f9;color:#0f1420;} body.dark .dsp-mary{background:#b07be0;color:#0f1420;} body.dark .dsp-jimmy{background:#22c55e;color:#0f1420;} body.dark .dsp-none{background:#3a4557;color:#c8d0dc;}
 </style>
 </head>
@@ -1015,6 +1020,23 @@ function camShow(org,num,j){
 }
 // 💰 dinero freight ganado (pedido de Tony): del día visto + acumulado de la semana
 function money(n){ if(!n)return ""; return "$"+Number(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+// 🎫 invalid tickets (NewMile review_status invalid*) — always visible: 0 when clean
+function tkHtml(t){
+  const n=Number(t.invalid_tickets)||0;
+  return `<span class="badge tk ${n?"bad":""}" onclick="event.stopPropagation();openInvalid('${t.org_id}','${esc(t.number)}')" title="Tickets the driver still has to fix in NewMile${t.invalid_tickets_at?" · checked "+new Date(t.invalid_tickets_at).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}):""}">🎫 ${n} invalid</span>`;
+}
+function openInvalid(org,num){
+  const t=truckOf(org,num); if(!t)return;
+  let list=[]; try{ list=JSON.parse(t.invalid_tickets_json||"[]")||[]; }catch(e){}
+  const n=Number(t.invalid_tickets)||0;
+  openModal(`<h3>🎫 Invalid tickets — ${esc(dnum(t))}</h3>
+    <p style="font-size:13px;color:var(--mut);">${n?`<b style="color:var(--red)">${n}</b> ticket${n>1?"s":""} waiting for the driver to fix in NewMile${list.length<n?" (newest "+list.length+" shown)":""}.`:"No invalid tickets. 🎉"}${t.invalid_tickets_at?" Checked "+new Date(t.invalid_tickets_at).toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"})+".":""}</p>
+    ${list.map(l=>`<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:13px;">
+      <span style="font-family:'Barlow Condensed';font-weight:700;color:var(--mut);min-width:78px;">${esc(l.at)}</span>
+      <span style="flex:1;min-width:0;"><b>${esc(l.order||("Order "+l.order_id))}</b>${l.driver?" · "+esc(l.driver):""}${l.type==="consolidated"?" · consolidated":""}<br><span style="font-size:11px;color:var(--mut);">${l.status==="invalid"?"invalid (final)":"invalid — pending driver"} · load ${l.id}</span></span>
+      <a href="https://app.newmile.com/orders/${l.order_id}" target="_blank" style="font-size:12px;white-space:nowrap;">open ↗</a></div>`).join("")}
+    <div class="actions"><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
+}
 function revHtml(t){
   if(!t.rev_day&&!t.rev_week)return "";
   const parts=[];
@@ -1324,6 +1346,7 @@ function chipHtml(t){
     ${parkHtml(t)}
     ${actHtml(t)}
     ${revHtml(t)}
+    ${tkHtml(t)}
     ${hasGPS(t)?`<button class="btn-loc" title="Refresh live GPS + HOS" onclick="event.stopPropagation();locateNow('${t.org_id}','${esc(t.number)}')">⟳</button>`:""}
     ${hasGPS(t)&&t.samsara_id?`<button class="btn-cam" title="Live camera snapshots (road + cab)" onclick="event.stopPropagation();openCamera('${t.org_id}','${esc(t.number)}')">📷</button>`:""}
     ${date===board.today&&!board.historical&&t.samsara_id&&!t.is_sub&&t.samsara_seen_at&&(Date.now()-Date.parse(t.samsara_seen_at))>24*3600e3?`<span class="badge flag" title="no GPS signal in over 24h — tap to re-check right now" onclick="event.stopPropagation();locateNow('${t.org_id}','${esc(t.number)}')">📵 SAMSARA DEAD since ${tsMdy(t.samsara_seen_at)} — camera/cable?</span>`:""}

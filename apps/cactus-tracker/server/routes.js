@@ -10,7 +10,7 @@ const express = require('express');
 const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
 const { todayCT, weekDatesCT, daysBetween, normNum, canonArea, canonicalTruckNumber, shortTrailer } = require('./util');
-const { syncRoster, syncActivity, syncAssignments, scanRipRap, reconcileICs, syncParkingFromNewMile, auditParkingVsNewMile } = require('./sync-newmile');
+const { syncRoster, syncActivity, syncAssignments, scanRipRap, reconcileICs, syncParkingFromNewMile, auditParkingVsNewMile, syncInvalidTickets } = require('./sync-newmile');
 const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking, locateTruck, debugHOS, auditHOS, refreshHOSTruck, cameraSnapshot, cameraCheck } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
 const zones = require('./zones'); // 🗺 dispatcher zones (Juan / Mary / Jimmy)
@@ -465,7 +465,7 @@ function createRouter({ config, newmile, log }) {
                                t.note, t.return_date, t.rest_days, t.updated_at,
                                t.hos_drive_ms, t.hos_cycle_ms, t.hos_at,
                                t.area, t.parked_city, t.is_sub, t.last_lat, t.last_lon, t.dispatcher,
-                               t.last_load_date, t.owner_id, t.owner_name, t.star, t.trailer_type, t.nm_truck_id
+                               t.last_load_date, t.owner_id, t.owner_name, t.star, t.trailer_type, t.nm_truck_id, t.invalid_tickets
                         FROM trucks t JOIN orgs o ON o.id = t.org_id WHERE o.enabled = 1 AND t.archived = 0`);
     zones.decorateAll(trucks); // 🗺 owner (Juan / Mary / Jimmy) for the board's chips
     const states = new Map(all('SELECT org_id, number, state FROM dispatch_state WHERE date = ?', today)
@@ -504,7 +504,8 @@ function createRouter({ config, newmile, log }) {
         // 🗺 dispatcher zone owner: effective (manual wins), automatic rule, and why
         owner: t.dispatcher_eff || '', ownerHome: t.dispatcher_home || '', ownerAuto: t.dispatcher_auto || '', ownerManual: t.dispatcher_manual || '', ownerWhy: t.dispatcher_why || '',
         inactive: t.inactive_reason || '', noDriver: t.no_driver ? 1 : 0, daysIdle: t.days_idle,
-        zoneSrc: t.zone_src || '', zoneDate: t.zone_date || ''
+        zoneSrc: t.zone_src || '', zoneDate: t.zone_date || '',
+        invalidTickets: t.invalid_tickets || 0 // 🎫 open invalid tickets in NewMile
       };
     }
     res.setHeader('Cache-Control', 'no-store');
@@ -548,8 +549,9 @@ function createRouter({ config, newmile, log }) {
       for (const n of nums) reset += (run('UPDATE trucks SET trailer_override = 0 WHERE (UPPER(number) = UPPER(?) OR UPPER(display_number) = UPPER(?)) AND archived = 0', n, n).changes || 0);
       if (!newmile.connected && !(await newmile.resume())) return res.status(401).json({ error: 'NOT_CONNECTED' });
       const roster = await syncRoster(newmile);
+      let invalid = null; try { invalid = await syncInvalidTickets(newmile); } catch (e) { invalid = { error: String(e.message || e) }; }
       bumpRev();
-      res.json({ ok: true, reset, roster });
+      res.json({ ok: true, reset, roster, invalid });
     } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
     finally { _rosterPokeBusy = false; }
   });
@@ -588,10 +590,11 @@ function createRouter({ config, newmile, log }) {
     try {
       if (!newmile.connected && !(await newmile.resume())) return res.status(401).json({ error: 'NOT_CONNECTED', hint: 'open /api/newmile/connect' });
       const roster = await syncRoster(newmile);
-      let activity = null;
+      let activity = null, invalid = null;
       try { activity = await syncActivity(newmile, 7); } catch (e) { activity = { error: String(e.message || e) }; }
+      try { invalid = await syncInvalidTickets(newmile); } catch (e) { invalid = { error: String(e.message || e) }; }
       bumpRev();
-      res.json({ ok: true, roster, activity });
+      res.json({ ok: true, roster, activity, invalid });
     } catch (e) { res.status(500).json({ error: String(e.message || e) }); }
     finally { _rosterBusy = false; }
   });

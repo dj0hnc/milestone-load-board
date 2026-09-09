@@ -22,7 +22,7 @@ const { open, metaGet, metaSet, backupTo, DATA_DIR } = require('./db');
 const seed = require('./seed');
 const { createRouter } = require('./routes');
 const { NewMileClient } = require('./newmile-client');
-const { syncRoster, syncActivity, syncAssignments, scanRipRap } = require('./sync-newmile');
+const { syncRoster, syncActivity, syncAssignments, scanRipRap, syncInvalidTickets } = require('./sync-newmile');
 const places = require('./places'); // 📍 plants catalog (nightly rebuild)
 const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking } = require('./sync-samsara');
 const { snapshotAllToday } = require('./history');
@@ -343,7 +343,7 @@ function createTracker(opts) {
   // PERSISTIDO en la DB. Así funciona igual en la PC de la oficina que en una nube que
   // duerme: si el host estaba dormido a las 4:30, el sync corre al primer despertar del
   // día (la visita que lo despertó lo dispara) en vez de perderse hasta mañana.
-  let lastActivityHourKey = '', timer = null, lastUpdCheck = 0, lastGps = 0, gpsBusy = false, lastFast = 0, fastBusy = false, lastAsg = 0, asgBusy = false;
+  let lastActivityHourKey = '', timer = null, lastUpdCheck = 0, lastGps = 0, gpsBusy = false, lastFast = 0, fastBusy = false, lastAsg = 0, asgBusy = false, lastInv = 0, invBusy = false;
 
   async function tick() {
     // auto-update en cada tick = cada minuto (también domingos): código nuevo → pull + restart
@@ -387,6 +387,15 @@ function createTracker(opts) {
     // avisa al momento vía /api/sync-assignments) aparece en el tracker sin darle "Sync".
     // 2026-08-30: CORRE TAMBIÉN EN DOMINGO — el domingo se planea el LUNES, así que este carril
     // va ANTES del gate de domingo (era el bug del 684: asignado el lun, no aparecía el dom).
+    // 🎫 invalid tickets per truck — every 10 min while people work (a few light MCP pages)
+    if (!invBusy && hour >= 4 && hour <= 21 && Date.now() - lastInv > 10 * 60 * 1000) {
+      invBusy = true; lastInv = Date.now();
+      (async () => {
+        try { if (newmile.connected || await newmile.resume()) { const s = await syncInvalidTickets(newmile); if (s.trucks) metaSet('board_rev', new Date().toISOString()); log('invalid tickets → ' + JSON.stringify(Object.assign({}, s, { unmatchedSample: undefined }))); } }
+        catch (e) { log('invalid tickets error: ' + (e.message || e)); }
+        finally { invBusy = false; }
+      })();
+    }
     if (!asgBusy && hour >= 4 && hour <= 20 && Date.now() - lastAsg > 90 * 1000) {
       asgBusy = true; lastAsg = Date.now();
       (async () => {

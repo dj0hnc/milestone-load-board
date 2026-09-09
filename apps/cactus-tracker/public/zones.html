@@ -407,7 +407,7 @@ function rowHtml(t){
     <label class="ck"><input type="checkbox" ${SEL.has(k)?"checked":""} onchange="selRow('${esc(k)}',this.checked)"></label>
     <div class="num" onclick="flyTo('${t.org_id}','${esc(t.number)}')" title="Show on the map">${esc(dnum(t))}<small>${t.is_new?"⚑ new":man==="none"?"unassigned":man?"by hand":"auto"}</small></div>
     <div class="drv ${t.no_driver?"none":""}">${t.no_driver?"⚠ NO DRIVER":esc(t.driver)}</div>
-    <div class="where"><b>${esc(where)}</b><span class="why">${esc(t.owner_name||"no owner org")} · last load ${t.days_idle==null?"never":t.days_idle===0?"today":t.days_idle+" d ago"} · ${pos}</span><span class="why">${esc(t.dispatcher_why||"")}${man&&man!=="none"?` · rule says ${esc(dname(t.dispatcher_auto))}`:""}</span>${tabSelect(t)}${ttSelect(t)}</div>
+    <div class="where"><b>${esc(where)}</b><span class="why">${Number(t.invalid_tickets)?`<b style="color:var(--red)">🎫 ${t.invalid_tickets} invalid</b> · `:"🎫 0 · "}${esc(t.owner_name||"no owner org")} · last load ${t.days_idle==null?"never":t.days_idle===0?"today":t.days_idle+" d ago"} · ${pos}</span><span class="why">${esc(t.dispatcher_why||"")}${man&&man!=="none"?` · rule says ${esc(dname(t.dispatcher_auto))}`:""}</span>${tabSelect(t)}${ttSelect(t)}</div>
     ${todayPill(t)}
     ${mvHtml(t,home,man,list)}
   </div>`;
