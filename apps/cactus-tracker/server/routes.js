@@ -460,7 +460,7 @@ function createRouter({ config, newmile, log }) {
 
   router.get('/api/states', (req, res) => {
     if (String(req.query.key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
-    const today = todayCT();
+    const today = /^d{4}-d{2}-d{2}$/.test(String(req.query.date || '')) ? String(req.query.date) : todayCT(); // ?date= → states/time-off for THAT day (tomorrow's OFF list)
     const trucks = all(`SELECT t.org_id, t.number, t.display_number, t.division, t.driver, t.status, t.status_note,
                                t.note, t.return_date, t.rest_days, t.updated_at,
                                t.hos_drive_ms, t.hos_cycle_ms, t.hos_at,
