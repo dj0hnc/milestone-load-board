@@ -388,7 +388,9 @@ function createTracker(opts) {
     // 2026-08-30: CORRE TAMBIÉN EN DOMINGO — el domingo se planea el LUNES, así que este carril
     // va ANTES del gate de domingo (era el bug del 684: asignado el lun, no aparecía el dom).
     // 🎫 invalid tickets per truck — every 10 min while people work (a few light MCP pages)
-    if (!invBusy && hour >= 4 && hour <= 21 && Date.now() - lastInv > 10 * 60 * 1000) {
+    // 2026-09-10: 10 min -> 30 min. NewMile rate-limits per minute and the BOARD shares that budget
+    // (its pull/push got 429 back-offs = "el board tarda"). Ticket counts can lag half an hour.
+    if (!invBusy && hour >= 4 && hour <= 21 && Date.now() - lastInv > 30 * 60 * 1000) {
       invBusy = true; lastInv = Date.now();
       (async () => {
         try { if (newmile.connected || await newmile.resume()) { const s = await syncInvalidTickets(newmile); if (s.trucks) metaSet('board_rev', new Date().toISOString()); log('invalid tickets → ' + JSON.stringify(Object.assign({}, s, { unmatchedSample: undefined }))); } }
@@ -396,7 +398,10 @@ function createTracker(opts) {
         finally { invBusy = false; }
       })();
     }
-    if (!asgBusy && hour >= 4 && hour <= 20 && Date.now() - lastAsg > 90 * 1000) {
+    // 2026-09-10: 90 s -> 5 min. One run = 1 list + 1 call PER ORDER (today + tomorrow ≈ 145 calls),
+    // i.e. ~100 NewMile calls/min nonstop that starved the board's own pulls/pushes (429 waits).
+    // The board still pokes /api/sync-assignments right after every push, so nothing waits 5 min.
+    if (!asgBusy && hour >= 4 && hour <= 20 && Date.now() - lastAsg > 5 * 60 * 1000) {
       asgBusy = true; lastAsg = Date.now();
       (async () => {
         try {

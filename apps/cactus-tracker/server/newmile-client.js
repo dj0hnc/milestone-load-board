@@ -382,7 +382,7 @@ class NewMileClient {
   // Órdenes del día CON sus asignaciones (para el panel de despacho).
   async ordersForDate(dateISO) {
     const orders = await this.listOrdersAllPages(dateISO);
-    const assigns = await this._pool(orders, 6, (o) => this.orderAssignments(o.id));
+    const assigns = await this._pool(orders, 3, (o) => this.orderAssignments(o.id));   // 6 -> 3: leave NewMile room for the board
     return orders.map((o, i) => ({ order: o, assignments: assigns[i] || [] }));
   }
 
