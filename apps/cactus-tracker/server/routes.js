@@ -1577,6 +1577,14 @@ function createRouter({ config, newmile, log }) {
       if ('is_sub' in f) { sets.push('is_sub = ?'); vals.push(f.is_sub ? 1 : 0); }
       // 🗓 timeoff_clear: drop the scheduled time-off rows that cover TODAY (a stray "vacation today"
       // makes the load board show the truck as down while the tracker says ok — 1386, 2026-09-08)
+      // 🗄 remove / restore through the machine channel (same as the tracker's Remove button:
+      // archived, never deleted; comes back by itself if it hauls or gets assigned in NewMile)
+      if (f.remove || f.restore) {
+        run('UPDATE trucks SET archived = ?, is_new = 0, maybe_removed = 0, updated_at = ? WHERE org_id = ? AND number = ?', f.remove ? 1 : 0, nowISO(), row.org_id, row.number);
+        logChange(row.org_id, row.number, f.remove ? 'removed' : 'restored', '', f.remove ? 'removed from board (returns by itself if it hauls again)' : 'restored to board', by);
+        bumpRev();
+        if (!sets.length) return res.json({ ok: true, updated: true, archived: f.remove ? 1 : 0 });
+      }
       if (f.timeoff_clear) {
         const today = todayCT();
         const gone = all('SELECT id, reason, from_date, to_date FROM time_off WHERE org_id = ? AND number = ? AND from_date <= ? AND to_date >= ?', row.org_id, row.number, today, today);
