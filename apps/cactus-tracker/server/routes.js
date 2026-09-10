@@ -470,6 +470,12 @@ function createRouter({ config, newmile, log }) {
     zones.decorateAll(trucks); // 🗺 owner (Juan / Mary / Jimmy) for the board's chips
     const states = new Map(all('SELECT org_id, number, state FROM dispatch_state WHERE date = ?', today)
       .map(r => [r.org_id + '|' + r.number, r.state]));
+    // CARRY-OVER of X (same rule the board uses): a truck marked ✕ on an earlier day stays down on
+    // the following days until somebody touches it — that is what the tracker's OFF count shows.
+    const carry = new Map();
+    for (const r of all('SELECT org_id, number, state, date FROM dispatch_state WHERE date < ? ORDER BY date DESC', today)) {
+      const k = r.org_id + '|' + r.number; if (!carry.has(k)) carry.set(k, r);
+    }
     // 💰 dinero freight de HOY y de la SEMANA (Lun-Sáb) por troke — para los chips del board
     const wk = weekDatesCT(today);
     const revs = new Map();
@@ -488,13 +494,16 @@ function createRouter({ config, newmile, log }) {
     for (const t of trucks) {
       const k0 = t.display_number || t.number;
       const key = out[k0] ? t.org_id + ':' + k0 : k0; // número repetido entre orgs → prefijo
-      const st = states.get(t.org_id + '|' + t.number) || null;
+      const st0 = states.get(t.org_id + '|' + t.number) || null;
+      const cr = !st0 ? carry.get(t.org_id + '|' + t.number) : null;
+      const st = st0 || (cr && cr.state === 'd' ? 'd' : null);
       out[key] = {
         org: t.org_id, division: t.division, driver: t.driver || '',
         status: t.status, note: [t.status_note, t.note].filter(Boolean).join(' · '),
         returnDate: t.return_date || '', restDays: t.rest_days || '',
         timeOff: offs.get(t.org_id + '|' + t.number) || null,
         todayState: st === 'a' ? 'assigned' : st === 'd' ? 'x' : st === 'n' ? 'nowork' : st === 'p' ? 'pending' : null,
+        carriedDownSince: (!st0 && cr && cr.state === 'd') ? cr.date : null, // ✕ inherited from that day
         updatedAt: t.updated_at || null,
         // ⏱ HOS frescas (<20h) + 💰 freight hoy/semana — el board las pinta en sus chips
         hosLeftMs: (t.hos_at && (Date.now() - Date.parse(t.hos_at)) < 20 * 3600e3) ? (t.hos_drive_ms != null ? t.hos_drive_ms : null) : null,
