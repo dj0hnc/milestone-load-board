@@ -223,7 +223,24 @@ class NewMileClient {
   }
 
   // ---------- MCP transport (SSE stream stays open after the response — abort after our id) ----------
+  // Retry REJECTED calls (429 = too many calls this minute, 5xx, aborted/network) with 2s/4s/8s
+  // back-off, same as the board's mcp-client. A rejected call never executed, so retrying cannot
+  // double-apply anything. 2026-09-13: Juan changed 927's trailer → first click "error", second OK.
   async _rpc(method, params, opts) {
+    opts = opts || {};
+    for (let attempt = 0; ; attempt++) {
+      try { return await this._rpcOnce(method, params, opts); }
+      catch (e) {
+        const m = String((e && e.message) || '');
+        const transient = /failed:\s*(429|502|503|504)\b/.test(m) || /aborted|ECONNRESET|ETIMEDOUT|fetch failed|socket hang up/i.test(m);
+        if (!transient || opts.notification || attempt >= 3) throw e;
+        const waitMs = 2000 * Math.pow(2, attempt);
+        this.log('NewMile ' + (/429/.test(m) ? 'rate limit (429)' : 'transient error') + ' — waiting ' + (waitMs / 1000) + 's, retry ' + (attempt + 1) + '/3 for ' + method);
+        await new Promise(res => setTimeout(res, waitMs));
+      }
+    }
+  }
+  async _rpcOnce(method, params, opts) {
     opts = opts || {};
     await this._ensureToken();
     const isNotification = !!opts.notification;
