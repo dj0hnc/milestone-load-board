@@ -263,6 +263,11 @@ function migrate(d) {
   addCol(d, 'recruits', 'truck_type', "TEXT DEFAULT ''");
   addCol(d, 'recruits', 'lead_source', "TEXT DEFAULT ''");
   addCol(d, 'recruits', 'hs_contacts', "TEXT DEFAULT ''");
+  // 🤝 recruiting LISTA (2026-09-15): "toda la info" del sub. HubSpot fields (set by import):
+  for (const c of ['market', 'market_area', 'location', 'city', 'state', 'zip', 'mobile', 'dot', 'fleet_size', 'dump_trucks',
+    'language', 'sub_status', 'hs_lead_status', 'lead_source_details', 'hs_next_activity', 'hs_created', 'contact_id', 'hs_url',
+    // Juan's local fields (never touched by the import): where the trucks sleep / where they are from
+    'yard_city', 'yard_state', 'yard_zip', 'home_city', 'home_state', 'tags']) addCol(d, 'recruits', c, "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'rip_suggested', 'INTEGER DEFAULT 0');
   addCol(d, 'trucks', 'rip_evidence', "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'parked_city', "TEXT DEFAULT ''");

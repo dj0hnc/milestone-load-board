@@ -13,14 +13,14 @@
   --navy:#31353A; --navy2:#3B4046; --gold:#B89A4E; --gold-d:#9C8140;
   --bg:#F2F0EB; --card:#FFFFFF; --ink:#2B2D30; --mut:#8A8D92; --line:#E5E2DB;
   --green:#4E8C63; --green-bg:#EAF2EC; --red:#B0442F; --red-bg:#F7EAE6;
-  --blue:#3F7080; --blue-bg:#E9F0F2; --warm:#FDF8EC;
+  --blue:#3F7080; --blue-bg:#E9F0F2; --warm:#FDF8EC; --row-h:#F8F6F1;
   --sh-card:0 1px 2px rgba(20,20,20,.06),0 4px 14px rgba(20,20,20,.07);
 }
 body.dark{
   --navy:#141b24; --navy2:#0e1a2e; --gold:#C8991F; --gold-d:#e3b84a;
   --bg:#1C2333; --card:#141b24; --ink:#e8ecf3; --mut:#8f97ab; --line:#2e3a47;
   --green:#22c55e; --green-bg:rgba(34,197,94,.14); --red:#ff6b52; --red-bg:rgba(234,78,44,.16);
-  --blue:#5a95f9; --blue-bg:rgba(90,149,249,.14); --warm:#2d2617;
+  --blue:#5a95f9; --blue-bg:rgba(90,149,249,.14); --warm:#2d2617; --row-h:#1a2230;
   --sh-card:0 1px 2px rgba(0,0,0,.35),0 4px 14px rgba(0,0,0,.4);
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
@@ -28,8 +28,12 @@ body{font-family:'Poppins',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
 header{background:var(--navy);color:#fff;padding:12px 14px 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:40;}
 h1{font-family:'Barlow Condensed';font-weight:800;font-size:24px;letter-spacing:1px;text-transform:uppercase;}
 h1 small{font-weight:600;font-size:14px;color:var(--gold);letter-spacing:1.5px;display:block;line-height:1;}
-.hspacer{margin-left:auto;display:flex;gap:8px;align-items:center;}
+.hspacer{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
 .xlink{font-family:'Barlow Condensed';font-weight:700;font-size:14px;letter-spacing:1px;color:#fff;text-decoration:none;border:1.5px solid rgba(255,255,255,.35);border-radius:999px;padding:5px 12px;background:transparent;cursor:pointer;}
+.xlink.gold{background:var(--gold);border-color:var(--gold);color:var(--navy);}
+.seg{display:inline-flex;border:1.5px solid rgba(255,255,255,.35);border-radius:999px;overflow:hidden;}
+.seg button{background:transparent;border:none;color:#fff;font-family:'Barlow Condensed';font-weight:800;font-size:14px;letter-spacing:1px;padding:6px 14px;cursor:pointer;}
+.seg button.on{background:var(--gold);color:var(--navy);}
 .funnel{display:flex;gap:6px;padding:10px 14px 2px;overflow-x:auto;}
 .fpill{flex-shrink:0;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:6px 12px;text-align:center;box-shadow:var(--sh-card);cursor:pointer;}
 .fpill.sel{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold);}
@@ -40,6 +44,7 @@ h1 small{font-weight:600;font-size:14px;color:var(--gold);letter-spacing:1.5px;d
 .fpill small{font-family:'Barlow Condensed';font-weight:700;font-size:10.5px;letter-spacing:.7px;color:var(--mut);white-space:nowrap;}
 .fpill.hot{border-color:var(--gold);background:var(--warm);}
 main{padding:10px 14px 90px;display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;align-items:start;}
+main.list{display:block;}
 .lane{background:transparent;}
 .lane-h{font-family:'Barlow Condensed';font-weight:800;font-size:17px;letter-spacing:1px;text-transform:uppercase;display:flex;align-items:center;gap:8px;padding:4px 2px 8px;}
 .lane-h .cnt{background:var(--navy);color:#fff;border-radius:999px;font-size:13px;padding:1px 10px;}
@@ -56,25 +61,72 @@ main{padding:10px 14px 90px;display:grid;grid-template-columns:repeat(auto-fit,m
 .prog i{flex:1;height:6px;border-radius:3px;background:var(--line);}
 .prog i.on{background:var(--green);}
 .rowb{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center;}
-.chip{font-family:'Barlow Condensed';font-weight:700;font-size:12px;letter-spacing:.4px;border-radius:999px;padding:3px 10px;background:var(--blue-bg);color:var(--blue);}
+.chip{font-family:'Barlow Condensed';font-weight:700;font-size:12px;letter-spacing:.4px;border-radius:999px;padding:3px 10px;background:var(--blue-bg);color:var(--blue);white-space:nowrap;}
 .chip.due{background:var(--red-bg);color:var(--red);}
 .chip.ok{background:var(--green-bg);color:var(--green);}
+.chip.dim{background:var(--line);color:var(--mut);}
 .callq{margin-left:auto;background:var(--green);color:#fff;border:none;border-radius:999px;font-family:'Barlow Condensed';font-weight:800;font-size:13px;letter-spacing:.5px;padding:5px 13px;cursor:pointer;text-decoration:none;}
 .lastn{font-size:11.5px;color:var(--mut);margin-top:7px;border-top:1px dashed var(--line);padding-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .empty{color:var(--mut);font-size:13px;padding:14px 4px;}
 .foot{position:fixed;bottom:0;left:0;right:0;background:var(--navy);color:#c6cddd;font-size:11.5px;padding:8px 14px calc(8px + env(safe-area-inset-bottom));display:flex;gap:10px;align-items:center;z-index:40;}
+/* ---------- LIST view ---------- */
+.tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;}
+.tools input[type=search],.tools select{background:var(--card);border:1.5px solid var(--line);color:var(--ink);border-radius:10px;padding:8px 10px;font-family:inherit;font-size:13px;}
+.tools input[type=search]{flex:1;min-width:180px;}
+.tools select{max-width:170px;}
+.tbtn{background:var(--card);border:1.5px solid var(--line);color:var(--ink);border-radius:999px;font-family:'Barlow Condensed';font-weight:800;font-size:13px;letter-spacing:.5px;padding:7px 12px;cursor:pointer;white-space:nowrap;}
+.tbtn.on{background:var(--navy);color:#fff;border-color:var(--navy);}
+.tbtn.gold{background:var(--gold);color:var(--navy);border-color:var(--gold);}
+.tbtn.green{background:var(--green);color:#fff;border-color:var(--green);}
+.tabl{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh-card);overflow:auto;max-height:calc(100vh - 250px);}
+table{border-collapse:separate;border-spacing:0;width:100%;min-width:1180px;font-size:12.5px;}
+thead th{position:sticky;top:0;background:var(--navy);color:#fff;font-family:'Barlow Condensed';font-weight:700;font-size:12px;letter-spacing:.8px;text-align:left;padding:9px 8px;white-space:nowrap;cursor:pointer;user-select:none;z-index:2;}
+thead th.ns{cursor:default;}
+thead th .arr{opacity:.5;font-size:10px;margin-left:3px;}
+thead th.sorted{color:var(--gold);}
+tbody td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top;}
+tbody tr{cursor:pointer;}
+tbody tr:hover td{background:var(--row-h);}
+tbody tr.sel td{background:var(--warm);}
+body.dark tbody tr.sel td{background:rgba(200,153,31,.12);}
+td .co{font-weight:700;font-size:13px;line-height:1.2;}
+td .sub{color:var(--mut);font-size:11.5px;margin-top:1px;}
+td a.tel,td a.mail{color:var(--blue);text-decoration:none;font-weight:600;white-space:nowrap;}
+td a.mail{font-weight:500;word-break:break-all;}
+td .act{display:flex;gap:4px;flex-wrap:nowrap;}
+td .act a,td .act button{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--ink);text-decoration:none;font-size:14px;cursor:pointer;}
+td .act a.g{background:var(--green);border-color:var(--green);color:#fff;}
+td .stg{font-family:'Barlow Condensed';font-weight:700;font-size:12px;letter-spacing:.3px;white-space:nowrap;}
+td .d{color:var(--mut);font-size:11px;}
+td .d.slow{color:var(--red);font-weight:700;}
+td input[type=checkbox],thead input[type=checkbox]{width:17px;height:17px;accent-color:var(--gold);cursor:pointer;}
+.mini{display:flex;gap:2px;}
+.mini i{width:9px;height:9px;border-radius:2px;background:var(--line);display:inline-block;}
+.mini i.on{background:var(--green);}
+.bulk{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(44px + env(safe-area-inset-bottom));background:var(--navy);color:#fff;border-radius:999px;padding:8px 10px 8px 16px;display:none;gap:8px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.35);z-index:45;max-width:calc(100vw - 20px);overflow-x:auto;white-space:nowrap;}
+.bulk.show{display:flex;}
+.bulk b{font-family:'Barlow Condensed';font-size:15px;letter-spacing:.5px;}
+.bulk a,.bulk button{background:rgba(255,255,255,.12);color:#fff;border:none;border-radius:999px;font-family:'Barlow Condensed';font-weight:800;font-size:13px;letter-spacing:.5px;padding:7px 12px;cursor:pointer;text-decoration:none;}
+.bulk a.gold{background:var(--gold);color:var(--navy);}
+.sumline{font-size:12px;color:var(--mut);margin:0 2px 8px;display:flex;gap:10px;flex-wrap:wrap;}
+.sumline b{color:var(--ink);}
 /* ---------- modal (recruit command panel) ---------- */
 .modal-bg{position:fixed;inset:0;background:rgba(20,22,30,.55);display:none;z-index:100;overflow-y:auto;padding:20px 12px 40px;}
 .modal-bg.show{display:block;}
-.modal{max-width:560px;margin:0 auto;background:var(--bg);border-radius:18px;padding:16px;box-shadow:0 18px 60px rgba(0,0,0,.4);}
+.modal{max-width:600px;margin:0 auto;background:var(--bg);border-radius:18px;padding:16px;box-shadow:0 18px 60px rgba(0,0,0,.4);}
 .m-head{display:flex;align-items:flex-start;gap:10px;}
 .m-head h2{font-family:'Barlow Condensed';font-weight:800;font-size:22px;line-height:1.1;letter-spacing:.5px;flex:1;}
 .m-x{border:none;background:var(--card);border:1px solid var(--line);color:var(--mut);width:34px;height:34px;border-radius:10px;font-size:16px;cursor:pointer;}
-.callbtn{display:block;text-align:center;background:var(--green);color:#fff;border-radius:12px;padding:12px;font-weight:800;font-size:16px;text-decoration:none;margin:12px 0 10px;}
-.tkgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:10px;}
-.tkc{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:7px 9px;display:flex;flex-direction:column;gap:1px;}
+.cta{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:7px;margin:12px 0 10px;}
+.cta a{display:flex;align-items:center;justify-content:center;text-align:center;border-radius:12px;padding:11px 8px;font-weight:800;font-size:14px;text-decoration:none;color:#fff;background:var(--navy2);line-height:1.15;}
+.cta a.call{background:var(--green);font-size:15px;}
+.cta a.off{background:var(--card);color:var(--mut);border:1.5px dashed var(--line);pointer-events:none;}
+.tkgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-bottom:10px;}
+.tkc{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:7px 9px;display:flex;flex-direction:column;gap:1px;min-width:0;}
 .tkc small{font-family:'Barlow Condensed';font-weight:700;font-size:10px;letter-spacing:.8px;color:var(--mut);}
-.tkc b{font-size:13.5px;line-height:1.25;word-break:break-word;}
+.tkc b{font-size:13px;line-height:1.25;word-break:break-word;}
+.tkc.ed{cursor:pointer;border-style:dashed;}
+.tkc.ed b:empty::before,.tkc.ed b.ph{content:'tap to add';color:var(--mut);font-weight:500;}
 .steps{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:10px;}
 .stp{display:flex;align-items:center;gap:9px;background:var(--card);border:1.5px solid var(--line);border-radius:11px;padding:9px 10px;cursor:pointer;font-size:13px;font-weight:600;}
 .stp .bx{width:20px;height:20px;border-radius:6px;border:2px solid var(--mut);flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;}
@@ -87,6 +139,8 @@ main{padding:10px 14px 90px;display:grid;grid-template-columns:repeat(auto-fit,m
 .gradbtn{margin-left:auto;background:var(--gold);color:var(--navy);border:none;border-radius:999px;font-family:'Barlow Condensed';font-weight:800;font-size:13.5px;letter-spacing:.5px;padding:8px 14px;cursor:pointer;}
 .gradbtn.undone{background:var(--card);color:var(--mut);border:1.5px solid var(--line);}
 .sect{font-family:'Barlow Condensed';font-weight:700;font-size:13px;letter-spacing:1px;color:var(--mut);margin:12px 0 6px;}
+.tpl{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;}
+.tpl a{font-family:'Barlow Condensed';font-weight:700;font-size:12px;letter-spacing:.4px;border-radius:999px;padding:5px 11px;background:var(--card);border:1px solid var(--line);color:var(--ink);text-decoration:none;}
 .cfeed{max-height:34vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}
 .cmsg{display:flex;gap:8px;}
 .cav{width:30px;height:30px;border-radius:50%;background:var(--navy2);color:#fff;font-family:'Barlow Condensed';font-weight:800;font-size:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
@@ -96,13 +150,15 @@ main{padding:10px 14px 90px;display:grid;grid-template-columns:repeat(auto-fit,m
 .cnew input{flex:1;background:var(--card);border:1.5px solid var(--line);color:var(--ink);border-radius:12px;padding:11px 12px;font-family:inherit;font-size:14px;}
 .cnew button{background:var(--navy);color:#fff;border:none;border-radius:12px;padding:0 16px;font-family:'Barlow Condensed';font-weight:800;font-size:14px;letter-spacing:.5px;cursor:pointer;}
 .hslink{font-size:12px;color:var(--blue);text-decoration:none;font-weight:600;}
-@media(max-width:640px){ main{grid-template-columns:1fr;} h1{font-size:20px;} }
+@media(max-width:640px){ main{grid-template-columns:1fr;} h1{font-size:20px;} .tkgrid{grid-template-columns:1fr 1fr;} .cta{grid-template-columns:1fr 1fr;} .tabl{max-height:none;} }
 </style>
 </head>
 <body>
 <header>
   <h1>🤝 Recruiting <small>SUBHAULER PIPELINE · JUAN'S DESK</small></h1>
   <div class="hspacer">
+    <div class="seg"><button id="vKan" onclick="setView('kanban')">▦ KANBAN</button><button id="vList" onclick="setView('list')">☰ LISTA</button></div>
+    <a class="xlink gold" id="xlsBtn" href="#" onclick="downloadXlsx();return false;" title="Excel de lo que estás viendo (con tus filtros)">⬇ EXCEL</a>
     <a class="xlink" href="./">🌵 TRACKER</a>
     <a class="xlink" href="/full" target="_blank">📋 BOARD</a>
     <button class="xlink" id="themeBtn" onclick="toggleTheme()" title="Light/dark theme">🌙</button>
@@ -110,6 +166,7 @@ main{padding:10px 14px 90px;display:grid;grid-template-columns:repeat(auto-fit,m
 </header>
 <div class="funnel" id="funnel"></div>
 <main id="lanes"></main>
+<div class="bulk" id="bulk"></div>
 <div class="foot"><span id="syncInfo">Loading…</span><span style="margin-left:auto;">signing as <b id="whoami"></b> · <a href="#" style="color:var(--gold);" onclick="changeAuthor();return false;">change</a></span></div>
 <div class="modal-bg" id="mbg" onclick="if(event.target===this)closeModal()"><div class="modal" id="mbox"></div></div>
 <script>
@@ -134,6 +191,8 @@ const SUB_STAGES=[
   ["1358630992","Cleared Sub / Active"],["1380231940","Looking for Lease On"],
   ["1413127551","No Response"],["1363909224","Disqualified"]
 ];
+const ORDER=["Qualified Lead","New Lead Outreach","Contacted, Awaiting Response","Qualified + Compliance Review","Compliance Document Collection","NetSuite Setup","Onboarding & NewMile Training","Cleared Sub / Active","Looking for Lease On","No Response","Disqualified"];
+const stageRank=l=>{const i=ORDER.indexOf(l||"");return i<0?ORDER.length:i;};
 // Lane routing by stage label (works for both recruitment pipelines).
 function laneOf(r){
   const s=(r.stage_label||"").toLowerCase();
@@ -143,50 +202,137 @@ function laneOf(r){
   return "other";
 }
 let DATA=null,CUR=null;
-// Texas = Tony's desk: default shows ONLY deals recruited by Tony Salazar. The pill up
-// top flips to ALL recruiters when needed; the choice sticks per device.
-let OWNER_ONLY=localStorage.getItem("rc_owner")!=="all";
+// ---------- filters (persist per device) ----------
+const LS=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:v;}catch(e){return d;}};
+const LSs=(k,v)=>{try{localStorage.setItem(k,v);}catch(e){}};
+let VIEW=LS("rc_view","list");                 // 'list' | 'kanban' — Juan lives in the list
+let OWNER_SEL=LS("rc_owner2","");               // '' = ALL recruiters (default), else name prefix
 let STAGE_SEL="";
-function subs(){const rs=(DATA&&DATA.recruits)||[];return OWNER_ONLY?rs.filter(r=>(r.hs_owner||"").indexOf("Tony")===0):rs;}
-function toggleOwner(){OWNER_ONLY=!OWNER_ONLY;localStorage.setItem("rc_owner",OWNER_ONLY?"tony":"all");render();}
-function pickStage(l){STAGE_SEL=(STAGE_SEL===l)?"":l;render();}
-function author(){return (DATA&&DATA.identity)||localStorage.getItem("ct_author")||"";}   // 🪪 login NewMile manda
+const F={q:"",market:"",ttype:"",mintrucks:"",only:"",sort:LS("rc_sort","stage"),dir:LS("rc_dir","asc")};
+const SEL=new Set();                            // deal_ids ticked in the list
+function author(){return (DATA&&DATA.identity)||LS("ct_author","")||"";}   // 🪪 login NewMile manda
 function changeAuthor(){
   const n=prompt("Your name? (shows on every note you save)",author());
-  if(n&&n.trim()){localStorage.setItem("ct_author",n.trim().slice(0,40));paintWho();}
+  if(n&&n.trim()){LSs("ct_author",n.trim().slice(0,40));paintWho();}
 }
 function paintWho(){$("whoami").textContent=author()||"— no name yet —";const w=$("cWho");if(w)w.textContent=author()||"— no name yet —";}
-function applyTheme(){document.body.classList.toggle("dark",localStorage.getItem("ct_theme")==="dark");$("themeBtn").textContent=document.body.classList.contains("dark")?"☀️":"🌙";}
-function toggleTheme(){localStorage.setItem("ct_theme",document.body.classList.contains("dark")?"light":"dark");applyTheme();}
+function applyTheme(){document.body.classList.toggle("dark",LS("ct_theme","")==="dark");$("themeBtn").textContent=document.body.classList.contains("dark")?"☀️":"🌙";}
+function toggleTheme(){LSs("ct_theme",document.body.classList.contains("dark")?"light":"dark");applyTheme();}
 function mdy(iso){if(!iso)return"";const m=String(iso).slice(0,10).split("-");return m.length===3?`${Number(m[1])}/${Number(m[2])}/${m[0].slice(2)}`:iso;}
 function daysIn(iso){if(!iso)return null;const d=Math.floor((Date.now()-Date.parse(iso))/864e5);return d<0?0:d;}
-function telHref(p){return "tel:"+String(p||"").replace(/[^\d+]/g,"");}
+function digits(p){let d=String(p||"").replace(/\D/g,"");if(d.length===10)d="1"+d;return d;}
+function telHref(p){return "tel:+"+digits(p);}
+function smsHref(p,body){return "sms:+"+digits(p)+(body?("?&body="+encodeURIComponent(body)):"");}
+function waHref(p,body){return "https://wa.me/"+digits(p)+(body?("?text="+encodeURIComponent(body)):"");}
+function mailHref(to,subj,body){return "mailto:"+encodeURIComponent(to||"")+"?subject="+encodeURIComponent(subj||"")+(body?"&body="+encodeURIComponent(body):"");}
 function doneCount(r){let n=0;for(const [k] of STEPS)if(r.steps&&r.steps[k])n++;return n;}
 function todayISO(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+function firstName(r){return (r.contact||"").trim().split(/\s+/)[0]||"";}
+function whereStr(r){
+  const yard=[r.yard_city,r.yard_state].filter(Boolean).join(", ");
+  if(yard)return "🅿 "+yard;
+  const hs=[r.city||r.market_area||r.location,r.state].filter(Boolean).join(", ");
+  return hs||r.market||"";
+}
+function isDue(r){return !!(r.next_follow&&r.next_follow<=todayISO());}
 
+// ---------- ✉️ message templates (EN first, ES second) — signed with the NewMile identity ----------
+function sig(){return "\n\n"+(author()||"Juan")+"\nMilestone Supply · Subhauler Onboarding";}
+const TPL=[
+  {k:"welcome",l:"👋 Welcome / next steps",s:r=>`Welcome to Milestone — next steps for ${r.company||"your company"}`,
+   b:r=>`Hi ${firstName(r)||"there"},\n\nGreat talking with you. Here is what happens next so ${r.company||"your trucks"} can start hauling with us:\n\n1. We create your company in NewMile (our dispatch app).\n2. We add your trucks and create logins for your drivers and office.\n3. Quick training: Driver App (15 min) and office side (20 min).\n4. First load.\n\nReply with the best day/time for the training and I will lock it in.`+sig()},
+  {k:"docs",l:"📄 Missing documents",s:r=>`Documents pending — ${r.company||""}`,
+   b:r=>`Hi ${firstName(r)||"there"},\n\nTo finish your setup we still need:\n- Certificate of insurance (COI)\n- W-9\n- MC / DOT authority\n- Truck list (unit #, plate, trailer type)\n\nYou can reply to this email with the files. As soon as they are in, you move to onboarding.`+sig()},
+  {k:"training",l:"🎓 Training scheduled",s:r=>`NewMile training — ${r.company||""}`,
+   b:r=>`Hi ${firstName(r)||"there"},\n\nYour NewMile training is set. Please have every driver install the NewMile Driver App before we start (App Store / Google Play: "NewMile Driver").\n\nDate/time: ___\nLink/phone: ___\n\nSee you there.`+sig()},
+  {k:"active",l:"✅ You're active",s:r=>`You're active with Milestone — ${r.company||""}`,
+   b:r=>`Hi ${firstName(r)||"there"},\n\nGood news: ${r.company||"your company"} is fully set up and cleared to haul. Dispatch will reach out with your first assignments; keep the Driver App open and tickets photographed at pickup and delivery.\n\nWelcome aboard.`+sig()},
+  {k:"bienvenida",l:"👋 Bienvenida (ES)",s:r=>`Bienvenido a Milestone — siguientes pasos para ${r.company||"su empresa"}`,
+   b:r=>`Hola ${firstName(r)||""},\n\nUn gusto hablar con usted. Estos son los pasos para que ${r.company||"sus camiones"} empiecen a jalar con nosotros:\n\n1. Creamos su empresa en NewMile (nuestra app de despacho).\n2. Damos de alta sus camiones y usuarios para choferes y oficina.\n3. Entrenamiento rápido: Driver App (15 min) y oficina (20 min).\n4. Primera carga.\n\nRespóndame con el mejor día y hora para el entrenamiento y lo dejo agendado.`+sig()},
+  {k:"documentos",l:"📄 Documentos (ES)",s:r=>`Documentos pendientes — ${r.company||""}`,
+   b:r=>`Hola ${firstName(r)||""},\n\nPara terminar su alta todavía nos falta:\n- Certificado de seguro (COI)\n- W-9\n- Autoridad MC / DOT\n- Lista de camiones (número, placa, tipo de caja)\n\nPuede responder a este correo con los archivos. En cuanto lleguen pasa a onboarding.`+sig()},
+  {k:"entrenamiento",l:"🎓 Entrenamiento (ES)",s:r=>`Entrenamiento NewMile — ${r.company||""}`,
+   b:r=>`Hola ${firstName(r)||""},\n\nSu entrenamiento de NewMile ya quedó. Por favor que cada chofer instale la app antes de empezar (App Store / Google Play: "NewMile Driver").\n\nFecha/hora: ___\nLink/teléfono: ___\n\nNos vemos.`+sig()},
+  {k:"activo",l:"✅ Ya está activo (ES)",s:r=>`Ya está activo con Milestone — ${r.company||""}`,
+   b:r=>`Hola ${firstName(r)||""},\n\nBuenas noticias: ${r.company||"su empresa"} ya quedó dada de alta y lista para jalar. Despacho se comunicará con sus primeras asignaciones; mantenga la Driver App abierta y tome foto de los tickets en carga y descarga.\n\nBienvenido.`+sig()}
+];
+const SMS_TPL=r=>`Hi ${firstName(r)||""}, this is ${author()||"Juan"} with Milestone Supply (subhauler onboarding). Do you have a minute to talk about your setup?`;
+
+// ---------- data ----------
 async function fetchBoard(){
   try{
     const r=await fetch("api/recruit/board");
     if(r.status===401){location.href="login.html";return;}
     const j=await r.json();
     if(!j.ok)throw new Error(j.error||"load failed");
-    DATA=j;render();
+    DATA=j;render();paintWho(); // identity arrives with the board (NewMile login) — repaint the signature
     $("syncInfo").textContent="HubSpot data as of "+(j.synced_at?new Date(j.synced_at).toLocaleString():"—")+" · "+(j.recruits||[]).length+" deals mirrored";
   }catch(e){$("syncInfo").textContent="Could not load: "+(e.message||e);}
 }
+function recruiters(){const c={};for(const r of (DATA&&DATA.recruits)||[]){const k=(r.hs_owner||"").split(" ")[0]||"?";c[k]=(c[k]||0)+1;}return Object.entries(c).sort((a,b)=>b[1]-a[1]);}
+function subs(){const rs=(DATA&&DATA.recruits)||[];return OWNER_SEL?rs.filter(r=>(r.hs_owner||"").indexOf(OWNER_SEL)===0):rs;}
+function cycleOwner(){const opts=["",...recruiters().map(([k])=>k)];const i=opts.indexOf(OWNER_SEL);OWNER_SEL=opts[(i+1)%opts.length]||"";LSs("rc_owner2",OWNER_SEL);render();}
+function pickStage(l){STAGE_SEL=(STAGE_SEL===l)?"":l;render();}
+function setView(v){VIEW=v;LSs("rc_view",v);render();}
+function setF(k,v){F[k]=v;if(k==="sort"||k==="dir")LSs("rc_"+k,v);renderList();}
+function sortBy(k){if(F.sort===k){F.dir=F.dir==="asc"?"desc":"asc";}else{F.sort=k;F.dir=(k==="days"||k==="trucks"||k==="notes")?"desc":"asc";}LSs("rc_sort",F.sort);LSs("rc_dir",F.dir);renderList();}
+
+// what the LIST shows = owner pill ∩ stage pill ∩ toolbar filters
+function filtered(){
+  let rs=subs();
+  if(STAGE_SEL)rs=rs.filter(r=>(r.stage_label||"")===STAGE_SEL);
+  if(F.market)rs=rs.filter(r=>(r.market||"")===F.market);
+  if(F.ttype)rs=rs.filter(r=>(r.truck_type||r.fleet_size||"")===F.ttype);
+  if(F.mintrucks)rs=rs.filter(r=>(Number(r.trucks)||0)>=Number(F.mintrucks));
+  if(F.only==="due")rs=rs.filter(isDue);
+  else if(F.only==="nophone")rs=rs.filter(r=>!digits(r.phone));
+  else if(F.only==="noemail")rs=rs.filter(r=>!r.email);
+  else if(F.only==="innm")rs=rs.filter(r=>r.steps&&r.steps.org);
+  else if(F.only==="notnm")rs=rs.filter(r=>!(r.steps&&r.steps.org)&&laneOf(r)!=="other");
+  else if(F.only==="ready")rs=rs.filter(r=>laneOf(r)==="mine"||laneOf(r)==="incoming");
+  else if(F.only==="stale")rs=rs.filter(r=>(daysIn(r.stage_since)||0)>14&&!["Disqualified","Cleared Sub / Active","No Response"].includes(r.stage_label));
+  else if(F.only==="pending")rs=rs.filter(r=>r.pending_move);
+  if(F.q){
+    const q=F.q.toLowerCase(),qd=q.replace(/\D/g,"");
+    rs=rs.filter(r=>[r.company,r.contact,r.email,r.city,r.state,r.market,r.market_area,r.yard_city,r.home_city,r.dot,r.hs_owner,r.tags,r.stage_label,r.last_note&&r.last_note.text].some(v=>v&&String(v).toLowerCase().includes(q))||(qd.length>=3&&(digits(r.phone).includes(qd)||digits(r.mobile).includes(qd))));
+  }
+  const dir=F.dir==="desc"?-1:1;
+  const key={
+    stage:r=>stageRank(r.stage_label)*1000+ (r.company||"").toLowerCase().charCodeAt(0),
+    company:r=>(r.company||r.contact||"").toLowerCase(),
+    trucks:r=>Number(r.trucks)||0,
+    where:r=>whereStr(r).toLowerCase(),
+    rec:r=>(r.hs_owner||"").toLowerCase(),
+    days:r=>daysIn(r.stage_since)||0,
+    check:r=>doneCount(r),
+    follow:r=>r.next_follow||"9999",
+    notes:r=>r.notes_count||0,
+    touch:r=>r.hs_modified||""
+  }[F.sort]||(r=>0);
+  rs=rs.slice().sort((a,b)=>{const ka=key(a),kb=key(b);if(ka<kb)return -1*dir;if(ka>kb)return 1*dir;return (a.company||"").localeCompare(b.company||"");});
+  return rs;
+}
+
+// ---------- render ----------
 function render(){
+  $("vKan").classList.toggle("on",VIEW==="kanban");$("vList").classList.toggle("on",VIEW!=="kanban");
   const rs=subs();
+  const cnt={};for(const r of rs){const k=r.stage_label||"?";cnt[k]=(cnt[k]||0)+1;}
+  if(STAGE_SEL&&!cnt[STAGE_SEL])STAGE_SEL="";
+  const ownLbl=OWNER_SEL||"ALL",ownSub=OWNER_SEL?"RECRUITER · TAP":"ALL RECRUITERS · TAP";
+  const dueN=rs.filter(isDue).length;
+  $("funnel").innerHTML=
+    `<div class="fpill own" onclick="cycleOwner()"><b>${esc(ownLbl.toUpperCase())}</b><small>${ownSub}</small></div>`+
+    `<div class="fpill${F.only==="due"?" sel":""}${dueN?" hot":""}" onclick="setF('only',F.only==='due'?'':'due');if(VIEW==='kanban')setView('list');"><b>${dueN}</b><small>FOLLOW-UP DUE</small></div>`+
+    ORDER.filter(k=>cnt[k]).map(k=>`<div class="fpill${k.includes("Onboarding")?" hot":""}${STAGE_SEL===k?" sel":""}" data-s="${esc(k)}" onclick="pickStage(this.dataset.s)"><b>${cnt[k]}</b><small>${esc(k.replace("Compliance Document","Doc").replace(", Awaiting Response","").replace(" Outreach","").replace(" + Compliance Review"," + Compliance"))}</small></div>`).join("");
+  if(VIEW==="kanban")renderKanban(rs);else renderList();
+}
+function renderKanban(rs){
+  $("lanes").className="";$("bulk").classList.remove("show");
   const lanes={mine:[],incoming:[],cleared:[],other:[]};
   for(const r of rs)lanes[laneOf(r)].push(r);
   lanes.mine.sort((a,b)=>(a.next_follow||"9999")<(b.next_follow||"9999")?-1:1);
   lanes.cleared.sort((a,b)=>(b.hs_modified||"")<(a.hs_modified||"")?-1:1);
-  // funnel: tap a stage pill to open that whole stage; tap again to go back
-  const cnt={};for(const r of rs){const k=r.stage_label||"?";cnt[k]=(cnt[k]||0)+1;}
-  const ORDER=["New Lead Outreach","Contacted, Awaiting Response","Qualified + Compliance Review","Compliance Document Collection","NetSuite Setup","Onboarding & NewMile Training","Cleared Sub / Active","Looking for Lease On","No Response","Disqualified"];
-  if(STAGE_SEL&&!cnt[STAGE_SEL])STAGE_SEL="";
-  $("funnel").innerHTML=
-    `<div class="fpill own" onclick="toggleOwner()"><b>${OWNER_ONLY?"TONY":"ALL"}</b><small>${OWNER_ONLY?"TEXAS ONLY":"ALL RECRUITERS"}</small></div>`+
-    ORDER.filter(k=>cnt[k]).map(k=>`<div class="fpill${k.includes("Onboarding")?" hot":""}${STAGE_SEL===k?" sel":""}" data-s="${esc(k)}" onclick="pickStage(this.dataset.s)"><b>${cnt[k]}</b><small>${esc(k.replace("Compliance Document","Doc").replace(", Awaiting Response","").replace(" Outreach","").replace(" + Compliance Review"," + Compliance"))}</small></div>`).join("");
   const lane=(key,title,arr,emptyMsg)=>`
     <section class="lane ${key}">
       <div class="lane-h">${title} <span class="cnt">${arr.length}</span></div>
@@ -204,39 +350,145 @@ function render(){
 }
 function card(r){
   const d=daysIn(r.stage_since),dc=doneCount(r);
-  const due=r.next_follow&&r.next_follow<=todayISO();
+  const due=isDue(r),w=whereStr(r);
   return `<div class="rc" onclick="openPanel('${r.deal_id}')">
     <div class="co">${esc(r.company||r.contact||"?")}</div>
-    <div class="who">${esc(r.contact||"")}${r.hs_owner?" · rec: "+esc(r.hs_owner):""}</div>
+    <div class="who">${esc(r.contact||"")}${r.hs_owner?" · rec: "+esc(r.hs_owner):""}${w?" · "+esc(w):""}</div>
     <div class="days${d>14?" slow":""}"><b>${d==null?"–":d+"d"}</b>in stage</div>
     ${laneOf(r)!=="cleared"?`<div class="prog">${STEPS.map(([k])=>`<i class="${r.steps&&r.steps[k]?"on":""}"></i>`).join("")}</div>`:""}
     <div class="rowb">
       ${r.trucks?`<span class="chip" style="background:var(--navy);color:#fff;">🚛 ${esc(r.trucks)} truck${r.trucks==="1"?"":"s"}</span>`:""}
-      ${r.truck_type?`<span class="chip">${esc(r.truck_type)}</span>`:""}
+      ${r.truck_type?`<span class="chip">${esc(r.truck_type)}</span>`:(r.fleet_size?`<span class="chip dim">${esc(r.fleet_size.replace(" owner",""))}</span>`:"")}
       ${laneOf(r)!=="cleared"?`<span class="chip ${dc===STEPS.length?"ok":""}">${dc}/${STEPS.length} done</span>`:`<span class="chip ok">ACTIVE</span>`}
       ${r.next_follow?`<span class="chip${due?" due":""}">📅 ${due?"FOLLOW UP NOW":"next "+mdy(r.next_follow)}</span>`:""}
       ${r.notes_count?`<span class="chip">💬 ${r.notes_count}</span>`:""}
       ${r.pending_move?`<span class="chip due">⏳ HS</span>`:""}
-      ${r.phone?`<a class="callq" href="${telHref(r.phone)}" onclick="event.stopPropagation()">📱 CALL</a>`:""}
+      ${r.email?`<a class="chip" style="text-decoration:none;" href="${mailHref(r.email,"Milestone — "+(r.company||""))}" onclick="event.stopPropagation()">✉️</a>`:""}
+      ${digits(r.phone)?`<a class="callq" href="${telHref(r.phone)}" onclick="event.stopPropagation()">📱 CALL</a>`:""}
     </div>
     ${r.last_note?`<div class="lastn">💬 ${esc(r.last_note.author||"?")} · ${mdy(r.last_note.ts)}: ${esc(r.last_note.text)}</div>`:""}
   </div>`;
 }
+// ---------- LIST ----------
+function renderList(){
+  const main=$("lanes");main.className="list";
+  const rs=filtered();
+  const allRs=subs();
+  const opt=(arr,cur)=>arr.map(v=>`<option value="${esc(v)}"${v===cur?" selected":""}>${esc(v)}</option>`).join("");
+  const markets=[...new Set(allRs.map(r=>r.market).filter(Boolean))].sort();
+  const ttypes=[...new Set(allRs.map(r=>r.truck_type||r.fleet_size).filter(Boolean))].sort();
+  const trucksSum=rs.reduce((a,r)=>a+(Number(r.trucks)||0),0);
+  const th=(k,l,ns)=>`<th class="${ns?"ns":""}${F.sort===k?" sorted":""}" ${ns?"":`onclick="sortBy('${k}')"`}>${l}${ns?"":`<span class="arr">${F.sort===k?(F.dir==="asc"?"▲":"▼"):"↕"}</span>`}</th>`;
+  const allSel=rs.length&&rs.every(r=>SEL.has(r.deal_id));
+  const toolsHtml=`
+    <div class="tools">
+      <input type="search" id="fq" placeholder="🔎 company, name, phone, email, city, DOT, note…" value="${esc(F.q)}" oninput="setF('q',this.value)">
+      <select onchange="setF('market',this.value)"><option value="">All markets</option>${opt(markets,F.market)}</select>
+      <select onchange="setF('ttype',this.value)"><option value="">Any truck type</option>${opt(ttypes,F.ttype)}</select>
+      <select onchange="setF('mintrucks',this.value)"><option value="">Any fleet size</option>${[1,2,3,5,10].map(n=>`<option value="${n}"${String(n)===F.mintrucks?" selected":""}>${n}+ trucks</option>`).join("")}</select>
+      <select onchange="setF('only',this.value)">
+        <option value="">Everything</option>
+        <option value="due"${F.only==="due"?" selected":""}>📅 Follow-up due</option>
+        <option value="ready"${F.only==="ready"?" selected":""}>🎓 Ready to train (NetSuite + Onboarding)</option>
+        <option value="innm"${F.only==="innm"?" selected":""}>✅ Already in NewMile</option>
+        <option value="notnm"${F.only==="notnm"?" selected":""}>🚧 On my desk, NOT in NewMile yet</option>
+        <option value="stale"${F.only==="stale"?" selected":""}>🐢 Stuck 14+ days</option>
+        <option value="pending"${F.only==="pending"?" selected":""}>⏳ HubSpot move pending</option>
+        <option value="nophone"${F.only==="nophone"?" selected":""}>❌ No phone</option>
+        <option value="noemail"${F.only==="noemail"?" selected":""}>❌ No email</option>
+      </select>
+      ${(F.q||F.market||F.ttype||F.mintrucks||F.only||STAGE_SEL)?`<button class="tbtn" onclick="clearFilters()">✕ CLEAR</button>`:""}
+      <button class="tbtn gold" onclick="downloadXlsx()">⬇ EXCEL (${rs.length})</button>
+    </div>
+    <div class="sumline"><span><b>${rs.length}</b> subs shown</span><span><b>${trucksSum}</b> trucks</span><span><b>${rs.filter(isDue).length}</b> follow-ups due</span><span><b>${rs.filter(r=>r.steps&&r.steps.org).length}</b> in NewMile</span>${SEL.size?`<span style="color:var(--gold-d);"><b>${SEL.size}</b> selected</span>`:""}</div>`;
+  const rows=rs.map(r=>{
+    const d=daysIn(r.stage_since),dc=doneCount(r),due=isDue(r),ph=digits(r.phone)?r.phone:(digits(r.mobile)?r.mobile:"");
+    return `<tr class="${SEL.has(r.deal_id)?"sel":""}" onclick="openPanel('${r.deal_id}')">
+      <td onclick="event.stopPropagation()"><input type="checkbox" ${SEL.has(r.deal_id)?"checked":""} onchange="toggleSel('${r.deal_id}',this.checked)"></td>
+      <td><div class="co">${esc(r.company||r.contact||"?")}</div><div class="sub">${esc(r.contact||"")}${r.dot?" · DOT "+esc(r.dot):""}${r.language?" · "+esc(r.language):""}</div></td>
+      <td onclick="event.stopPropagation()">${ph?`<a class="tel" href="${telHref(ph)}">${esc(ph)}</a>`:`<span class="d">—</span>`}${r.mobile&&r.mobile!==ph?`<div class="sub">${esc(r.mobile)}</div>`:""}</td>
+      <td onclick="event.stopPropagation()">${r.email?`<a class="mail" href="${mailHref(r.email,"Milestone — "+(r.company||""))}">${esc(r.email)}</a>`:`<span class="d">—</span>`}</td>
+      <td><b>${esc(r.trucks||"–")}</b><div class="sub">${esc(r.truck_type||(r.fleet_size||"").replace(" owner","")||"")}${r.dump_trucks?` · dump: ${esc(r.dump_trucks.replace(" / Sí",""))}`:""}</div></td>
+      <td>${esc(whereStr(r)||"–")}${r.market&&whereStr(r)!==r.market?`<div class="sub">${esc(r.market)}</div>`:""}${r.home_city?`<div class="sub">from ${esc([r.home_city,r.home_state].filter(Boolean).join(", "))}</div>`:""}</td>
+      <td><div class="sub" style="font-size:12px;color:var(--ink);">${esc((r.hs_owner||"").split(" ")[0]||"–")}</div>${r.lead_source?`<div class="sub">${esc(r.lead_source)}</div>`:""}</td>
+      <td><div class="stg">${esc(r.stage_label||"?")}</div><div class="d${d>14?" slow":""}">${d==null?"":d+"d in stage"}${r.pending_move?" · ⏳ HS":""}</div></td>
+      <td>${laneOf(r)==="cleared"?`<span class="chip ok">ACTIVE</span>`:`<div class="mini">${STEPS.map(([k])=>`<i class="${r.steps&&r.steps[k]?"on":""}"></i>`).join("")}</div><div class="d">${dc}/6${r.steps&&r.steps.org?" · in NewMile":""}</div>`}</td>
+      <td>${r.next_follow?`<span class="chip${due?" due":""}">${due?"NOW":mdy(r.next_follow)}</span>`:`<span class="d">—</span>`}</td>
+      <td style="max-width:260px;">${r.last_note?`<div class="sub" style="white-space:normal;">${esc(mdy(r.last_note.ts))} ${esc(r.last_note.author||"")}: ${esc(r.last_note.text)}</div>`:`<span class="d">${r.notes_count?r.notes_count+" notes":"—"}</span>`}</td>
+      <td onclick="event.stopPropagation()"><div class="act">
+        ${digits(ph)?`<a class="g" href="${telHref(ph)}" title="Call">📱</a><a href="${smsHref(ph,SMS_TPL(r))}" title="Text">💬</a>`:""}
+        ${r.email?`<a href="${mailHref(r.email,TPL[0].s(r),TPL[0].b(r))}" title="Email">✉️</a>`:""}
+        <a href="${esc(r.hs_url||("https://app.hubspot.com/contacts/"+HS_PORTAL+"/record/0-3/"+r.deal_id))}" target="_blank" title="Open in HubSpot">🟠</a>
+      </div></td>
+    </tr>`;}).join("");
+  main.innerHTML=toolsHtml+`<div class="tabl"><table>
+    <thead><tr>
+      <th class="ns"><input type="checkbox" ${allSel?"checked":""} onchange="selAll(this.checked)" title="select all shown"></th>
+      ${th("company","COMPANY / CONTACT")}${th("company","PHONE",1)}${th("company","EMAIL",1)}${th("trucks","TRUCKS")}${th("where","WHERE")}${th("rec","RECRUITER")}${th("stage","STAGE")}${th("check","CHECKLIST")}${th("follow","FOLLOW-UP")}${th("notes","LAST NOTE")}<th class="ns"></th>
+    </tr></thead>
+    <tbody>${rows||`<tr><td colspan="12" class="empty">Nothing matches these filters.</td></tr>`}</tbody></table></div>`;
+  // keep focus in the search box while typing (we re-render on every keystroke)
+  if(document.activeElement&&document.activeElement.id!=="fq"&&F.q){const q=$("fq");if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length);}}
+  renderBulk(rs);
+}
+function clearFilters(){F.q="";F.market="";F.ttype="";F.mintrucks="";F.only="";STAGE_SEL="";render();}
+function toggleSel(id,on){if(on)SEL.add(id);else SEL.delete(id);renderList();}
+function selAll(on){for(const r of filtered()){if(on)SEL.add(r.deal_id);else SEL.delete(r.deal_id);}renderList();}
+function selected(){const all=(DATA&&DATA.recruits)||[];return all.filter(r=>SEL.has(r.deal_id));}
+function renderBulk(){
+  const b=$("bulk");if(!SEL.size||VIEW==="kanban"){b.classList.remove("show");return;}
+  const rs=selected(),emails=rs.map(r=>r.email).filter(Boolean),phones=rs.map(r=>r.phone||r.mobile).filter(p=>digits(p));
+  b.innerHTML=`<b>${rs.length} selected</b>
+    <a class="gold" href="#" onclick="downloadXlsx(true);return false;">⬇ EXCEL</a>
+    ${emails.length?`<a href="${"mailto:?bcc="+encodeURIComponent(emails.join(","))+"&subject="+encodeURIComponent("Milestone Supply — subhauler onboarding")}">✉️ EMAIL ${emails.length}</a>`:""}
+    <button onclick="copyTxt(${JSON.stringify(phones.join("\n"))},'phones')">📋 PHONES</button>
+    <button onclick="copyTxt(${JSON.stringify(emails.join("; "))},'emails')">📋 EMAILS</button>
+    <button onclick="SEL.clear();renderList()">✕</button>`;
+  b.classList.add("show");
+}
+async function copyTxt(t,what){try{await navigator.clipboard.writeText(t);const b=$("bulk");const old=b.innerHTML;b.innerHTML=`<b>✅ ${what} copied</b>`;setTimeout(()=>renderBulk(),900);}catch(e){prompt("Copy:",t);}}
+// Excel = exactly what is on screen (filters applied), or the ticked rows when asked.
+function downloadXlsx(onlySel){
+  const rs=(onlySel&&SEL.size)?selected():(VIEW==="kanban"?subs():filtered());
+  const ids=rs.map(r=>r.deal_id).join(",");
+  location.href="api/recruit/export.xlsx?ids="+encodeURIComponent(ids)+"&t="+Date.now();
+}
+
+// ---------- panel ----------
 function openPanel(id){
   const r=((DATA&&DATA.recruits)||[]).find(x=>x.deal_id===id);if(!r)return;CUR=r;
-  const first=(r.contact||"").split(" ")[0].toUpperCase();
+  const first=firstName(r).toUpperCase();
+  const ph=digits(r.phone)?r.phone:(digits(r.mobile)?r.mobile:"");
+  const tile=(l,v,extra)=>`<div class="tkc"${extra||""}><small>${l}</small><b>${v||"–"}</b></div>`;
+  const edTile=(l,fields,v)=>`<div class="tkc ed" onclick="editFields('${fields}','${esc(l)}')"><small>${l} ✎</small><b class="${v?"":"ph"}">${esc(v||"")}</b></div>`;
+  const yard=[r.yard_city,r.yard_state].filter(Boolean).join(", ")+(r.yard_zip?" "+r.yard_zip:"");
+  const home=[r.home_city,r.home_state].filter(Boolean).join(", ");
+  const hsWhere=[r.city||r.market_area||r.location,r.state,r.zip].filter(Boolean).join(", ");
   $("mbox").innerHTML=`
     <div class="m-head"><h2>${esc(r.company||r.contact||"?")}</h2><button class="m-x" onclick="closeModal()">✕</button></div>
-    <div style="font-size:12.5px;color:var(--mut);margin-top:2px;">${esc(r.contact||"")} · ${esc(r.stage_label||"")} · recruiter: ${esc(r.hs_owner||"?")} · <a class="hslink" href="https://app.hubspot.com/contacts/${HS_PORTAL}/record/0-3/${esc(r.deal_id)}" target="_blank">open in HubSpot ↗</a></div>
-    ${r.phone?`<a class="callbtn" href="${telHref(r.phone)}">📱 CALL ${esc(first||"THEM")} — ${esc(r.phone)}</a>`:`<div class="callbtn" style="background:var(--card);color:var(--mut);border:1.5px dashed var(--line);">no phone on file — add one below</div>`}
+    <div style="font-size:12.5px;color:var(--mut);margin-top:2px;">${esc(r.contact||"")} · ${esc(r.stage_label||"")} · recruiter: ${esc(r.hs_owner||"?")} · <a class="hslink" href="${esc(r.hs_url||("https://app.hubspot.com/contacts/"+HS_PORTAL+"/record/0-3/"+r.deal_id))}" target="_blank">open in HubSpot ↗</a></div>
+    <div class="cta">
+      ${ph?`<a class="call" href="${telHref(ph)}">📱 CALL ${esc(first||"THEM")}<br><span style="font-weight:600;font-size:12px;">${esc(ph)}</span></a>`:`<a class="off">no phone — tap PHONE below</a>`}
+      ${ph?`<a href="${smsHref(ph,SMS_TPL(r))}">💬 TEXT</a><a href="${waHref(ph,SMS_TPL(r))}" target="_blank">🟢 WHATSAPP</a>`:`<a class="off">💬</a><a class="off">🟢</a>`}
+      ${r.email?`<a href="${mailHref(r.email,"Milestone — "+(r.company||""))}">✉️ EMAIL</a>`:`<a class="off">no email</a>`}
+    </div>
+    ${r.email?`<div class="tpl">${TPL.map(t=>`<a href="${mailHref(r.email,t.s(r),t.b(r))}" title="opens your mail app with this text">${esc(t.l)}</a>`).join("")}</div>`:""}
     <div class="tkgrid">
-      <div class="tkc"><small>🚛 FLEET SIZE</small><b>${r.trucks?esc(r.trucks)+(r.trucks==="1"?" truck":" trucks"):"—"}</b>${r.truck_type?`<span>${esc(r.truck_type)}</span>`:""}</div>
-      <div class="tkc"><small>DAYS IN STAGE</small><b>${daysIn(r.stage_since)==null?"–":daysIn(r.stage_since)+" days"}</b></div>
-      <div class="tkc"><small>EMAIL</small><b style="font-size:12px;">${esc(r.email||"–")}</b></div>
-      <div class="tkc"><small>PHONE</small><b onclick="editPhone()" style="cursor:pointer;">${esc(r.phone||"tap to add")}</b></div>
-      <div class="tkc"><small>HS CONTACTS LOGGED</small><b>${esc(r.hs_contacts||"0")}</b></div>
-      <div class="tkc"><small>LAST HS TOUCH</small><b>${mdy(r.hs_modified)||"–"}</b></div>
-      ${r.lead_source?`<div class="tkc" style="grid-column:1/-1;"><small>LEAD SOURCE</small><b>${esc(r.lead_source)}</b></div>`:""}
+      ${tile("🚛 FLEET",(r.trucks?esc(r.trucks)+(r.trucks==="1"?" truck":" trucks"):"–")+(r.truck_type?`<div style="font-weight:500;font-size:11.5px;">${esc(r.truck_type)}</div>`:(r.fleet_size?`<div style="font-weight:500;font-size:11.5px;">${esc(r.fleet_size)}</div>`:"")))}
+      ${tile("DUMP TRUCKS",esc(r.dump_trucks||""))}
+      ${tile("DOT #",r.dot?`<a class="hslink" href="https://safer.fmcsa.dot.gov/query.asp?searchtype=ANY&query_type=queryCarrierSnapshot&query_param=USDOT&query_string=${esc(r.dot)}" target="_blank">${esc(r.dot)} ↗</a>`:"")}
+      ${tile("MARKET",esc(r.market||""))}
+      ${tile("HUBSPOT LOCATION",esc(hsWhere))}
+      ${edTile("🅿 YARD (where trucks sleep)","yard_city,yard_state,yard_zip",yard)}
+      ${edTile("🏠 HOME (where they're from)","home_city,home_state",home)}
+      ${edTile("LANGUAGE","language",r.language)}
+      ${edTile("TAGS","tags",r.tags)}
+      <div class="tkc ed" onclick="editPhone()"><small>PHONE ✎</small><b class="${r.phone?"":"ph"}">${esc(r.phone||"")}</b>${r.mobile&&r.mobile!==r.phone?`<span style="font-size:11px;color:var(--mut);">mobile ${esc(r.mobile)}</span>`:""}</div>
+      <div class="tkc ed" onclick="editEmail()"><small>EMAIL ✎</small><b class="${r.email?"":"ph"}" style="font-size:11.5px;">${esc(r.email||"")}</b></div>
+      ${tile("DAYS IN STAGE",(daysIn(r.stage_since)==null?"–":daysIn(r.stage_since)+(daysIn(r.stage_since)===1?" day":" days"))+`<div style="font-weight:500;font-size:11px;color:var(--mut);">since ${mdy(r.stage_since)||"–"}</div>`)}
+      ${tile("SUB STATUS (HS)",esc(r.sub_status||r.hs_lead_status||""))}
+      ${tile("LEAD SOURCE",esc([r.lead_source,r.lead_source_details].filter(Boolean).join(" · ")))}
+      ${tile("HS ACTIVITY",`${esc(r.hs_contacts||"0")} logged<div style="font-weight:500;font-size:11px;color:var(--mut);">last ${mdy(r.hs_modified)||"–"}${r.hs_next_activity?" · next "+mdy(r.hs_next_activity):""}</div>`)}
     </div>
     <div class="sect">ONBOARDING CHECKLIST — TAP WHAT'S DONE</div>
     <div class="steps">${STEPS.map(([k,l,hint])=>{
@@ -292,10 +544,24 @@ async function toggleStep(step){
   openPanel(CUR.deal_id);render();
   try{await fetch(`api/recruit/${encodeURIComponent(CUR.deal_id)}/step`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({step,done:on?1:0,by:who})});}catch(e){}
 }
-async function setFollow(v){
-  if(!CUR)return;CUR.next_follow=v||"";render();
-  try{await fetch(`api/recruit/${encodeURIComponent(CUR.deal_id)}/set`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({next_follow:v||""})});}catch(e){}
+async function setLocal(patch){
+  if(!CUR)return;Object.assign(CUR,patch);openPanel(CUR.deal_id);render();
+  try{await fetch(`api/recruit/${encodeURIComponent(CUR.deal_id)}/set`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(patch)});}catch(e){}
 }
+function setFollow(v){setLocal({next_follow:v||""});}
+// yard / home / language / tags: one prompt per field, blank keeps, "-" clears
+async function editFields(fields,label){
+  if(!CUR)return;const patch={};
+  const HINT={yard_city:"City",yard_state:"State (TX/FL/SC…)",yard_zip:"Zip (optional)",home_city:"City",home_state:"State",language:"Language (English / Español)",tags:"Tags (comma separated)"};
+  for(const f of fields.split(",")){
+    const v=prompt(label+" — "+(HINT[f]||f)+":",CUR[f]||"");
+    if(v==null)return; // cancel = touch nothing
+    patch[f]=v.trim()==="-"?"":v.trim().slice(0,80);
+  }
+  setLocal(patch);
+}
+function editPhone(){if(!CUR)return;const p=prompt("Phone for "+(CUR.contact||CUR.company||"this sub")+":",CUR.phone||"");if(p==null)return;setLocal({phone:p.trim()});}
+function editEmail(){if(!CUR)return;const p=prompt("Email for "+(CUR.contact||CUR.company||"this sub")+":",CUR.email||"");if(p==null)return;setLocal({email:p.trim()});}
 async function moveTo(stage,label){
   if(!CUR)return;let who=author();
   if(!who){changeAuthor();who=author();if(!who)return;}
@@ -311,15 +577,10 @@ async function moveTo(stage,label){
 }
 function moveStage(){const s=$("mvSel");if(!s)return;moveTo(s.value,s.options[s.selectedIndex].text);}
 function quickGrad(){moveTo("1358630992","Cleared Sub / Active");}
-async function editPhone(){
-  if(!CUR)return;
-  const p=prompt("Phone for "+(CUR.contact||CUR.company||"this sub")+":",CUR.phone||"");
-  if(p==null)return;
-  CUR.phone=p.trim();openPanel(CUR.deal_id);render();
-  try{await fetch(`api/recruit/${encodeURIComponent(CUR.deal_id)}/set`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:CUR.phone})});}catch(e){}
-}
+// ?view=kanban|list and ?q= deep links (Miley / the tracker can send you straight to a sub)
+(function(){const u=new URLSearchParams(location.search);if(u.get("view"))VIEW=u.get("view")==="kanban"?"kanban":"list";if(u.get("q"))F.q=u.get("q");})();
 applyTheme();paintWho();fetchBoard();
-setInterval(fetchBoard,60000);
+setInterval(()=>{if(!document.activeElement||document.activeElement.id!=="fq")fetchBoard();},60000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)fetchBoard();});
 </script>
 </body>

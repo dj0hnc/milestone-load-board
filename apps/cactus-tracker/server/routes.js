@@ -975,6 +975,15 @@ function createRouter({ config, newmile, log }) {
     if (!Array.isArray(list) || !list.length) return res.status(400).json({ error: 'recruits[] required' });
     const ts = nowISO();
     let created = 0, updated = 0;
+    // HubSpot-owned columns. phone/email keep the local value when HubSpot sends blank
+    // (Juan corrects numbers by hand and an empty CRM field must not erase them).
+    const HS_COLS = ['pipeline', 'stage', 'stage_label', 'company', 'contact', 'hs_owner', 'trucks', 'truck_type', 'lead_source', 'hs_contacts', 'hs_modified',
+      'market', 'market_area', 'location', 'city', 'state', 'zip', 'mobile', 'dot', 'fleet_size', 'dump_trucks', 'sub_status', 'hs_lead_status',
+      'lead_source_details', 'hs_next_activity', 'hs_created', 'contact_id', 'hs_url'];
+    // language: HubSpot's hs_language when it has one, otherwise whatever Juan typed stays
+    const KEEP_IF_BLANK = ['phone', 'email', 'language'];
+    const LIMIT = { company: 80, contact: 60 };
+    const val = (d, c) => String(d[c] == null ? '' : d[c]).slice(0, LIMIT[c] || 200);
     for (const d of list) {
       const id = String(d.deal_id || '').trim();
       if (!id) continue;
@@ -983,26 +992,80 @@ function createRouter({ config, newmile, log }) {
       // import carries it, it wins; otherwise fall back to "first time we saw this stage".
       const since = String(d.stage_since || '') || ((!prev || prev.stage !== String(d.stage || '')) ? ts : null);
       if (prev) {
-        run(`UPDATE recruits SET pipeline=?, stage=?, stage_label=?, company=?, contact=?,
-             phone=CASE WHEN ?<>'' THEN ? ELSE phone END, email=CASE WHEN ?<>'' THEN ? ELSE email END,
-             hs_owner=?, trucks=?, truck_type=?, lead_source=?, hs_contacts=?, hs_modified=?, synced_at=?${since ? ', stage_since=?' : ''} WHERE deal_id=?`,
-          ...[String(d.pipeline || ''), String(d.stage || ''), String(d.stage_label || ''), String(d.company || '').slice(0, 80), String(d.contact || '').slice(0, 60),
-            String(d.phone || ''), String(d.phone || ''), String(d.email || ''), String(d.email || ''),
-            String(d.hs_owner || ''), String(d.trucks || ''), String(d.truck_type || ''), String(d.lead_source || ''), String(d.hs_contacts || ''),
-            String(d.hs_modified || ''), ts, ...(since ? [since] : []), id]);
+        const sets = HS_COLS.map(c => `${c}=?`), args = HS_COLS.map(c => val(d, c));
+        for (const c of KEEP_IF_BLANK) { sets.push(`${c}=CASE WHEN ?<>'' THEN ? ELSE ${c} END`); args.push(val(d, c), val(d, c)); }
+        sets.push('synced_at=?'); args.push(ts);
+        if (since) { sets.push('stage_since=?'); args.push(since); }
+        run(`UPDATE recruits SET ${sets.join(', ')} WHERE deal_id=?`, ...args, id);
         updated++;
       } else {
-        run(`INSERT INTO recruits (deal_id, pipeline, stage, stage_label, company, contact, phone, email, hs_owner, trucks, truck_type, lead_source, hs_contacts, hs_modified, stage_since, synced_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-          id, String(d.pipeline || ''), String(d.stage || ''), String(d.stage_label || ''), String(d.company || '').slice(0, 80), String(d.contact || '').slice(0, 60),
-          String(d.phone || ''), String(d.email || ''), String(d.hs_owner || ''), String(d.trucks || ''), String(d.truck_type || ''), String(d.lead_source || ''), String(d.hs_contacts || ''),
-          String(d.hs_modified || ''), ts, ts);
+        const cols = ['deal_id', ...HS_COLS, ...KEEP_IF_BLANK, 'stage_since', 'synced_at'];
+        run(`INSERT INTO recruits (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(',')})`,
+          id, ...HS_COLS.map(c => val(d, c)), ...KEEP_IF_BLANK.map(c => val(d, c)), since || ts, ts);
         created++;
       }
     }
     metaSet('recruit_synced_at', ts);
     say(`recruit import: ${created} new, ${updated} updated`);
     res.json({ ok: true, created, updated });
+  });
+
+  // ⬇ EXCEL — the list Juan actually works from. `ids` = the rows the page is showing (after
+  // its filters / selection) so the file is exactly what is on screen; no ids = every deal.
+  // Real .xlsx (server/xlsx.js, no dependencies): sheet 1 the subs, sheet 2 the follow-up log,
+  // sheet 3 one line per pipeline stage with counts. Opens on the phone straight into Excel.
+  router.get('/api/recruit/export.xlsx', async (req, res) => {
+    const { buildXlsx } = require('./xlsx');
+    const ids = String(req.query.ids || '').split(',').map(s => s.trim()).filter(s => /^\d+$/.test(s));
+    let recruits = all('SELECT * FROM recruits ORDER BY stage_label, company');
+    if (ids.length) { const set = new Set(ids); recruits = recruits.filter(r => set.has(r.deal_id)); }
+    const idSet = new Set(recruits.map(r => r.deal_id));
+    const steps = all('SELECT deal_id, step, by, ts FROM recruit_steps WHERE done = 1');
+    const stepMap = {}; for (const s of steps) (stepMap[s.deal_id] = stepMap[s.deal_id] || {})[s.step] = s;
+    const notes = all('SELECT n.deal_id, n.ts, n.author, n.kind, n.text, r.company FROM recruit_notes n LEFT JOIN recruits r ON r.deal_id = n.deal_id ORDER BY n.id DESC').filter(n => idSet.has(n.deal_id));
+    const lastNote = {}; for (const n of notes) if (!lastNote[n.deal_id]) lastNote[n.deal_id] = n;
+    const pend = all('SELECT deal_id, to_label FROM recruit_moves WHERE applied = 0'); const pendMap = {}; for (const p of pend) pendMap[p.deal_id] = p.to_label;
+    const STEP_LABEL = { org: 'NewMile org', trucks: 'Trucks created', users: 'Users created', drivers: 'Drivers trained', admins: 'Admins trained', firstload: 'First load' };
+    const day = iso => iso ? String(iso).slice(0, 10) : '';
+    const daysIn = iso => iso ? Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 864e5)) : '';
+    const HS = 'https://app.hubspot.com/contacts/7373497/record/0-3/';
+    const rows = recruits.map(r => {
+      const st = stepMap[r.deal_id] || {};
+      const done = Object.keys(STEP_LABEL).filter(k => st[k]).length;
+      const ln = lastNote[r.deal_id];
+      return {
+        stage: r.stage_label, pending: pendMap[r.deal_id] ? ('→ ' + pendMap[r.deal_id]) : '', company: r.company, contact: r.contact, phone: r.phone, mobile: r.mobile, email: r.email,
+        trucks: r.trucks, truck_type: r.truck_type, fleet_size: r.fleet_size, dump_trucks: r.dump_trucks, dot: r.dot,
+        market: r.market, area: r.market_area || r.location, city: r.city, state: r.state, zip: r.zip,
+        yard: [r.yard_city, r.yard_state].filter(Boolean).join(', ') + (r.yard_zip ? ' ' + r.yard_zip : ''), home: [r.home_city, r.home_state].filter(Boolean).join(', '),
+        language: r.language, recruiter: r.hs_owner, lead_source: [r.lead_source, r.lead_source_details].filter(Boolean).join(' · '), sub_status: r.sub_status, lead_status: r.hs_lead_status,
+        stage_since: day(r.stage_since), days: daysIn(r.stage_since), created: day(r.hs_created), hs_modified: day(r.hs_modified), hs_next: day(r.hs_next_activity),
+        next_follow: r.next_follow, checklist: done + '/6', ...Object.fromEntries(Object.keys(STEP_LABEL).map(k => ['st_' + k, st[k] ? day(st[k].ts) : ''])),
+        notes_count: notes.filter(n => n.deal_id === r.deal_id).length, last_note: ln ? `${day(ln.ts)} ${ln.author || ''}: ${ln.text}` : '',
+        tags: r.tags, hs: { url: r.hs_url || (HS + r.deal_id), text: 'HubSpot ↗' }, deal_id: r.deal_id
+      };
+    });
+    const C = (header, key, width, extra) => Object.assign({ header, key, width }, extra || {});
+    const subsCols = [C('Stage', 'stage', 26), C('HS pending', 'pending', 16), C('Company', 'company', 30), C('Contact', 'contact', 22), C('Phone', 'phone', 15), C('Mobile', 'mobile', 15), C('Email', 'email', 30),
+      C('Trucks', 'trucks', 8, { type: 'number' }), C('Truck type', 'truck_type', 14), C('Single/Multi', 'fleet_size', 16), C('Dump trucks', 'dump_trucks', 11), C('DOT', 'dot', 11),
+      C('Market', 'market', 20), C('Area', 'area', 18), C('City', 'city', 16), C('State', 'state', 8), C('Zip', 'zip', 8), C('Yard (parked)', 'yard', 22), C('Home', 'home', 18),
+      C('Language', 'language', 10), C('Recruiter', 'recruiter', 16), C('Lead source', 'lead_source', 24), C('Sub status', 'sub_status', 24), C('Lead status', 'lead_status', 14),
+      C('In stage since', 'stage_since', 13), C('Days in stage', 'days', 9, { type: 'number' }), C('Created (HS)', 'created', 12), C('Last HS touch', 'hs_modified', 13), C('Next HS activity', 'hs_next', 14),
+      C('Next follow-up', 'next_follow', 13), C('Checklist', 'checklist', 9),
+      ...Object.entries(STEP_LABEL).map(([k, l]) => C(l, 'st_' + k, 13)),
+      C('# notes', 'notes_count', 8, { type: 'number' }), C('Last note', 'last_note', 60, { wrap: true }), C('Tags', 'tags', 16), C('HubSpot', 'hs', 12), C('Deal ID', 'deal_id', 13)];
+    const noteCols = [C('Date', 'd', 11), C('Company', 'company', 30), C('By', 'author', 14), C('Kind', 'kind', 7), C('Note', 'text', 90, { wrap: true }), C('Deal ID', 'deal_id', 13)];
+    const byStage = {}; for (const r of recruits) { const k = r.stage_label || '?'; byStage[k] = byStage[k] || { stage: k, n: 0, trucks: 0 }; byStage[k].n++; byStage[k].trucks += Number(r.trucks) || 0; }
+    const stamp = new Date().toISOString().slice(0, 10);
+    const buf = buildXlsx([
+      { name: 'Subs', columns: subsCols, rows },
+      { name: 'Follow-up log', columns: noteCols, rows: notes.map(n => ({ d: day(n.ts), company: n.company, author: n.author, kind: n.kind, text: n.text, deal_id: n.deal_id })) },
+      { name: 'By stage', columns: [C('Stage', 'stage', 30), C('Subs', 'n', 8, { type: 'number' }), C('Trucks (sum)', 'trucks', 12, { type: 'number' })], rows: Object.values(byStage) }
+    ]);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="subs-recruiting-${stamp}.xlsx"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(buf);
   });
 
   // Checklist toggle — idempotent, safe to retry from the yard.
@@ -1054,7 +1117,9 @@ function createRouter({ config, newmile, log }) {
     const r = get('SELECT deal_id FROM recruits WHERE deal_id = ?', req.params.dealId);
     if (!r) return res.status(404).json({ error: 'recruit not found' });
     const b = req.body || {};
-    for (const f of ['local_status', 'next_follow', 'phone', 'email']) {
+    // yard_* = where their trucks sleep, home_* = where the owner is from (Juan's knowledge,
+    // HubSpot has neither); language/tags too. The import never overwrites these.
+    for (const f of ['local_status', 'next_follow', 'phone', 'email', 'yard_city', 'yard_state', 'yard_zip', 'home_city', 'home_state', 'language', 'tags']) {
       if (b[f] !== undefined) run(`UPDATE recruits SET ${f} = ? WHERE deal_id = ?`, String(b[f]).slice(0, 80), r.deal_id);
     }
     res.json({ ok: true });

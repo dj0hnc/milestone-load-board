@@ -115,6 +115,27 @@ data/roster_seed.json    89 North + 72 South con actividad Jul 6–9 y flags Sam
 spec/SPEC.md             spec original de referencia
 ```
 
+## 🤝 Recruiting (Juan & Tony) — `recruit.html`
+
+Espejo local de los deals de HubSpot (pipelines Subhauler Recruitment / Texas Fleet Subs /
+Leased-On) con la capa de Juan encima: checklist de onboarding, follow-ups, bitácora,
+**yard** (dónde duermen los trucks) y **home** (de dónde son). Dos vistas: **LISTA**
+(default: buscador, filtros por mercado / tipo / flota / "listos para entrenar" / "en
+NewMile" / follow-up vencido, columnas ordenables, selección múltiple) y **KANBAN**
+(tu escritorio · incoming · activos). Desde la fila: llamar, SMS, WhatsApp, email con
+plantillas EN/ES, abrir en HubSpot. **⬇ EXCEL** baja exactamente lo que ves (o lo
+seleccionado): 3 hojas — Subs (42 columnas), Follow-up log, By stage. Sin dependencias
+(`server/xlsx.js` escribe el .xlsx a mano).
+
+Cargar / refrescar HubSpot desde la PC del tracker (lee la states key de la DB local):
+
+```
+node import-recruits.js recruits-hubspot.json      # {recruits:[{deal_id, stage, company, phone, market, dot, ...}]}
+```
+
+El import nunca pisa lo local (checklist, notas, follow-up, yard/home, tags, idioma; y
+phone/email solo si HubSpot trae valor).
+
 ## API rápida
 
 ```
@@ -128,4 +149,8 @@ POST /api/reset                              {date, org, division?}
 POST /api/sync/newmile · /api/sync/samsara   sync manual ("Sync ahora")
 GET  /api/audit?org=CACTUS                   JSON tipo la auditoría del 7/9
 GET  /api/newmile/connect                    sign-in web (una vez)
+GET  /api/recruit/board                      deals + checklist + última nota (identidad Juan/Tony)
+GET  /api/recruit/export.xlsx?ids=a,b,c      Excel de esos deals (sin ids = todos)
+POST /api/recruit/import?key=STATES_KEY      {recruits:[...]} upsert del espejo HubSpot
+POST /api/recruit/:dealId/set                {next_follow?, phone?, email?, yard_city?, yard_state?, yard_zip?, home_city?, home_state?, language?, tags?}
 ```
