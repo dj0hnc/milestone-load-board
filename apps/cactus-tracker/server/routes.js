@@ -1014,11 +1014,12 @@ function createRouter({ config, newmile, log }) {
       const worked = new Set([
         ...all('SELECT DISTINCT deal_id FROM recruit_notes').map(r => r.deal_id),
         ...all('SELECT DISTINCT deal_id FROM recruit_steps WHERE done = 1').map(r => r.deal_id),
-        ...all(`SELECT deal_id FROM recruits WHERE next_follow <> '' OR yard_city <> '' OR home_city <> '' OR tags <> '' OR language <> '' OR local_status <> ''`).map(r => r.deal_id)
+        // (language is NOT here: the HubSpot import writes it too, so it would pin every deal forever)
+        ...all(`SELECT deal_id FROM recruits WHERE next_follow <> '' OR yard_city <> '' OR home_city <> '' OR tags <> '' OR local_status <> ''`).map(r => r.deal_id)
       ]);
       for (const r of all('SELECT deal_id FROM recruits')) {
         if (keep.has(r.deal_id) || worked.has(r.deal_id)) continue;
-        run('DELETE FROM recruit_moves WHERE deal_id = ? AND applied = 1', r.deal_id);
+        run('DELETE FROM recruit_moves WHERE deal_id = ?', r.deal_id);   // applied AND pending: no orphan moves
         run('DELETE FROM recruits WHERE deal_id = ?', r.deal_id);
         removed++;
       }
