@@ -110,6 +110,35 @@ td input[type=checkbox],thead input[type=checkbox]{width:17px;height:17px;accent
 .bulk a.gold{background:var(--gold);color:var(--navy);}
 .sumline{font-size:12px;color:var(--mut);margin:0 2px 8px;display:flex;gap:10px;flex-wrap:wrap;}
 .sumline b{color:var(--ink);}
+/* ---------- catch-up (god mode) ---------- */
+.fpill.att{background:var(--red);border-color:var(--red);}
+.fpill.att b,.fpill.att small{color:#fff;}
+.fpill.warn{background:#C98A2F;border-color:#C98A2F;}
+.fpill.warn b,.fpill.warn small{color:#fff;}
+.fpill.good{background:var(--green);border-color:var(--green);}
+.fpill.good b,.fpill.good small{color:#fff;}
+.fpill.zero{opacity:.55;}
+.catch{margin:0 14px 8px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 12px;display:flex;gap:12px;align-items:center;box-shadow:var(--sh-card);font-size:12.5px;}
+.catch .bar{flex:1;height:8px;border-radius:4px;background:var(--line);overflow:hidden;}
+.catch .bar i{display:block;height:100%;background:var(--green);border-radius:4px;transition:width .3s;}
+.catch b{font-family:'Barlow Condensed';font-size:15px;letter-spacing:.5px;}
+tbody tr td:first-child{box-shadow:inset 4px 0 transparent;}
+tbody tr.a0 td:first-child{box-shadow:inset 4px 0 var(--red);}
+tbody tr.a1 td:first-child{box-shadow:inset 4px 0 #C98A2F;}
+tbody tr.a2 td:first-child{box-shadow:inset 4px 0 var(--blue);}
+tbody tr.a3 td:first-child{box-shadow:inset 4px 0 var(--green);}
+tbody tr.kb td{outline:2px solid var(--gold);outline-offset:-2px;}
+tbody tr.grp td{background:var(--navy2);color:#fff;font-family:'Barlow Condensed';font-weight:800;font-size:13px;letter-spacing:.8px;padding:6px 10px;cursor:pointer;position:sticky;top:34px;z-index:1;}
+tbody tr.grp td .cnt{background:var(--gold);color:var(--navy);border-radius:999px;padding:0 9px;margin-left:8px;font-size:12px;}
+tbody tr.grp td .due{color:#ffb4a3;margin-left:8px;font-size:12px;}
+.qa{display:flex;gap:3px;margin-top:4px;flex-wrap:nowrap;}
+.qa button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:7px;font-family:'Barlow Condensed';font-weight:700;font-size:11px;letter-spacing:.3px;padding:2px 6px;cursor:pointer;white-space:nowrap;}
+.qa button.ok{background:var(--green);border-color:var(--green);color:#fff;}
+.qa button.na{background:var(--red-bg);border-color:var(--red-bg);color:var(--red);}
+body.compact tbody td{padding:3px 6px;font-size:12px;}
+body.compact .qa{display:none;}
+body.compact tbody tr:hover .qa{display:flex;}
+.kbhint{font-size:11px;color:var(--mut);margin-left:auto;white-space:nowrap;}
 /* ---------- modal (recruit command panel) ---------- */
 .modal-bg{position:fixed;inset:0;background:rgba(20,22,30,.55);display:none;z-index:100;overflow-y:auto;padding:20px 12px 40px;}
 .modal-bg.show{display:block;}
@@ -165,6 +194,7 @@ td input[type=checkbox],thead input[type=checkbox]{width:17px;height:17px;accent
   </div>
 </header>
 <div class="funnel" id="funnel"></div>
+<div class="catch" id="catch"></div>
 <main id="lanes"></main>
 <div class="bulk" id="bulk"></div>
 <div class="foot"><span id="syncInfo">Loading…</span><span style="margin-left:auto;">signing as <b id="whoami"></b> · <a href="#" style="color:var(--gold);" onclick="changeAuthor();return false;">change</a></span></div>
@@ -208,7 +238,9 @@ const LSs=(k,v)=>{try{localStorage.setItem(k,v);}catch(e){}};
 let VIEW=LS("rc_view","list");                 // 'list' | 'kanban' — Juan lives in the list
 let OWNER_SEL=LS("rc_owner2","");               // '' = ALL recruiters (default), else name prefix
 let STAGE_SEL="";
-const F={q:"",market:"",ttype:"",mintrucks:"",only:"",sort:LS("rc_sort","stage"),dir:LS("rc_dir","asc")};
+const F={q:"",market:"",ttype:"",mintrucks:"",only:"",sort:LS("rc_sort","attn"),dir:LS("rc_dir","asc"),closed:LS("rc_closed","0")==="1",group:LS("rc_group","1")==="1",compact:LS("rc_compact","0")==="1"};
+const COLL=new Set((LS("rc_coll","")||"").split("|").filter(Boolean));   // collapsed stage groups
+let KB=-1;                                        // keyboard-highlighted row (index into the visible list)
 const SEL=new Set();                            // deal_ids ticked in the list
 function author(){return (DATA&&DATA.identity)||LS("ct_author","")||"";}   // 🪪 login NewMile manda
 function changeAuthor(){
@@ -235,6 +267,35 @@ function whereStr(r){
   return hs||r.market||"";
 }
 function isDue(r){return !!(r.next_follow&&r.next_follow<=todayISO());}
+// ---- catch-up logic: who needs Juan right now ----
+const CLOSED=["Disqualified","No Response"];
+function isClosed(r){return CLOSED.includes(r.stage_label||"")||r.local_status==="paused";}
+function isWorking(r){return !isClosed(r)&&laneOf(r)!=="cleared";}   // anything still moving through the pipeline
+function touchedToday(r){return !!(r.last_note&&String(r.last_note.ts).slice(0,10)===todayISO());}
+function neverTouched(r){return isWorking(r)&&!(r.notes_count||0)&&!r.next_follow;}
+// 0 = overdue / due today · 1 = working but NO follow-up date · 2 = working, follow-up later · 3 = active sub · 4 = closed
+function attn(r){if(isClosed(r))return 4;if(laneOf(r)==="cleared")return 3;if(isDue(r))return 0;if(!r.next_follow)return 1;return 2;}
+function plusDays(n){const d=new Date();d.setDate(d.getDate()+n);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+function findR(id){return ((DATA&&DATA.recruits)||[]).find(x=>x.deal_id===id)||null;}
+// one-tap from the row: log the touch + set the next follow-up, no modal, no typing unless you want to
+async function quick(id,kind){
+  const r=findR(id);if(!r)return;let who=author();if(!who){changeAuthor();who=author();if(!who)return;}
+  let note=null,next=null;
+  if(kind==="talked"){const x=prompt("Talked with "+(r.contact||r.company||"them")+" — what was said / next step? (optional)","");if(x==null)return;note="📞 Talked"+(x.trim()?": "+x.trim():"");next=plusDays(7);}
+  else if(kind==="noanswer"){note="📵 No answer";next=plusDays(2);}
+  else if(kind==="left"){note="📵 Left message / text sent";next=plusDays(3);}
+  else if(kind.startsWith("snooze:")){next=plusDays(Number(kind.split(":")[1])||1);}
+  else if(kind==="clear"){next="";}
+  if(note){r.notes_count=(r.notes_count||0)+1;r.last_note={ts:new Date().toISOString(),author:who,text:note};
+    try{await fetch(`api/recruit/${encodeURIComponent(id)}/notes`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({author:who,text:note,kind:"call"})});}catch(e){}}
+  if(next!==null){r.next_follow=next;
+    try{await fetch(`api/recruit/${encodeURIComponent(id)}/set`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({next_follow:next})});}catch(e){}}
+  render();
+}
+function toggleClosed(){F.closed=!F.closed;LSs("rc_closed",F.closed?"1":"0");renderList();}
+function toggleGroup(){F.group=!F.group;LSs("rc_group",F.group?"1":"0");renderList();}
+function toggleCompact(){F.compact=!F.compact;LSs("rc_compact",F.compact?"1":"0");document.body.classList.toggle("compact",F.compact);renderList();}
+function toggleGrp(label){if(COLL.has(label))COLL.delete(label);else COLL.add(label);LSs("rc_coll",[...COLL].join("|"));renderList();}
 
 // ---------- ✉️ message templates (EN first, ES second) — signed with the NewMile identity ----------
 function sig(){return "\n\n"+(author()||"Juan")+"\nMilestone Supply · Subhauler Onboarding";}
@@ -284,7 +345,14 @@ function filtered(){
   if(F.market)rs=rs.filter(r=>(r.market||"")===F.market);
   if(F.ttype)rs=rs.filter(r=>(r.truck_type||r.fleet_size||"")===F.ttype);
   if(F.mintrucks)rs=rs.filter(r=>(Number(r.trucks)||0)>=Number(F.mintrucks));
+  // closed stages (Disqualified / No Response) stay out of the way unless asked for
+  if(!F.closed&&!CLOSED.includes(STAGE_SEL)&&F.only!=="closed")rs=rs.filter(r=>!isClosed(r));
   if(F.only==="due")rs=rs.filter(isDue);
+  else if(F.only==="today")rs=rs.filter(r=>r.next_follow===todayISO());
+  else if(F.only==="nofu")rs=rs.filter(r=>isWorking(r)&&!r.next_follow);
+  else if(F.only==="never")rs=rs.filter(neverTouched);
+  else if(F.only==="worked")rs=rs.filter(touchedToday);
+  else if(F.only==="closed")rs=rs.filter(isClosed);
   else if(F.only==="nophone")rs=rs.filter(r=>!digits(r.phone));
   else if(F.only==="noemail")rs=rs.filter(r=>!r.email);
   else if(F.only==="innm")rs=rs.filter(r=>r.steps&&r.steps.org);
@@ -298,6 +366,8 @@ function filtered(){
   }
   const dir=F.dir==="desc"?-1:1;
   const key={
+    // attention first: overdue → no follow-up set → later follow-up → active → closed; then longest in stage
+    attn:r=>attn(r)*100000+(99999-Math.min(99999,daysIn(r.stage_since)||0)),
     stage:r=>stageRank(r.stage_label)*1000+ (r.company||"").toLowerCase().charCodeAt(0),
     company:r=>(r.company||r.contact||"").toLowerCase(),
     trucks:r=>Number(r.trucks)||0,
@@ -320,11 +390,17 @@ function render(){
   const cnt={};for(const r of rs){const k=r.stage_label||"?";cnt[k]=(cnt[k]||0)+1;}
   if(STAGE_SEL&&!cnt[STAGE_SEL])STAGE_SEL="";
   const ownLbl=OWNER_SEL||"ALL",ownSub=OWNER_SEL?"RECRUITER · TAP":"ALL RECRUITERS · TAP";
-  const dueN=rs.filter(isDue).length;
+  const dueN=rs.filter(isDue).length,nofuN=rs.filter(r=>isWorking(r)&&!r.next_follow).length,neverN=rs.filter(neverTouched).length,
+        workedN=rs.filter(touchedToday).length,openN=rs.filter(isWorking).length,todayN=rs.filter(r=>r.next_follow===todayISO()).length,closedN=rs.filter(isClosed).length;
+  const tile=(mode,n,label,cls)=>`<div class="fpill ${cls}${F.only===mode?" sel":""}${n?"":" zero"}" onclick="setF('only',F.only==='${mode}'?'':'${mode}');if(VIEW==='kanban')setView('list');"><b>${n}</b><small>${label}</small></div>`;
   $("funnel").innerHTML=
     `<div class="fpill own" onclick="cycleOwner()"><b>${esc(ownLbl.toUpperCase())}</b><small>${ownSub}</small></div>`+
-    `<div class="fpill${F.only==="due"?" sel":""}${dueN?" hot":""}" onclick="setF('only',F.only==='due'?'':'due');if(VIEW==='kanban')setView('list');"><b>${dueN}</b><small>FOLLOW-UP DUE</small></div>`+
+    tile("due",dueN,"OVERDUE / DUE","att")+tile("today",todayN,"DUE TODAY","warn")+tile("nofu",nofuN,"NO FOLLOW-UP SET","warn")+tile("never",neverN,"NEVER TOUCHED","warn")+tile("worked",workedN,"WORKED TODAY","good")+
+    `<div class="fpill${F.only==="closed"?" sel":""} zero" onclick="setF('only',F.only==='closed'?'':'closed');if(VIEW==='kanban')setView('list');"><b>${closedN}</b><small>CLOSED (HIDDEN)</small></div>`+
     ORDER.filter(k=>cnt[k]).map(k=>`<div class="fpill${k.includes("Onboarding")?" hot":""}${STAGE_SEL===k?" sel":""}" data-s="${esc(k)}" onclick="pickStage(this.dataset.s)"><b>${cnt[k]}</b><small>${esc(k.replace("Compliance Document","Doc").replace(", Awaiting Response","").replace(" Outreach","").replace(" + Compliance Review"," + Compliance"))}</small></div>`).join("");
+  const catchEl=$("catch");if(catchEl){const need=dueN+nofuN;const pct=openN?Math.round(100*workedN/Math.max(1,openN)):0;
+    catchEl.innerHTML=need?`<b>CATCH-UP</b><span><b style="color:var(--red);">${need}</b> need you now (${dueN} overdue · ${nofuN} without a date)</span><div class="bar"><i style="width:${pct}%"></i></div><span><b>${workedN}</b> worked today of ${openN} open</span><span class="kbhint">↑↓ move · Enter open · / search · T talked · N no answer</span>`
+      :`<b>CATCH-UP</b><span style="color:var(--green);font-weight:700;">✅ Nobody is waiting — every open sub has a follow-up date</span><div class="bar"><i style="width:${pct}%"></i></div><span><b>${workedN}</b> worked today of ${openN} open</span><span class="kbhint">↑↓ move · Enter open · / search · T talked · N no answer</span>`;}
   if(VIEW==="kanban")renderKanban(rs);else renderList();
 }
 function renderKanban(rs){
@@ -388,7 +464,12 @@ function renderList(){
       <select onchange="setF('mintrucks',this.value)"><option value="">Any fleet size</option>${[1,2,3,5,10].map(n=>`<option value="${n}"${String(n)===F.mintrucks?" selected":""}>${n}+ trucks</option>`).join("")}</select>
       <select onchange="setF('only',this.value)">
         <option value="">Everything</option>
-        <option value="due"${F.only==="due"?" selected":""}>📅 Follow-up due</option>
+        <option value="due"${F.only==="due"?" selected":""}>🔴 Overdue / due today</option>
+        <option value="today"${F.only==="today"?" selected":""}>📅 Due today</option>
+        <option value="nofu"${F.only==="nofu"?" selected":""}>🟡 Working, no follow-up set</option>
+        <option value="never"${F.only==="never"?" selected":""}>🆕 Never touched (no note, no date)</option>
+        <option value="worked"${F.only==="worked"?" selected":""}>✅ Worked today</option>
+        <option value="closed"${F.only==="closed"?" selected":""}>🗄 Closed (Disqualified / No Response)</option>
         <option value="ready"${F.only==="ready"?" selected":""}>🎓 Ready to train (NetSuite + Onboarding)</option>
         <option value="innm"${F.only==="innm"?" selected":""}>✅ Already in NewMile</option>
         <option value="notnm"${F.only==="notnm"?" selected":""}>🚧 On my desk, NOT in NewMile yet</option>
@@ -398,13 +479,18 @@ function renderList(){
         <option value="noemail"${F.only==="noemail"?" selected":""}>❌ No email</option>
       </select>
       ${(F.q||F.market||F.ttype||F.mintrucks||F.only||STAGE_SEL)?`<button class="tbtn" onclick="clearFilters()">✕ CLEAR</button>`:""}
+      <button class="tbtn${F.group?" on":""}" onclick="toggleGroup()" title="Group rows by stage">▤ GROUP</button>
+      <button class="tbtn${F.closed?" on":""}" onclick="toggleClosed()" title="Show Disqualified / No Response">${F.closed?"🗄 CLOSED SHOWN":"🗄 CLOSED HIDDEN"}</button>
+      <button class="tbtn${F.compact?" on":""}" onclick="toggleCompact()" title="Tighter rows">☰ COMPACT</button>
       <button class="tbtn gold" onclick="downloadXlsx()">⬇ EXCEL (${rs.length})</button>
     </div>
     <div class="sumline"><span><b>${rs.length}</b> subs shown</span><span><b>${trucksSum}</b> trucks</span><span><b>${rs.filter(isDue).length}</b> follow-ups due</span><span><b>${rs.filter(r=>r.steps&&r.steps.org).length}</b> in NewMile</span>${SEL.size?`<span style="color:var(--gold-d);"><b>${SEL.size}</b> selected</span>`:""}</div>`;
-  const rows=rs.map(r=>{
+  const rowOf=(r,i)=>{
     const d=daysIn(r.stage_since),dc=doneCount(r),due=isDue(r),ph=digits(r.phone)?r.phone:(digits(r.mobile)?r.mobile:"");
-    return `<tr class="${SEL.has(r.deal_id)?"sel":""}" onclick="openPanel('${r.deal_id}')">
+    const a=attn(r);
+    return `<tr class="a${a}${SEL.has(r.deal_id)?" sel":""}${i===KB?" kb":""}" data-i="${i}" onclick="openPanel('${r.deal_id}')">
       <td onclick="event.stopPropagation()"><input type="checkbox" ${SEL.has(r.deal_id)?"checked":""} onchange="toggleSel('${r.deal_id}',this.checked)"></td>
+      <td title="${["Overdue or due today","Working — no follow-up date","Follow-up scheduled","Active sub","Closed"][a]}" style="font-size:14px;">${["🔴","🟡","🔵","✅","🗄"][a]}</td>
       <td><div class="co">${esc(r.company||r.contact||"?")}</div><div class="sub">${esc(r.contact||"")}${r.dot?" · DOT "+esc(r.dot):""}${r.language?" · "+esc(r.language):""}</div></td>
       <td onclick="event.stopPropagation()">${ph?`<a class="tel" href="${telHref(ph)}">${esc(ph)}</a>`:`<span class="d">—</span>`}${r.mobile&&r.mobile!==ph?`<div class="sub">${esc(r.mobile)}</div>`:""}</td>
       <td onclick="event.stopPropagation()">${r.email?`<a class="mail" href="${mailHref(r.email,"Milestone — "+(r.company||""))}">${esc(r.email)}</a>`:`<span class="d">—</span>`}</td>
@@ -413,25 +499,52 @@ function renderList(){
       <td><div class="sub" style="font-size:12px;color:var(--ink);">${esc((r.hs_owner||"").split(" ")[0]||"–")}</div>${r.lead_source?`<div class="sub">${esc(r.lead_source)}</div>`:""}</td>
       <td><div class="stg">${esc(r.stage_label||"?")}</div><div class="d${d>14?" slow":""}">${d==null?"":d+"d in stage"}${r.pending_move?" · ⏳ HS":""}</div></td>
       <td>${laneOf(r)==="cleared"?`<span class="chip ok">ACTIVE</span>`:`<div class="mini">${STEPS.map(([k])=>`<i class="${r.steps&&r.steps[k]?"on":""}"></i>`).join("")}</div><div class="d">${dc}/6${r.steps&&r.steps.org?" · in NewMile":""}</div>`}</td>
-      <td>${r.next_follow?`<span class="chip${due?" due":""}">${due?"NOW":mdy(r.next_follow)}</span>`:`<span class="d">—</span>`}</td>
+      <td onclick="event.stopPropagation()">${r.next_follow?`<span class="chip${due?" due":""}">${due?"NOW":mdy(r.next_follow)}</span>`:(isWorking(r)?`<span class="chip due" title="No follow-up date — pick one below">SET DATE</span>`:`<span class="d">—</span>`)}
+        ${isWorking(r)?`<div class="qa"><button class="ok" onclick="quick('${r.deal_id}','talked')" title="Log a call + follow-up in 7 days">✓ Talked</button><button class="na" onclick="quick('${r.deal_id}','noanswer')" title="No answer → try again in 2 days">📵</button><button onclick="quick('${r.deal_id}','left')" title="Left message / texted → 3 days">💬</button><button onclick="quick('${r.deal_id}','snooze:1')" title="Follow up tomorrow">+1d</button><button onclick="quick('${r.deal_id}','snooze:7')" title="Follow up in a week">+1w</button></div>`:""}</td>
       <td style="max-width:260px;">${r.last_note?`<div class="sub" style="white-space:normal;">${esc(mdy(r.last_note.ts))} ${esc(r.last_note.author||"")}: ${esc(r.last_note.text)}</div>`:`<span class="d">${r.notes_count?r.notes_count+" notes":"—"}</span>`}</td>
       <td onclick="event.stopPropagation()"><div class="act">
         ${digits(ph)?`<a class="g" href="${telHref(ph)}" title="Call">📱</a><a href="${smsHref(ph,SMS_TPL(r))}" title="Text">💬</a>`:""}
         ${r.email?`<a href="${mailHref(r.email,TPL[0].s(r),TPL[0].b(r))}" title="Email">✉️</a>`:""}
         <a href="${esc(r.hs_url||("https://app.hubspot.com/contacts/"+HS_PORTAL+"/record/0-3/"+r.deal_id))}" target="_blank" title="Open in HubSpot">🟠</a>
       </div></td>
-    </tr>`;}).join("");
+    </tr>`;};
+  let rows="";
+  if(F.group&&F.sort!=="company"){
+    // one sticky header per stage (pipeline order), collapsible; attention order is kept inside each group
+    const groups=new Map();rs.forEach(r=>{const k=r.stage_label||"?";if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r);});
+    const order=[...groups.keys()].sort((a,b)=>stageRank(a)-stageRank(b));
+    let i=0;
+    for(const k of order){const arr=groups.get(k),coll=COLL.has(k),dueK=arr.filter(isDue).length,nfK=arr.filter(x=>isWorking(x)&&!x.next_follow).length;
+      rows+=`<tr class="grp" onclick="toggleGrp(${JSON.stringify(k).replace(/"/g,"&quot;")})"><td colspan="13">${coll?"▸":"▾"} ${esc(k.toUpperCase())}<span class="cnt">${arr.length}</span>${dueK?`<span class="due">🔴 ${dueK} overdue</span>`:""}${nfK?`<span class="due" style="color:#ffd58a;">🟡 ${nfK} no date</span>`:""}</td></tr>`;
+      if(!coll)for(const r of arr){rows+=rowOf(r,i);i++;}else i+=arr.length;}
+  } else rows=rs.map(rowOf).join("");
+  document.body.classList.toggle("compact",F.compact);
   main.innerHTML=toolsHtml+`<div class="tabl"><table>
     <thead><tr>
       <th class="ns"><input type="checkbox" ${allSel?"checked":""} onchange="selAll(this.checked)" title="select all shown"></th>
-      ${th("company","COMPANY / CONTACT")}${th("company","PHONE",1)}${th("company","EMAIL",1)}${th("trucks","TRUCKS")}${th("where","WHERE")}${th("rec","RECRUITER")}${th("stage","STAGE")}${th("check","CHECKLIST")}${th("follow","FOLLOW-UP")}${th("notes","LAST NOTE")}<th class="ns"></th>
+      ${th("attn","!")}${th("company","COMPANY / CONTACT")}${th("company","PHONE",1)}${th("company","EMAIL",1)}${th("trucks","TRUCKS")}${th("where","WHERE")}${th("rec","RECRUITER")}${th("stage","STAGE")}${th("check","CHECKLIST")}${th("follow","FOLLOW-UP")}${th("notes","LAST NOTE")}<th class="ns"></th>
     </tr></thead>
-    <tbody>${rows||`<tr><td colspan="12" class="empty">Nothing matches these filters.</td></tr>`}</tbody></table></div>`;
+    <tbody>${rows||`<tr><td colspan="13" class="empty">Nothing matches these filters.</td></tr>`}</tbody></table></div>`;
   // keep focus in the search box while typing (we re-render on every keystroke)
   if(document.activeElement&&document.activeElement.id!=="fq"&&F.q){const q=$("fq");if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length);}}
   renderBulk(rs);
 }
-function clearFilters(){F.q="";F.market="";F.ttype="";F.mintrucks="";F.only="";STAGE_SEL="";render();}
+function clearFilters(){F.q="";F.market="";F.ttype="";F.mintrucks="";F.only="";STAGE_SEL="";KB=-1;render();}
+// ---- keyboard: ↑/↓ highlight · Enter open · / search · Esc close · T talked · N no answer ----
+document.addEventListener("keydown",e=>{
+  const tag=(document.activeElement&&document.activeElement.tagName)||"";
+  if(e.key==="Escape"){if($("mbg").classList.contains("show"))closeModal();else if(tag==="INPUT")document.activeElement.blur();return;}
+  if(tag==="INPUT"||tag==="SELECT"||tag==="TEXTAREA"||$("mbg").classList.contains("show"))return;
+  if(VIEW!=="list")return;
+  if(e.key==="/"){e.preventDefault();const q=$("fq");if(q)q.focus();return;}
+  const rs=filtered().filter(r=>!(F.group&&COLL.has(r.stage_label||"?")));
+  if(e.key==="ArrowDown"||e.key==="j"){e.preventDefault();KB=Math.min(rs.length-1,KB+1);renderList();scrollKB();}
+  else if(e.key==="ArrowUp"||e.key==="k"){e.preventDefault();KB=Math.max(0,KB-1);renderList();scrollKB();}
+  else if(e.key==="Enter"&&KB>=0&&rs[KB]){openPanel(rs[KB].deal_id);}
+  else if((e.key==="t"||e.key==="T")&&KB>=0&&rs[KB]){quick(rs[KB].deal_id,"talked");}
+  else if((e.key==="n"||e.key==="N")&&KB>=0&&rs[KB]){quick(rs[KB].deal_id,"noanswer");}
+});
+function scrollKB(){const tr=document.querySelector("tbody tr.kb");if(tr)tr.scrollIntoView({block:"nearest"});}
 function toggleSel(id,on){if(on)SEL.add(id);else SEL.delete(id);renderList();}
 function selAll(on){for(const r of filtered()){if(on)SEL.add(r.deal_id);else SEL.delete(r.deal_id);}renderList();}
 function selected(){const all=(DATA&&DATA.recruits)||[];return all.filter(r=>SEL.has(r.deal_id));}
