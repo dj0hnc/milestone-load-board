@@ -1005,9 +1005,27 @@ function createRouter({ config, newmile, log }) {
         created++;
       }
     }
+    // replace:true = the payload IS the roster (e.g. Texas only): deals not in it leave the
+    // mirror — unless Juan already worked them (notes, checklist, follow-up, yard/home, tags).
+    // Those stay so nothing he typed is ever lost; the page can still filter them out.
+    let removed = 0;
+    if ((req.body || {}).replace === true) {
+      const keep = new Set(list.map(d => String(d.deal_id || '').trim()).filter(Boolean));
+      const worked = new Set([
+        ...all('SELECT DISTINCT deal_id FROM recruit_notes').map(r => r.deal_id),
+        ...all('SELECT DISTINCT deal_id FROM recruit_steps WHERE done = 1').map(r => r.deal_id),
+        ...all(`SELECT deal_id FROM recruits WHERE next_follow <> '' OR yard_city <> '' OR home_city <> '' OR tags <> '' OR language <> '' OR local_status <> ''`).map(r => r.deal_id)
+      ]);
+      for (const r of all('SELECT deal_id FROM recruits')) {
+        if (keep.has(r.deal_id) || worked.has(r.deal_id)) continue;
+        run('DELETE FROM recruit_moves WHERE deal_id = ? AND applied = 1', r.deal_id);
+        run('DELETE FROM recruits WHERE deal_id = ?', r.deal_id);
+        removed++;
+      }
+    }
     metaSet('recruit_synced_at', ts);
-    say(`recruit import: ${created} new, ${updated} updated`);
-    res.json({ ok: true, created, updated });
+    say(`recruit import: ${created} new, ${updated} updated${removed ? ', ' + removed + ' removed (not in roster)' : ''}`);
+    res.json({ ok: true, created, updated, removed });
   });
 
   // ⬇ EXCEL — the list Juan actually works from. `ids` = the rows the page is showing (after

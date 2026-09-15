@@ -130,11 +130,14 @@ seleccionado): 3 hojas — Subs (42 columnas), Follow-up log, By stage. Sin depe
 Cargar / refrescar HubSpot desde la PC del tracker (lee la states key de la DB local):
 
 ```
-node import-recruits.js recruits-hubspot.json      # {recruits:[{deal_id, stage, company, phone, market, dot, ...}]}
+node import-recruits.js recruits-hubspot.json            # {recruits:[{deal_id, stage, company, phone, market, dot, ...}]}
+node import-recruits.js recruits-texas.json --replace    # el archivo ES el roster (p.ej. solo Texas):
+                                                         # lo que no venga se quita del espejo
 ```
 
 El import nunca pisa lo local (checklist, notas, follow-up, yard/home, tags, idioma; y
-phone/email solo si HubSpot trae valor).
+phone/email solo si HubSpot trae valor). Con `--replace`, un deal que Juan ya trabajó
+(nota, paso, follow-up, yard, tag) se queda aunque no venga en el archivo.
 
 ## API rápida
 

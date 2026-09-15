@@ -5,6 +5,9 @@
  * tracker runs on (the states key is read straight from its SQLite, no copy-paste).
  *
  *   node import-recruits.js recruits.json
+ *   node import-recruits.js recruits.json --replace          # the file IS the roster: deals not in
+ *                                                             # it leave the mirror (Juan's worked
+ *                                                             # deals always stay)
  *   node import-recruits.js recruits.json http://127.0.0.1:8791/cactus-tracker
  *
  * recruits.json = { "recruits": [ { deal_id, stage, stage_label, company, contact, phone,
@@ -16,9 +19,12 @@
 const fs = require('fs');
 const path = require('path');
 
-const file = process.argv[2];
-const base = (process.argv[3] || process.env.TRACKER_URL || 'http://127.0.0.1:8791/cactus-tracker').replace(/\/+$/, '');
-if (!file) { console.error('uso: node import-recruits.js recruits.json [http://127.0.0.1:8791/cactus-tracker]'); process.exit(2); }
+const args = process.argv.slice(2);
+const replace = args.includes('--replace');
+const pos = args.filter(a => a !== '--replace');
+const file = pos[0];
+const base = (pos[1] || process.env.TRACKER_URL || 'http://127.0.0.1:8791/cactus-tracker').replace(/\/+$/, '');
+if (!file) { console.error('uso: node import-recruits.js recruits.json [--replace] [http://127.0.0.1:8791/cactus-tracker]'); process.exit(2); }
 
 let payload;
 try { payload = JSON.parse(fs.readFileSync(path.resolve(file), 'utf8')); }
@@ -36,9 +42,9 @@ if (!key) { console.error('states key vacía — ¿ya arrancó el tracker al men
 
 (async () => {
   const r = await fetch(base + '/api/recruit/import?key=' + encodeURIComponent(key), {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recruits: list })
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recruits: list, replace })
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok || !j.ok) { console.error('import falló:', r.status, JSON.stringify(j)); process.exit(1); }
-  console.log(`✅ import OK — ${j.created} nuevos, ${j.updated} actualizados (${list.length} en el archivo)`);
+  console.log(`✅ import OK — ${j.created} nuevos, ${j.updated} actualizados${j.removed ? ', ' + j.removed + ' quitados (no están en el archivo)' : ''} (${list.length} en el archivo)`);
 })().catch(e => { console.error('error:', e.message); process.exit(1); });
