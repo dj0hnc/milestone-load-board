@@ -333,9 +333,9 @@ async function fetchBoard(){
 function recruiters(){const c={};for(const r of (DATA&&DATA.recruits)||[]){const k=(r.hs_owner||"").split(" ")[0]||"?";c[k]=(c[k]||0)+1;}return Object.entries(c).sort((a,b)=>b[1]-a[1]);}
 function subs(){const rs=(DATA&&DATA.recruits)||[];return OWNER_SEL?rs.filter(r=>(r.hs_owner||"").indexOf(OWNER_SEL)===0):rs;}
 function cycleOwner(){const opts=["",...recruiters().map(([k])=>k)];const i=opts.indexOf(OWNER_SEL);OWNER_SEL=opts[(i+1)%opts.length]||"";LSs("rc_owner2",OWNER_SEL);render();}
-function pickStage(l){STAGE_SEL=(STAGE_SEL===l)?"":l;render();}
+function pickStage(l){STAGE_SEL=(STAGE_SEL===l)?"":l;if(STAGE_SEL){F.only="";COLL.delete(STAGE_SEL);LSs("rc_coll",[...COLL].join("|"));}KB=-1;render();}
 function setView(v){VIEW=v;LSs("rc_view",v);render();}
-function setF(k,v){F[k]=v;if(k==="sort"||k==="dir")LSs("rc_"+k,v);renderList();}
+function setF(k,v){F[k]=v;if(k==="sort"||k==="dir")LSs("rc_"+k,v);if(k==="only"&&v)STAGE_SEL="";KB=-1;if(k==="only")render();else renderList();}
 function sortBy(k){if(F.sort===k){F.dir=F.dir==="asc"?"desc":"asc";}else{F.sort=k;F.dir=(k==="days"||k==="trucks"||k==="notes")?"desc":"asc";}LSs("rc_sort",F.sort);LSs("rc_dir",F.dir);renderList();}
 
 // what the LIST shows = owner pill ∩ stage pill ∩ toolbar filters
@@ -346,7 +346,7 @@ function filtered(){
   if(F.ttype)rs=rs.filter(r=>(r.truck_type||r.fleet_size||"")===F.ttype);
   if(F.mintrucks)rs=rs.filter(r=>(Number(r.trucks)||0)>=Number(F.mintrucks));
   // closed stages (Disqualified / No Response) stay out of the way unless asked for
-  if(!F.closed&&!CLOSED.includes(STAGE_SEL)&&F.only!=="closed")rs=rs.filter(r=>!isClosed(r));
+  if(!F.closed&&!STAGE_SEL&&F.only!=="closed")rs=rs.filter(r=>!isClosed(r));   // a stage pill always shows its whole stage
   if(F.only==="due")rs=rs.filter(isDue);
   else if(F.only==="today")rs=rs.filter(r=>r.next_follow===todayISO());
   else if(F.only==="nofu")rs=rs.filter(r=>isWorking(r)&&!r.next_follow);
@@ -463,7 +463,7 @@ function renderList(){
       <select onchange="setF('ttype',this.value)"><option value="">Any truck type</option>${opt(ttypes,F.ttype)}</select>
       <select onchange="setF('mintrucks',this.value)"><option value="">Any fleet size</option>${[1,2,3,5,10].map(n=>`<option value="${n}"${String(n)===F.mintrucks?" selected":""}>${n}+ trucks</option>`).join("")}</select>
       <select onchange="setF('only',this.value)">
-        <option value="">Everything</option>
+        <option value=""${F.only?"":" selected"}>Everything</option>
         <option value="due"${F.only==="due"?" selected":""}>🔴 Overdue / due today</option>
         <option value="today"${F.only==="today"?" selected":""}>📅 Due today</option>
         <option value="nofu"${F.only==="nofu"?" selected":""}>🟡 Working, no follow-up set</option>
