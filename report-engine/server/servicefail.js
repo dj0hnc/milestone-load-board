@@ -243,7 +243,7 @@ function buildServiceFailures(raw, opts) {
     const lostGp = gpOf(qtyLost), gpAtRisk = gpOf(qtyAtRisk);
     const sev = frows.reduce((m, f) => Math.max(m, { low: 1, medium: 2, high: 3, critical: 4 }[norm(f.severity)] || 0), 0);
     rows.push({
-      date: dateKey(o.order_start_date), order: o.reference_number, orderNumber: o.order_number,
+      date: dateKey(o.order_start_date), order: String(o.reference_number || o.order_number || '?').trim(), orderNumber: o.order_number,
       customer: o.customer, project: o.project, material: o.material,
       failures: frows.length, worstSeverity: ['', 'Low', 'Medium', 'High', 'Critical'][sev] || '',
       committed: committed, delivered: num(o.quantity_delivered),
@@ -490,7 +490,7 @@ function buildEmailHtml(rep, failures) {
     + '<tr>' + th('Date') + th('Order') + th('Customer') + th('Loads Lost', 1) + th('Qty Lost', 1) + th('Lost Revenue', 1) + th('Lost GP', 1) + th('GP at Risk', 1) + '</tr>'
     + rep.rows.map(r => { const z = r.lostGp > 0 ? '' : ' d'; return '<tr>'
       + '<td class="c n' + z + '">' + esc(r.date.slice(0, 5)) + '</td>'
-      + '<td class="c' + z + '">' + esc(r.order.trim()) + '</td>'
+      + '<td class="c' + z + '">' + esc(String(r.order || '').trim()) + '</td>'
       + '<td class="c' + z + '">' + esc(shortCustomer(r.customer)) + '</td>'
       + '<td class="c r' + z + '">' + Math.round(r.loadsLost) + '</td>'
       + '<td class="c r n' + z + '">' + fmtQty(r.qtyLost) + ' ' + esc(r.uom) + '</td>'
