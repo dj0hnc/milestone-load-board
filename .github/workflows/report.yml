@@ -1,4 +1,6 @@
 name: MAB Reports
+# the kind in the run title lets runs find live RELAY runs via the API (see the relay block)
+run-name: "MAB Reports · ${{ github.event.inputs.kind || github.event_name }}"
 
 # Sends the morning (7:30am CT, catch-up until noon) no-show report and the night (8pm CT,
 # catch-up until midnight) fleet-assignment report from GitHub's cloud — never depends on
@@ -25,11 +27,11 @@ name: MAB Reports
 on:
   schedule:
     # Every 15 minutes, all day. GitHub starves schedules for HOURS at a time and the starved
-    # band keeps drifting (7-9pm CT first, then whole mornings on 9/21-9/22) — banding the
-    # dense cron around "known" windows kept losing. Out-of-window runs exit in seconds, the
-    # once-per-day lock dedupes, and the repo is public so runner minutes are free. What
-    # matters is that SOME run lands inside each HOLDER arming window (4:00-7:29am and
-    # 2:30-8:00pm CT) — the holder then sleeps and sends at the exact minute itself.
+    # band keeps drifting (7-9pm CT first, then whole mornings on 9/21-9/23) — so crons are
+    # NOT trusted to send anything on time anymore. Their job is (a) to BOOTSTRAP the RELAY
+    # chain (see the relay block in the run step) whenever it broke, and (b) catch-up backup
+    # inside the send windows. Out-of-window runs exit in seconds, the once-per-day lock
+    # dedupes, and the repo is public so runner minutes are free.
     - cron: '*/15 * * * *'
   # PUSH PINGER: pushing these branches fires the send immediately — punctual and immune to
   # GitHub's schedule starvation. A daily Claude Routine pushes them at ~7:35am / ~8:05pm CT
@@ -42,7 +44,7 @@ on:
       kind:
         description: 'Report to run (sf = weekly service failures + GP of lost loads, last Mon-Sat; sftrend = multi-week trend printed to the log, never emails)'
         type: choice
-        options: [morning, night, recheck, sf, sftrend]
+        options: [morning, night, recheck, sf, sftrend, relay]
         default: night
       offsubs:
         description: 'OFF-APP subs count (blank = use the MAB_OFFSUBS variable)'
@@ -58,13 +60,22 @@ on:
         default: ''
 
 concurrency:
-  # previews get their own lane so a dry run never queues behind a sleeping holder run
-  group: mab-reports-${{ github.event.inputs.preview == 'true' && 'preview' || 'send' }}
+  # previews get their own lane so a dry run never queues behind anything; RELAY runs sleep
+  # for hours, so each gets its own lane too — manual sends and crons must never queue
+  # behind one (the relay self-dedups via the API instead, oldest run id wins)
+  group: mab-reports-${{ github.event.inputs.preview == 'true' && 'preview' || (github.event.inputs.kind == 'relay' && format('relay-{0}', github.run_id) || 'send') }}
   cancel-in-progress: false
+
+# actions:write lets a relay run dispatch its successor with the built-in GITHUB_TOKEN
+# (workflow_dispatch is exempt from GitHub's no-recursive-runs rule)
+permissions:
+  contents: read
+  actions: write
 
 jobs:
   report:
     runs-on: ubuntu-latest
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -99,6 +110,77 @@ jobs:
           MAB_OFFICE_URL: https://bullion-magician-prancing.ngrok-free.dev
         run: |
           set -e
+          # ================= RELAY: the baton that replaces GitHub's starving cron ==========
+          # GitHub now skips scheduled runs for 4+ hour stretches at unpredictable times of day
+          # (whole mornings on 9/21-9/23), so NO arming window is safe. A RELAY run doesn't
+          # depend on the scheduler at all: it sleeps toward the next send time (7:30 morning,
+          # 9:00 re-check, 8:00pm night — CT), sends it right on the minute, and keeps going.
+          # Before the 6h job limit it dispatches a fresh relay with the built-in GITHUB_TOKEN
+          # (workflow_dispatch is exempt from the no-recursive-runs rule) and exits — the baton
+          # never touches a cron. Crons remain as the BOOTSTRAP (restart the chain if it ever
+          # breaks) and as catch-up backup; the once-per-day lock dedupes the layers.
+          GHAPI="https://api.github.com/repos/${{ github.repository }}/actions"
+          GHAUTH="Authorization: Bearer ${{ github.token }}"
+          live_relays() {  # count OTHER live relay runs; $1=only smaller run ids ('older') or all
+            for ST in in_progress queued; do
+              curl -s -H "$GHAUTH" "$GHAPI/workflows/report.yml/runs?status=$ST&per_page=50"
+            done | python3 -c "
+          import json,sys
+          me=int('${{ github.run_id }}'); only_older=(sys.argv[1]=='older'); n=0
+          dec=json.JSONDecoder(); buf=sys.stdin.read(); i=0
+          while i < len(buf):
+              try: j,k=dec.raw_decode(buf,i)
+              except ValueError: break
+              i=k
+              while i<len(buf) and buf[i] in ' \n\t': i+=1
+              for r in j.get('workflow_runs') or []:
+                  if r['id']==me or 'relay' not in (r.get('display_title') or ''): continue
+                  if only_older and r['id']>=me: continue
+                  n+=1
+          print(n)" "$1" || echo 0
+          }
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.kind }}" = "relay" ]; then
+            if [ "$(live_relays older)" -gt 0 ]; then
+              echo "relay: an older relay is already alive — this one bows out"
+              exit 0
+            fi
+            RELAY_T0=$(date +%s)
+            BUDGET=$((310*60))    # hand off well before the 350-min job timeout
+            while true; do
+              H=$(TZ=America/Chicago date +%H); H=$((10#$H)); M=$(TZ=America/Chicago date +%M); M=$((10#$M)); NOW=$((H*60+M))
+              DOW=$(TZ=America/Chicago date +%u)
+              if   [ "$NOW" -lt $((7*60+30)) ]; then KIND=morning; WAIT=$(( (7*60+30-NOW)*60 ))
+              elif [ "$NOW" -lt $((9*60)) ];    then KIND=recheck; WAIT=$(( (9*60-NOW)*60 ))
+              elif [ "$NOW" -lt $((20*60)) ];   then KIND=night;   WAIT=$(( (20*60-NOW)*60 ))
+              else KIND=morning; WAIT=$(( (24*60-NOW+7*60+30)*60 ))   # tomorrow 7:30
+              fi
+              REM=$(( BUDGET - ( $(date +%s) - RELAY_T0 ) ))
+              if [ "$WAIT" -gt "$REM" ]; then
+                if [ "$REM" -gt 300 ]; then
+                  echo "relay: $H:$M CT — next send ($KIND) is past my 6h limit; sleeping $(( (REM-120)/60 )) min then handing the baton over"
+                  sleep $(( REM - 120 ))
+                fi
+                curl -s -X POST -H "$GHAUTH" -H "Accept: application/vnd.github+json" \
+                  "$GHAPI/workflows/report.yml/dispatches" -d '{"ref":"master","inputs":{"kind":"relay"}}' \
+                  && echo "relay: baton handed to a fresh relay" \
+                  || echo "relay: BATON DISPATCH FAILED — the cron bootstrap will restart the chain"
+                exit 0
+              fi
+              echo "relay: $H:$M CT — sleeping $((WAIT/60)) min to send $KIND right on time"
+              sleep "$WAIT"
+              STATE=$(curl -s -m 12 -H 'ngrok-skip-browser-warning: true' "https://bullion-magician-prancing.ngrok-free.dev/reportstate?kind=$KIND" || true)
+              if echo "$STATE" | grep -q '"sentToday":true'; then
+                echo "relay: office already sent $KIND today — skipping"
+              else
+                node report-engine/report-cli.js "$KIND" --send || echo "relay: $KIND send failed — catch-up crons / watchdog retry (lock only set on success)"
+              fi
+              if [ "$KIND" = "morning" ] && [ "$DOW" = "1" ]; then
+                node report-engine/report-cli.js sf --send || echo "relay: sf failed — Monday catch-up runs retry"
+              fi
+              sleep 65   # step past the send minute so the next target computes forward
+            done
+          fi
+          # ==================================================================================
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             # the trend is a log-only report — it never mails, so it ignores preview/force entirely
             if [ "${{ github.event.inputs.kind }}" = "sftrend" ]; then
@@ -120,6 +202,17 @@ jobs:
             HOUR=$(TZ=America/Chicago date +%H); HOUR=$((10#$HOUR))
             MIN=$(TZ=America/Chicago date +%M); MIN=$((10#$MIN))
             NOWM=$((HOUR*60+MIN))
+            # RELAY BOOTSTRAP: every scheduled run checks whether a relay is alive (running or
+            # queued) and starts one if the chain ever broke. This is the crons' main job now —
+            # the relay does the punctual sending, the windows below are only the backup layer.
+            if [ "${{ github.event_name }}" = "schedule" ]; then
+              if [ "$(live_relays all)" -eq 0 ]; then
+                echo "no live relay found — bootstrapping the chain"
+                curl -s -X POST -H "$GHAUTH" -H "Accept: application/vnd.github+json" \
+                  "$GHAPI/workflows/report.yml/dispatches" -d '{"ref":"master","inputs":{"kind":"relay"}}' \
+                  || echo "relay bootstrap dispatch failed — next cron retries"
+              fi
+            fi
             # WEEKLY SERVICE FAILURES + GP OF LOST LOADS: Mondays, catch-up 7am-6:59pm CT, covering
             # last week Mon-Sat. Piggybacks on the existing hourly schedule; the once-per-day lock
             # (kind 'sf') means only the first successful run each Monday sends. A failure here must
@@ -164,29 +257,11 @@ jobs:
             # 15-min in-window entries are lottery tickets; a HOLDER is a guarantee: a run landing
             # shortly before a window stays alive and sleeps until the window opens, then sends
             # right on time itself. Concurrency queues later crons behind it; the lock dedupes.
-            # Night holder arms from 2:30pm CT (max sleep 5.5h, under the 6h job limit): on 8/26
-            # GitHub starved everything after 5:29pm, so the old 5pm arming was itself missable.
-            elif [ "$NOWM" -ge $((14*60+30)) ] && [ "$NOWM" -lt $((20*60)) ]; then
-              KIND=night
-              echo "holder: $HOUR:$MIN CT — holding (armable from 2:30pm) and sleeping $((20*60-NOWM)) min to send the night report at 8:00pm CT sharp"
-              sleep $(( (20*60-NOWM)*60 ))
-              HOUR=$(TZ=America/Chicago date +%H); HOUR=$((10#$HOUR)); MIN=$(TZ=America/Chicago date +%M); MIN=$((10#$MIN)); NOWM=$((HOUR*60+MIN))
-            # Morning holder arms from 4:00am CT: on 9/21 and 9/22 GitHub skipped EVERY cron from
-            # ~5:30am to past 9am, so the old 6:45-7:29 arming never got a run. Crons DO land
-            # pre-dawn (4:46, 4:54, 5:14, 5:28am those same days). The one run then carries the
-            # whole morning: sends at 7:30 sharp, Monday sf right after, re-check at 9:00 sharp
-            # (RECHECK_HOLD) — worst case 4:00am arm -> 9:00am recheck = 5h, under the 6h limit.
-            elif [ "$NOWM" -ge $((4*60)) ] && [ "$NOWM" -lt $((7*60+30)) ]; then
-              KIND=morning
-              echo "holder: $HOUR:$MIN CT — sleeping $((7*60+30-NOWM)) min to send the morning report at 7:30am CT sharp"
-              sleep $(( (7*60+30-NOWM)*60 ))
-              HOUR=$(TZ=America/Chicago date +%H); HOUR=$((10#$HOUR)); MIN=$(TZ=America/Chicago date +%M); MIN=$((10#$MIN)); NOWM=$((HOUR*60+MIN))
-              RECHECK_HOLD=1
-              if [ "$DOW" = "1" ]; then
-                node report-engine/report-cli.js sf --send || echo "sf report failed — a later Monday run retries (lock only set on success)"
-              fi
             else
-              echo "Central time $HOUR:$MIN is outside the send windows (7:30-11:59am morning, 8pm-11:59pm night) — nothing to do"
+              # No in-window catch-up to do. The old HOLDER runs (a cron sleeping toward the
+              # send time) lived here — replaced by the RELAY chain above, which doesn't need
+              # a cron to land anywhere near the window at all.
+              echo "Central time $HOUR:$MIN is outside the catch-up windows (7:30-11:59am morning, 8pm-11:59pm night) — relay bootstrap done, nothing else to do"
               exit 0
             fi
             # sf is cloud-only (the office PC doesn't know it) — send and stop before the office gate.
