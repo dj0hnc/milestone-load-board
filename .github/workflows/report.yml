@@ -146,6 +146,26 @@ jobs:
             fi
             RELAY_T0=$(date +%s)
             BUDGET=$((310*60))    # hand off well before the 350-min job timeout
+            relay_send() {  # $1 = kind. Office-sent check + send; once-per-day lock dedupes.
+              STATE=$(curl -s -m 12 -H 'ngrok-skip-browser-warning: true' "https://bullion-magician-prancing.ngrok-free.dev/reportstate?kind=$1" || true)
+              if echo "$STATE" | grep -q '"sentToday":true'; then
+                echo "relay: office already sent $1 today — skipping"
+              else
+                node report-engine/report-cli.js "$1" --send || echo "relay: $1 send failed (lock only set on success — a later relay/watchdog retries)"
+              fi
+            }
+            # STARTUP CATCH-UP: a freshly bootstrapped relay (chain was broken) first sends
+            # whatever is already due today — the lock skips anything an earlier run sent.
+            H=$(TZ=America/Chicago date +%H); H=$((10#$H)); M=$(TZ=America/Chicago date +%M); M=$((10#$M)); NOW=$((H*60+M))
+            DOW=$(TZ=America/Chicago date +%u)
+            if [ "$DOW" = "1" ] && [ "$H" -ge 7 ] && [ "$H" -le 18 ]; then
+              node report-engine/report-cli.js sf --send || echo "relay: sf catch-up failed — retried on the next bootstrap"
+            fi
+            if [ "$NOW" -ge $((7*60+30)) ] && [ "$H" -le 11 ]; then relay_send morning; fi
+            if [ "$NOW" -ge $((9*60)) ] && [ "$H" -le 11 ]; then
+              node report-engine/report-cli.js recheck --send || echo "relay: recheck catch-up failed"
+            fi
+            if [ "$H" -ge 20 ]; then relay_send night; fi
             while true; do
               H=$(TZ=America/Chicago date +%H); H=$((10#$H)); M=$(TZ=America/Chicago date +%M); M=$((10#$M)); NOW=$((H*60+M))
               DOW=$(TZ=America/Chicago date +%u)
@@ -168,14 +188,9 @@ jobs:
               fi
               echo "relay: $H:$M CT — sleeping $((WAIT/60)) min to send $KIND right on time"
               sleep "$WAIT"
-              STATE=$(curl -s -m 12 -H 'ngrok-skip-browser-warning: true' "https://bullion-magician-prancing.ngrok-free.dev/reportstate?kind=$KIND" || true)
-              if echo "$STATE" | grep -q '"sentToday":true'; then
-                echo "relay: office already sent $KIND today — skipping"
-              else
-                node report-engine/report-cli.js "$KIND" --send || echo "relay: $KIND send failed — catch-up crons / watchdog retry (lock only set on success)"
-              fi
+              relay_send "$KIND"
               if [ "$KIND" = "morning" ] && [ "$DOW" = "1" ]; then
-                node report-engine/report-cli.js sf --send || echo "relay: sf failed — Monday catch-up runs retry"
+                node report-engine/report-cli.js sf --send || echo "relay: sf failed — retried on the next bootstrap"
               fi
               sleep 65   # step past the send minute so the next target computes forward
             done
@@ -202,24 +217,23 @@ jobs:
             HOUR=$(TZ=America/Chicago date +%H); HOUR=$((10#$HOUR))
             MIN=$(TZ=America/Chicago date +%M); MIN=$((10#$MIN))
             NOWM=$((HOUR*60+MIN))
-            # RELAY BOOTSTRAP: every scheduled run checks whether a relay is alive (running or
-            # queued) and starts one if the chain ever broke. This is the crons' main job now —
-            # the relay does the punctual sending, the windows below are only the backup layer.
+            # RELAY BOOTSTRAP — the crons' ONLY job now. A scheduled run checks whether a relay
+            # is alive (running or queued) and starts one if the chain ever broke; the fresh
+            # relay's own STARTUP CATCH-UP then sends anything already due today. Crons must NOT
+            # send directly anymore: on 9/23 the old RECHECK_HOLD backup woke at 9:00 in parallel
+            # with the relay and the re-check went out TWICE — the once-per-day lock lives in the
+            # Actions cache, which a run only saves when it ENDS, so two same-minute runners
+            # can't see each other's locks. One sender (the relay) means no such race.
             if [ "${{ github.event_name }}" = "schedule" ]; then
               if [ "$(live_relays all)" -eq 0 ]; then
                 echo "no live relay found — bootstrapping the chain"
                 curl -s -X POST -H "$GHAUTH" -H "Accept: application/vnd.github+json" \
                   "$GHAPI/workflows/report.yml/dispatches" -d '{"ref":"master","inputs":{"kind":"relay"}}' \
                   || echo "relay bootstrap dispatch failed — next cron retries"
+              else
+                echo "relay chain is alive — nothing to do"
               fi
-            fi
-            # WEEKLY SERVICE FAILURES + GP OF LOST LOADS: Mondays, catch-up 7am-6:59pm CT, covering
-            # last week Mon-Sat. Piggybacks on the existing hourly schedule; the once-per-day lock
-            # (kind 'sf') means only the first successful run each Monday sends. A failure here must
-            # not kill the morning report on the same run, hence the || true.
-            DOW=$(TZ=America/Chicago date +%u)
-            if [ "${{ github.event_name }}" = "schedule" ] && [ "$DOW" = "1" ] && [ "$HOUR" -ge 7 ] && [ "$HOUR" -le 18 ]; then
-              node report-engine/report-cli.js sf --send || echo "sf report failed — next scheduled run retries (lock only set on success)"
+              exit 0
             fi
             if [ "${{ github.event_name }}" = "push" ]; then
               # ping branch push: the branch name IS the report kind. If the ping lands a bit
@@ -238,30 +252,8 @@ jobs:
                 echo "ping at $HOUR:$MIN CT is outside the $KIND window — ignoring"
                 exit 0
               fi
-            # CATCH-UP windows: wide on purpose. The once-per-day lock means only the FIRST run
-            # inside the window actually sends; the width only buys tolerance to cron delays.
-            # Morning goes out at/after 7:30am CT (gives drivers a little more time to start their
-            # first load so the no-show list reflects reality), catch-up until noon. Night 8pm-midnight.
-            elif [ "$HOUR" -eq 8 ] && [ "$MIN" -ge 15 ]; then
-              # morning catch-up AND re-check holder: attempt the morning send now (lock dedupes),
-              # then stay alive until 9:00am CT and run the re-check right on time — the 9am crons
-              # are as starvable as the evening ones (missed entirely on 8/17).
-              KIND=morning
-              RECHECK_HOLD=1
-            elif { [ "$HOUR" -eq 7 ] && [ "$MIN" -ge 30 ]; } || { [ "$HOUR" -ge 8 ] && [ "$HOUR" -le 11 ]; }; then
-              KIND=morning
-            elif [ "$HOUR" -ge 20 ] && [ "$HOUR" -le 23 ]; then
-              KIND=night
-            # HOLDER RUNS: GitHub reliably lands crons up to ~7pm CT but starves the 7-9pm band
-            # (nightly missed 3 nights running even at 15-min density). Pre-window crons and the
-            # 15-min in-window entries are lottery tickets; a HOLDER is a guarantee: a run landing
-            # shortly before a window stays alive and sleeps until the window opens, then sends
-            # right on time itself. Concurrency queues later crons behind it; the lock dedupes.
             else
-              # No in-window catch-up to do. The old HOLDER runs (a cron sleeping toward the
-              # send time) lived here — replaced by the RELAY chain above, which doesn't need
-              # a cron to land anywhere near the window at all.
-              echo "Central time $HOUR:$MIN is outside the catch-up windows (7:30-11:59am morning, 8pm-11:59pm night) — relay bootstrap done, nothing else to do"
+              echo "unexpected event ${{ github.event_name }} — nothing to do"
               exit 0
             fi
             # sf is cloud-only (the office PC doesn't know it) — send and stop before the office gate.
@@ -284,23 +276,8 @@ jobs:
               echo "office is UP and will send within its hour — cloud waits (backup hour is next)"
               exit 0
             fi
-            echo "scheduled run - Central hour $HOUR -> $KIND (cloud covering: office down or unsent)"
+            echo "ping - Central hour $HOUR -> $KIND (cloud covering: office down or unsent)"
             node report-engine/report-cli.js "$KIND" --send
-            # ~9AM RE-CHECK: second pass over the 7:30 call list (who fixed themselves, who is
-            # still down). Own once-per-day lock; report-cli skips it if morning just went out.
-            if [ "$KIND" = "morning" ] && [ "$HOUR" -ge 9 ] && [ "$HOUR" -le 11 ]; then
-              node report-engine/report-cli.js recheck --send
-            fi
-            # RE-CHECK HOLDER: an 8:15-8:59am run — or the 4:00-7:29 morning holder above, which
-            # sets RECHECK_HOLD after its 7:30 send — stays alive and fires the re-check at 9:00 sharp
-            if [ -n "${RECHECK_HOLD:-}" ]; then
-              H2=$(TZ=America/Chicago date +%H); H2=$((10#$H2)); M2=$(TZ=America/Chicago date +%M); M2=$((10#$M2)); N2=$((H2*60+M2))
-              if [ "$N2" -lt 540 ]; then
-                echo "recheck holder: $H2:$M2 CT — sleeping $((540-N2)) min until 9:00am CT"
-                sleep $(( (540-N2)*60 ))
-              fi
-              node report-engine/report-cli.js recheck --send
-            fi
           fi
       # save the rotated token/lock back to cache for the next run
       - uses: actions/cache/save@v4
