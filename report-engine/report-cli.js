@@ -61,6 +61,7 @@ const STATE_DIR = path.join(__dirname, '.state');
 const TOKEN_FILE = path.join(STATE_DIR, 'nm-token.json');
 const SENT_FILE = path.join(STATE_DIR, 'last-sent.json');
 const FLAGGED_FILE = path.join(STATE_DIR, 'morning-flagged.json');   // 7:30 call list, for the 9am re-check
+const PLAN_FILE = path.join(STATE_DIR, 'night-plan.json');           // 8pm fleet plan, for the morning plan-vs-actual diff
 const FORCE = !!arg('force', false);   // bypass the once-per-day lock (manual test runs)
 
 function sentToday(kind, dateStr) {
@@ -271,11 +272,16 @@ function centralDate(offsetDays) {
 
   let rep, subject;
   if (KIND === 'morning') {
-    rep = buildMorning(board, { offSubs: OFF, dateKey: today });
+    // last night's 8pm plan (persisted on the night send) → the email shows exactly which
+    // trucks were added/removed overnight instead of leaving a totals mismatch to puzzle over
+    let nightPlan = null;
+    try { const p = JSON.parse(fs.readFileSync(PLAN_FILE, 'utf8')); if (p && p.date === today) nightPlan = p; } catch (e) {}
+    rep = buildMorning(board, { offSubs: OFF, dateKey: today, nightPlan: nightPlan });
     const ev = await getEvidence(rep.rows);
-    if (ev && Object.keys(ev).length) rep = buildMorning(board, { offSubs: OFF, dateKey: today, evidence: ev });
+    if (ev && Object.keys(ev).length) rep = buildMorning(board, { offSubs: OFF, dateKey: today, evidence: ev, nightPlan: nightPlan });
     subject = '🚛 Morning No-Show Report — ' + (rep.callFirst != null && rep.callFirst !== rep.count ? rep.callFirst + ' to call / ' + rep.count + ' not working' : rep.count + ' not working') + ' (' + rep.dateStr + ' CT)';
     console.log('MORNING: not-working ' + rep.count + ' (call-first ' + rep.callFirst + ', staged ' + rep.stagedN + ') · working ' + rep.totalWorking + ' · off-app ' + OFF);
+    if (rep.planDiff) console.log('  vs 8pm plan (' + rep.planDiff.planned + '): +' + rep.planDiff.added.length + ' added [' + rep.planDiff.added.join(', ') + '] · -' + rep.planDiff.removed.length + ' removed [' + rep.planDiff.removed.join(', ') + ']');
   } else if (KIND === 'recheck') {
     // second pass over the 7:30 call list: who fixed themselves, who is still down
     let fl = null; try { fl = JSON.parse(fs.readFileSync(FLAGGED_FILE, 'utf8')); } catch (e) {}
@@ -306,6 +312,10 @@ function centralDate(offsetDays) {
     // persist the emailed call list so the ~9am re-check can diff against it
     if (KIND === 'morning') {
       try { fs.writeFileSync(FLAGGED_FILE, JSON.stringify({ date: today, sentAt: Date.now(), rows: (rep.rows || []).map(r => ({ num: r.num, driver: r.driver, orders: r.orders, fleet: r.fleet, state: r.state })) }, null, 1)); } catch (e) {}
+    }
+    // persist the night plan so tomorrow's morning report can show added/removed vs 8pm
+    if (KIND === 'night' && rep.byFleet) {
+      try { fs.writeFileSync(PLAN_FILE, JSON.stringify({ date: rep.dateKey, sentAt: Date.now(), byFleet: rep.byFleet }, null, 1)); } catch (e) {}
     }
   } else {
     console.log('(dry run — no email sent)\n');

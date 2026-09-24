@@ -69,6 +69,21 @@ function buildMorning(board, opts) {
     });
   });
   const totalAssigned = Object.keys(assigned).length;
+  // PLAN vs ACTUAL: diff today's board against the trucks the 8:00pm night report planned
+  // for today (opts.nightPlan, persisted by the night send), so "why did the fleet totals
+  // move overnight?" answers itself truck by truck instead of needing a manual audit.
+  let planDiff = null;
+  if (opts.nightPlan && opts.nightPlan.byFleet && opts.nightPlan.date === opts.dateKey) {
+    const planNums = {};   // KEY -> display num
+    Object.keys(opts.nightPlan.byFleet).forEach(f => (opts.nightPlan.byFleet[f] || []).forEach(n => {
+      const d = String(n).trim(); if (d) planNums[d.toUpperCase()] = d;
+    }));
+    const added = [], removed = [];
+    Object.keys(assigned).forEach(k => { if (!planNums[k]) added.push(assigned[k].num); });
+    Object.keys(planNums).forEach(k => { if (!assigned[k]) removed.push(planNums[k]); });
+    const srt = a => a.sort((x, y) => x.localeCompare(y, undefined, { numeric: true }));
+    planDiff = { planned: Object.keys(planNums).length, added: srt(added), removed: srt(removed) };
+  }
   const rows = [];
   const notDue = [];        // assigned but the order start time hasn't arrived yet → not late
   const acceptedIdle = [];  // driver accepted the job in NewMile but no movement/loads yet
@@ -116,7 +131,11 @@ function buildMorning(board, opts) {
   let text = 'MAB — MORNING NO-SHOW REPORT (' + dstr + ' CT)\n';
   text += 'Assigned today: ' + totalAssigned + '  |  Not working: ' + rows.length + '  (' + parked + ' parked, ' + review + ' no GPS)';
   if (evMap) text += '  |  ☎ CALL FIRST: ' + callFirst + ' · ⏳ likely staged: ' + stagedN;
-  text += '  |  accepted, not moving yet: ' + acceptedIdle.length + '  |  not due yet: ' + notDue.length + '\n\n';
+  text += '  |  accepted, not moving yet: ' + acceptedIdle.length + '  |  not due yet: ' + notDue.length + '\n';
+  if (planDiff) text += 'Changes vs last night\'s 8:00pm plan (' + planDiff.planned + ' planned): +' + planDiff.added.length + ' added'
+    + (planDiff.added.length ? ' [' + planDiff.added.join(', ') + ']' : '') + ' · (' + planDiff.removed.length + ') removed'
+    + (planDiff.removed.length ? ' [' + planDiff.removed.join(', ') + ']' : '') + '\n';
+  text += '\n';
   fleets.forEach(f => { text += '== ' + f + ' — ' + byFleet[f].length + ' not working ==\n'; byFleet[f].forEach(r => { const ev = evLine(r); text += '  - ' + (evMap ? (r.staged ? '⏳ ' : '☎ ') : '') + r.num + (r.driver ? ' (' + r.driver + ')' : '') + ' · ' + (r.state === 'parked' ? 'PARKED, 0 loads' : 'NO GPS — call') + (ev ? ' · [' + ev + ']' : '') + ' -> ' + r.orders.join(', ') + '\n'; }); text += '\n'; });
   if (!rows.length) text += 'No confirmed no-shows to chase. ✅\n';
   text += '\n=== WORKING / ROLLING by fleet (' + totalWorking + ') ===\n';
@@ -142,6 +161,11 @@ function buildMorning(board, opts) {
     + (evMap ? ' &middot; <b style="color:#b4452e">☎️ call first: ' + callFirst + '</b> &middot; ⏳ likely staged: ' + stagedN : '')
     + ' &middot; accepted, not moving yet: ' + acceptedIdle.length + ' &middot; not due yet: ' + notDue.length + '</div>'
     + (evMap ? '<div style="color:#667;font-size:12px;margin:-6px 0 10px">☎️ = no movement today / engine off / far from pickup — call these first. ⏳ = moved recently, engine running, or sitting AT the pickup — probably staged, check later.</div>' : '');
+  if (planDiff) html += '<div style="background:#f6f8fb;border:1px solid #e3e8f0;border-radius:6px;padding:8px 12px;font-size:12.5px;color:#445;margin:0 0 10px">'
+    + '<b>🔀 Changes vs last night\'s 8:00pm plan</b> (' + planDiff.planned + ' trucks planned): '
+    + '<span style="color:#3a9d6e;font-weight:700">+' + planDiff.added.length + ' added</span>' + (planDiff.added.length ? ' — ' + esc(planDiff.added.join(', ')) : '')
+    + ' &middot; <span style="color:#b4452e;font-weight:700">(' + planDiff.removed.length + ') removed</span>' + (planDiff.removed.length ? ' — ' + esc(planDiff.removed.join(', ')) : '')
+    + '</div>';
   if (!rows.length) html += '<div style="color:#3a9d6e;font-size:15px">No confirmed no-shows to chase. 🎉</div>';
   fleets.forEach(f => { html += '<h3 style="margin:14px 0 2px">' + esc(f) + ' <span style="color:#99a;font-weight:400">— ' + byFleet[f].length + ' not working</span></h3>' + tbl(byFleet[f]); });
   // MIDDLE: combined totals by fleet (not working | working)
@@ -163,7 +187,7 @@ function buildMorning(board, opts) {
     + '<table style="border-collapse:collapse;font-size:13px;width:100%;margin-bottom:6px"><tr style="background:#f3f4f6"><td style="padding:3px 9px">Truck</td><td style="padding:3px 9px">Driver</td><td style="padding:3px 9px">Assigned to</td></tr>'
     + working[f].map(w => '<tr><td style="padding:3px 9px;font-weight:700">' + esc(w.num) + '</td><td style="padding:3px 9px">' + esc(w.driver) + '</td><td style="padding:3px 9px">' + esc((w.orders || []).join(', ')) + '</td></tr>').join('') + '</table>'; });
   html += '<div style="color:#99a;font-size:11px;margin-top:12px">Milestone OS &middot; Samsara movement + NewMile assignments. "Parked" = assigned, 0 loads, not moving. "No GPS" = subhauler/no device — call to confirm. "Working" = hauled a load, rolling, or moving.</div></div>';
-  return { kind: 'morning', count: rows.length, parked: parked, review: review, totalAssigned: totalAssigned, byFleet: byFleet, rows: rows, working: working, totalWorking: totalWorking, offSubs: off, grandTotalWorking: totalWorking + off, notDue: notDue, acceptedIdle: acceptedIdle, callFirst: callFirst, stagedN: stagedN, dateKey: opts.dateKey || '', text: text, html: html, dateStr: dstr };
+  return { kind: 'morning', count: rows.length, parked: parked, review: review, totalAssigned: totalAssigned, byFleet: byFleet, rows: rows, working: working, totalWorking: totalWorking, offSubs: off, grandTotalWorking: totalWorking + off, notDue: notDue, acceptedIdle: acceptedIdle, callFirst: callFirst, stagedN: stagedN, planDiff: planDiff, dateKey: opts.dateKey || '', text: text, html: html, dateStr: dstr };
 }
 
 // ---------- RE-CHECK (~9 AM): second pass over the morning call list. Who started working on
