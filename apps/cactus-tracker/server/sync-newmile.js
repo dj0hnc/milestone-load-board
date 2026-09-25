@@ -25,7 +25,7 @@
  *     first load lands — no double-marking a truck that is already dispatched.
  */
 const { all, get, run, metaSet, nowISO } = require('./db');
-const { normNum, splitNameFlag, canonicalTruckNumber, displayTruckNumber, ktDivisionHint, shortTrailer, normLoadTruck, ckjAliasKey, todayCT, shiftISO, reportDateToISO } = require('./util');
+const { normNum, splitNameFlag, canonicalTruckNumber, isKtScoped, displayTruckNumber, ktDivisionHint, shortTrailer, normLoadTruck, ckjAliasKey, todayCT, shiftISO, reportDateToISO } = require('./util');
 
 const ACTIVITY_WINDOW_DAYS = 21;   // enough history to compute "X días sin carga" up to red (>=14)
 
@@ -81,8 +81,14 @@ function matchLoadRow(r, orgs, subNames) {
     return { orgId: 'CACTUS', num: normNum(r.truck_number), autoCreate: true, sub: true, tags: 'SUBHAULER' };
   }
   const cand = normNum(r.truck_number).replace(/\s+/g, '');
+  const ktOnly = isKtScoped(cand, fleetName);
+  if (ktOnly) {
+    const kh = get('SELECT org_id, number FROM trucks WHERE org_id = ? AND number = ?', 'KT', canonicalTruckNumber('KT', cand))
+      || get('SELECT org_id, number FROM trucks WHERE org_id = ? AND display_number = ?', 'KT', cand);
+    if (kh) return { orgId: 'KT', num: kh.number, autoCreate: false };
+  }
   const hit = get('SELECT org_id, number FROM trucks WHERE number = ?', cand);
-  if (hit) return { orgId: hit.org_id, num: hit.number, autoCreate: false };
+  if (hit && !(ktOnly && hit.org_id !== 'KT')) return { orgId: hit.org_id, num: hit.number, autoCreate: false };
   // el display también cuenta ("LT245" guardado como display del sub "245")
   const hd = get('SELECT org_id, number FROM trucks WHERE display_number = ?', cand);
   if (hd) return { orgId: hd.org_id, num: hd.number, autoCreate: false };
@@ -674,12 +680,17 @@ async function coverAssignmentsFor(client, dateISO, label, summary, cactus, toda
         const alias = ckjAliasKey(n);
         if (alias && alias !== n) candidates.push(alias);
         let hit = null;
+        // KT-scoped ("KT-1648 W", CKJ fleet) → only KT rows may match; bare digits never cross to Cactus
+        const md0 = metaByNum.get(n) || {};
+        const orgLock = isKtScoped(md0.raw || n, md0.fleet) ? 'KT' : null;
         for (const c of [...new Set(candidates)]) {
-          hit = get('SELECT org_id, number, archived FROM trucks WHERE number = ?', c);
+          hit = orgLock ? get('SELECT org_id, number, archived FROM trucks WHERE org_id = ? AND number = ?', orgLock, c)
+                        : get('SELECT org_id, number, archived FROM trucks WHERE number = ?', c);
           if (hit) break;
         }
         // último recurso: display_number ("LT245" del sub 245, "211" del IC CKJ211)
-        if (!hit) hit = get('SELECT org_id, number, archived FROM trucks WHERE display_number = ?', n);
+        if (!hit) hit = orgLock ? get('SELECT org_id, number, archived FROM trucks WHERE org_id = ? AND display_number = ?', orgLock, n)
+                                : get('SELECT org_id, number, archived FROM trucks WHERE display_number = ?', n);
         // ARANGO por DÍGITOS: el mismo troke está escrito de mil formas (AT269 / 269 - Arango /
         // ARANGO-269). Si trae "ARANGO"/"AT<díg>", matchea CUALQUIER troke Arango con esos
         // dígitos — así cuenta una vez y NO crea un duplicado nuevo.

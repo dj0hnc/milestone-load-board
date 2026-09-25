@@ -72,6 +72,13 @@ function displayTruckNumber(raw) {
 // Org-specific canonical number. CKJ/KT trucks appear as "KT-7040 P" in the truck
 // resource, "CKJ7040" in load tickets and "KT-7040" in Samsara — canonical is the
 // bare digits (same rule as the desktop's rotation.js). Everything else as-is.
+// KT-SCOPED number: "KT-1648 W" / "CKJ7040" / anything from the CKJ Transport (Kennemer) fleet is a
+// KT truck. Resolvers must look it up INSIDE the KT org and never fall back to a Cactus truck with
+// the same digits (2026-09-24: KT-1648 W's assignment showed up on Cactus 1648).
+function isKtScoped(raw, fleetName) {
+  const s = normNum(raw || '').replace(/\s+/g, '');
+  return /^(KT|CKJ)-?\d/i.test(s) || /CKJ|KENNEMER/i.test(String(fleetName || ''));
+}
 function canonicalTruckNumber(orgId, raw) {
   const s = normNum(raw).replace(/\s+/g, '');
   if (orgId === 'KT') {
@@ -159,4 +166,5 @@ function reportDateToISO(s) {
   return `${y}-${String(m[1]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`;
 }
 
-module.exports = { normNum, canonArea, areaMergeKey, splitNameFlag, canonicalTruckNumber, displayTruckNumber, ktDivisionHint, shortTrailer, normLoadTruck, ckjAliasKey, ctParts, todayCT, shiftISO, daysBetween, weekDatesCT, reportDateToISO, CT };
+module.exports = {
+  isKtScoped, normNum, canonArea, areaMergeKey, splitNameFlag, canonicalTruckNumber, displayTruckNumber, ktDivisionHint, shortTrailer, normLoadTruck, ckjAliasKey, ctParts, todayCT, shiftISO, daysBetween, weekDatesCT, reportDateToISO, CT };

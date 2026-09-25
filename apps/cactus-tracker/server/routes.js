@@ -9,7 +9,7 @@
 const express = require('express');
 const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
-const { todayCT, weekDatesCT, daysBetween, normNum, canonArea, canonicalTruckNumber, shortTrailer } = require('./util');
+const { todayCT, weekDatesCT, daysBetween, normNum, canonArea, canonicalTruckNumber, isKtScoped, shortTrailer } = require('./util');
 const { syncRoster, syncActivity, syncAssignments, scanRipRap, reconcileICs, syncParkingFromNewMile, auditParkingVsNewMile, syncInvalidTickets } = require('./sync-newmile');
 const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking, locateTruck, debugHOS, auditHOS, refreshHOSTruck, cameraSnapshot, cameraCheck } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
@@ -1287,11 +1287,14 @@ function createRouter({ config, newmile, log }) {
     const cands = [n, canonicalTruckNumber('KT', n)];
     if (/^\d{1,4}$/.test(n)) cands.push('CKJ' + n);
     if (n.startsWith('C') && /^\d+$/.test(n.slice(1))) cands.push(n.slice(1));
+    const orgLock = isKtScoped(n) ? 'KT' : null;   // "KT-1648 W" must never resolve to Cactus 1648
     for (const c of [...new Set(cands)]) {
-      const hit = get('SELECT org_id, number, display_number FROM trucks WHERE number = ?', c);
+      const hit = orgLock ? get('SELECT org_id, number, display_number FROM trucks WHERE org_id = ? AND number = ?', orgLock, c)
+                          : get('SELECT org_id, number, display_number FROM trucks WHERE number = ?', c);
       if (hit) return hit;
     }
-    return get('SELECT org_id, number, display_number FROM trucks WHERE display_number = ?', n) || null;
+    return (orgLock ? get('SELECT org_id, number, display_number FROM trucks WHERE org_id = ? AND display_number = ?', orgLock, n)
+                    : get('SELECT org_id, number, display_number FROM trucks WHERE display_number = ?', n)) || null;
   }
   router.get('/api/orders', async (req, res) => {
     if (!newmile) return res.status(503).json({ error: 'NewMile not configured' });
