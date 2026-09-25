@@ -765,7 +765,7 @@ async function coverAssignmentsFor(client, dateISO, label, summary, cactus, toda
       }
       // los que estaban confirmados pero YA NO aparecen en NewMile pierden el ⚡ (p. ej.
       // borraron la asignación) — vuelven a ✓ "planeado aquí, no está en NewMile"
-      for (const r of all('SELECT org_id, number, source FROM dispatch_state WHERE date = ? AND nm_confirmed = 1', dateISO)) {
+      for (const r of all(`SELECT org_id, number, source FROM dispatch_state WHERE date = ? AND (nm_confirmed = 1 OR source = 'auto')`, dateISO)) {
         if (!matched.has(r.org_id + '|' + r.number)) {
           // a mark the SYNC created ('auto') has no reason to exist once NewMile dropped the truck →
           // remove it (a lingering auto 'a' showed Cactus 1648 assigned after a mismatch was fixed).
