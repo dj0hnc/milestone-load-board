@@ -743,7 +743,10 @@ async function coverAssignmentsFor(client, dateISO, label, summary, cactus, toda
             dateISO, hit.org_id, hit.number, nowISO(), dest, lst);
           summary[label + 'Covered'] = (summary[label + 'Covered'] || 0) + 1;
           changed++;
-        } else if (st.state !== 'a' && st.source !== 'manual') {
+        } else if (st.state !== 'a' && (st.source !== 'manual' || st.state === 'p')) {
+          // (2026-09-28, caso 1280) una marca MANUAL 'p' (abierto/disponible) es el estado neutro, no
+          // un down/NW a propósito: si NewMile lo tiene asignado, sube a ASIGNADO. Down/NW manuales
+          // siguen intocables.
           // ASIGNADO EN NEWMILE PERO EL ESTADO LOCAL NO ES 'a' (2026-08-31, caso 1090): un estado
           // AUTO/carry/pending viejo (down heredado, "open") dejaba al troke "sin asignar" aunque
           // estuviera en órdenes. Si NO fue marca MANUAL del dispatcher, súbelo a ASIGNADO — un
