@@ -219,9 +219,9 @@ const SUB_STAGES=[
   ["1349821620","Qualified + Compliance Review"],["1409282066","Compliance Document Collection"],
   ["1349821621","NetSuite Setup"],["1349821622","Onboarding & NewMile Training"],
   ["1358630992","Cleared Sub / Active"],["1380231940","Looking for Lease On"],
-  ["1413127551","No Response"],["1363909224","Disqualified"]
+  ["1413127551","No Response"],["1448067425","Save For Later"],["1363909224","Disqualified"]
 ];
-const ORDER=["Qualified Lead","New Lead Outreach","Contacted, Awaiting Response","Qualified + Compliance Review","Compliance Document Collection","NetSuite Setup","Onboarding & NewMile Training","Cleared Sub / Active","Looking for Lease On","No Response","Disqualified"];
+const ORDER=["Qualified Lead","New Lead Outreach","Contacted, Awaiting Response","Qualified + Compliance Review","Compliance Document Collection","NetSuite Setup","Onboarding & NewMile Training","Cleared Sub / Active","Looking for Lease On","No Response","Save For Later","Disqualified"];
 const stageRank=l=>{const i=ORDER.indexOf(l||"");return i<0?ORDER.length:i;};
 // Lane routing by stage label (works for both recruitment pipelines).
 function laneOf(r){
@@ -268,7 +268,7 @@ function whereStr(r){
 }
 function isDue(r){return !!(r.next_follow&&r.next_follow<=todayISO());}
 // ---- catch-up logic: who needs Juan right now ----
-const CLOSED=["Disqualified","No Response"];
+const CLOSED=["Disqualified","No Response","Save For Later"];   // parked leads stay out of the catch-up
 function isClosed(r){return CLOSED.includes(r.stage_label||"")||r.local_status==="paused";}
 function isWorking(r){return !isClosed(r)&&laneOf(r)!=="cleared";}   // anything still moving through the pipeline
 function touchedToday(r){return !!(r.last_note&&String(r.last_note.ts).slice(0,10)===todayISO());}
@@ -469,7 +469,7 @@ function renderList(){
         <option value="nofu"${F.only==="nofu"?" selected":""}>🟡 Working, no follow-up set</option>
         <option value="never"${F.only==="never"?" selected":""}>🆕 Never touched (no note, no date)</option>
         <option value="worked"${F.only==="worked"?" selected":""}>✅ Worked today</option>
-        <option value="closed"${F.only==="closed"?" selected":""}>🗄 Closed (Disqualified / No Response)</option>
+        <option value="closed"${F.only==="closed"?" selected":""}>🗄 Closed (Disqualified / No Response / Save For Later)</option>
         <option value="ready"${F.only==="ready"?" selected":""}>🎓 Ready to train (NetSuite + Onboarding)</option>
         <option value="innm"${F.only==="innm"?" selected":""}>✅ Already in NewMile</option>
         <option value="notnm"${F.only==="notnm"?" selected":""}>🚧 On my desk, NOT in NewMile yet</option>
