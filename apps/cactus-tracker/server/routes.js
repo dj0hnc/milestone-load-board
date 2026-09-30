@@ -939,7 +939,7 @@ function createRouter({ config, newmile, log }) {
     const p = req.path;
     if (p === '/import' || p === '/pending' || p === '/pending/ack') return next();
     if (recruitAllowed(await identityOf(req))) return next();
-    res.status(403).json({ error: 'restricted', hint: 'Recruiting is Juan & Tony only — sign in to NewMile on the Board' });
+    res.status(403).json({ error: 'restricted', hint: 'Recruiting is restricted — sign in to NewMile on the Board' });
   });
 
   // ---------- 🤝 RECRUITING (HubSpot Subhauler pipeline — Juan's onboarding cockpit) ----------
@@ -1741,8 +1741,11 @@ function createRouter({ config, newmile, log }) {
   // Sin identidad permitida: la página pide conectarse y las APIs regresan 403. Los canales
   // de máquina (import/pending/ack) siguen con states-key, no aplican aquí.
   function recruitAllowed(identity) {
+    // 2026-09-30 (Juan: "dale acceso a todos, necesitaré ayuda"): default '*' = every signed-in tracker
+    // user (the PIN session already gates the page). A comma list of name prefixes still restricts it.
+    const allow = String(metaGet('recruit_allow', '*')).toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+    if (allow.includes('*')) return true;
     if (!identity) return false;
-    const allow = String(metaGet('recruit_allow', 'juan,tony')).toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
     const id = String(identity).toLowerCase();
     return allow.some(a => id.startsWith(a) || id.includes(a));
   }

@@ -2441,12 +2441,12 @@ const ML_TOOLS=[
  {name:"truck_info",description:"Full live dossier of ONE truck: driver, phone, status, today's mark, NewMile assignment, loads, money, HOS, GPS location, note.",input_schema:{type:"object",properties:{number:{type:"string",description:"truck number, e.g. 720 or KT105"}},required:["number"]}},
  {name:"truck_history",description:"The call log of a truck — everything ever discussed with this driver, newest first (author + date). Use before advising about a driver.",input_schema:{type:"object",properties:{number:{type:"string"},limit:{type:"number",description:"entries, default 12"}},required:["number"]}},
  {name:"earnings",description:"Weekly freight-money ranking across the fleet (who earned most / least this week). Use for fairness calls.",input_schema:{type:"object",properties:{order:{type:"string",enum:["top","low"],description:"top = highest earners, low = lowest"},limit:{type:"number",description:"default 8"}}}},
- {name:"recruit_brief",description:"Recruiting desk (Juan & Tony only): subhauler deals by stage with company, trucks, follow-up date (overdue flagged) and last note. Others get a restricted message.",input_schema:{type:"object",properties:{}}},
+ {name:"recruit_brief",description:"Recruiting desk: subhauler deals by stage with company, trucks, follow-up date (overdue flagged) and last note. Others get a restricted message.",input_schema:{type:"object",properties:{}}},
  {name:"add_call_note",description:"WRITE — save a note to a truck's call log (the dispatcher dictates: 'anótale al 720 que…'). Shows a confirm card; signed with the dispatcher's name.",input_schema:{type:"object",properties:{number:{type:"string"},text:{type:"string",description:"the note, cleaned up (fix dictation typos, keep meaning)"},kind:{type:"string",enum:["call","note"],description:"call = talked to driver (default), note = general note"}},required:["number","text"]}},
  {name:"mark_day",description:"WRITE — mark a truck for the VIEWED day: covered (assigned ✓), down (X), nowork (NW — has a reason not to work), or pending (clear the mark). Confirms first.",input_schema:{type:"object",properties:{number:{type:"string"},mark:{type:"string",enum:["covered","down","nowork","pending"]}},required:["number","mark"]}},
  {name:"set_status",description:"WRITE — change a truck's standing status: ok, shop, down, no_driver, vacation, deleased (+optional note, e.g. 'transmission, back Friday'). Confirms first.",input_schema:{type:"object",properties:{number:{type:"string"},status:{type:"string",enum:["ok","shop","down","no_driver","vacation","deleased"]},note:{type:"string"}},required:["number","status"]}},
- {name:"recruit_note",description:"WRITE (Juan & Tony) — save a follow-up note on a recruiting deal, matched by company name. Confirms first.",input_schema:{type:"object",properties:{company:{type:"string",description:"company name or part of it"},text:{type:"string"}},required:["company","text"]}},
- {name:"recruit_followup",description:"WRITE (Juan & Tony) — set the next follow-up date on a recruiting deal (YYYY-MM-DD). Confirms first.",input_schema:{type:"object",properties:{company:{type:"string"},date:{type:"string",description:"YYYY-MM-DD"}},required:["company","date"]}}
+ {name:"recruit_note",description:"WRITE — save a follow-up note on a recruiting deal, matched by company name. Confirms first.",input_schema:{type:"object",properties:{company:{type:"string",description:"company name or part of it"},text:{type:"string"}},required:["company","text"]}},
+ {name:"recruit_followup",description:"WRITE — set the next follow-up date on a recruiting deal (YYYY-MM-DD). Confirms first.",input_schema:{type:"object",properties:{company:{type:"string"},date:{type:"string",description:"YYYY-MM-DD"}},required:["company","date"]}}
 ];
 function mlFindTruck(num){
   const q=String(num||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
@@ -2516,7 +2516,7 @@ async function mlExec(name,inp){
     }
     if(name==="recruit_brief"){
       const rec=await mlRecruits();
-      if(rec.restricted)return {restricted:true,message:"Recruiting is Juan & Tony only — this user is not allowed to see it."};
+      if(rec.restricted)return {restricted:true,message:"Recruiting is restricted for this user."};
       if(rec.error)return {error:rec.error};
       const today=board.today;
       return {deals:rec.list.map(r=>({company:r.company,contact:r.contact||undefined,phone:r.phone||undefined,stage:r.stage_label||r.stage,trucks:r.trucks||undefined,truck_type:r.truck_type||undefined,lead_source:r.lead_source||undefined,follow_up:r.next_follow||undefined,follow_up_overdue:(r.next_follow&&r.next_follow<today)||undefined,days_in_stage:r.stage_since?Math.round((Date.now()-Date.parse(r.stage_since))/86400e3):undefined,last_note:r.last_note?(String(r.last_note.ts).slice(0,10)+" ("+r.last_note.author+"): "+r.last_note.text):undefined}))};
@@ -2560,7 +2560,7 @@ async function mlExec(name,inp){
     }
     if(name==="recruit_note"||name==="recruit_followup"){
       const rec=await mlRecruits();
-      if(rec.restricted)return {restricted:true,message:"Recruiting is Juan & Tony only."};
+      if(rec.restricted)return {restricted:true,message:"Recruiting is restricted for this user."};
       if(rec.error)return {error:rec.error};
       const hits=mlMatchRecruit(rec.list,inp.company);
       if(!hits.length)return {error:"no recruiting deal matches '"+inp.company+"'"};
