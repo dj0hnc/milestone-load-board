@@ -135,6 +135,16 @@ function createRouter({ config, newmile, log }) {
       ? all(`SELECT t.* FROM trucks t JOIN orgs o ON o.id = t.org_id
              WHERE o.enabled = 1 AND t.archived = 0 ${orgId === 'SUBS' ? "AND t.is_sub = 1 AND NOT (t.org_id = 'KT' AND t.number LIKE 'CKJ%')" : ''}`)
       : all('SELECT * FROM trucks WHERE org_id = ? AND archived = 0', orgId);
+    // 📍 NewMile's nightly parking ping vs OUR Samsara night (nightly audit in meta parking_audit):
+    // one quiet tag on the chip so Juan can see whether NewMile's location agrees with the tracker.
+    try {
+      const a = JSON.parse(metaGet('parking_audit', '') || 'null');
+      if (a && Array.isArray(a.rows)) {
+        const byNm = new Map(); const at = (a.summary && a.summary.at) || '';
+        for (const r of a.rows) if (r.nm_id != null) byNm.set(String(r.nm_id), { v: r.verdict, km: r.km == null ? null : r.km, at });
+        for (const t of trucks) { const p = t.nm_truck_id != null ? byNm.get(String(t.nm_truck_id)) : null; if (p) t.nm_park = p; }
+      }
+    } catch (e) { /* no audit yet → no tag */ }
     const states = virtual
       ? all('SELECT * FROM dispatch_state WHERE date = ?', date)
       : all('SELECT * FROM dispatch_state WHERE date = ? AND org_id = ?', date, orgId);

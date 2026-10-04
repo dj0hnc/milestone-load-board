@@ -124,6 +124,8 @@ body.sz-l .chip .num{font-size:29px;}
 .chip .hos{font-size:10.5px;font-weight:600;color:var(--mut);margin-top:2px;line-height:1.35;}
 .chip .hos b.ok{color:var(--green);} .chip .hos b.low{color:#b8853a;} .chip .hos b.out{color:var(--red);}
 .chip .park.mut{color:#9aa1b2;font-weight:600;}
+.chip .nmp{font-size:10px;font-weight:700;letter-spacing:.2px;}
+.chip .nmp.ok{color:var(--green);} .chip .nmp.bad{color:var(--red);} .chip .nmp.mut{color:#9aa1b2;}
 .btn-loc{position:absolute;bottom:6px;right:6px;width:24px;height:24px;border-radius:8px;border:1.5px solid #d5d9e2;background:#f6f7fa;color:#9aa1b2;font-size:12px;cursor:pointer;line-height:1;}
 .btn-loc:hover{border-color:var(--blue);color:var(--blue);}
 .btn-loc.busy{border-color:var(--blue);color:var(--blue);animation:locspin 1s linear infinite;}
@@ -911,7 +913,16 @@ function parkHtml(t){
   if(!hasGPS(t))return `<div class="park mut">🅿 no Samsara</div>`;
   if(!t.parked_city)return `<div class="park mut">🅿 no GPS yet — tap ⟳</div>`;
   const tm=t.parked_at?new Date(t.parked_at):null;
-  return `<div class="park">🅿 ${esc(t.parked_city)}${tm?` · ${tm.toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"})}`:""}</div>`;
+  return `<div class="park">🅿 ${esc(t.parked_city)}${tm?` · ${tm.toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"})}`:""}${nmParkTag(t)}</div>`;
+}
+// NewMile's nightly parking ping vs where Samsara says the truck slept (nightly audit) — quiet tag
+function nmParkTag(t){
+  const p=t.nm_park; if(!p||!p.v||p.v==='no_samsara'||p.v==='neither'||p.v==='error')return "";
+  const when=p.at?(" · audited "+new Date(p.at).toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"})):"";
+  const mi=p.km==null?"":(Math.round(p.km*0.621*10)/10)+" mi";
+  if(p.v==='match')return ` <span class="nmp ok" title="NewMile parking matches Samsara (${mi} apart)${when}">· NM ✓</span>`;
+  if(p.v==='nm_missing')return ` <span class="nmp mut" title="NewMile has no parking location for this truck yet${when}">· NM —</span>`;
+  return ` <span class="nmp bad" title="NewMile parking is ${mi} from where the truck slept (${p.v==='stale'?'stale':'off'})${when}">· NM ✗ ${mi}</span>`;
 }
 let _locating=new Set();
 async function locateNow(org,num){

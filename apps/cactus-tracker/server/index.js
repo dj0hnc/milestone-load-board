@@ -22,7 +22,7 @@ const { open, metaGet, metaSet, backupTo, DATA_DIR } = require('./db');
 const seed = require('./seed');
 const { createRouter } = require('./routes');
 const { NewMileClient } = require('./newmile-client');
-const { syncRoster, syncActivity, syncAssignments, scanRipRap, syncInvalidTickets } = require('./sync-newmile');
+const { syncRoster, syncActivity, syncAssignments, scanRipRap, syncInvalidTickets, auditParkingVsNewMile } = require('./sync-newmile');
 const places = require('./places'); // 📍 plants catalog (nightly rebuild)
 const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking } = require('./sync-samsara');
 const { snapshotAllToday } = require('./history');
@@ -431,6 +431,8 @@ function createTracker(opts) {
           // 📍 plants / drop-offs catalog for the zone map: names + counts from 30 days of orders, geocode the new ones
           try { log('places rebuild → ' + JSON.stringify(await places.rebuild(newmile, {}))); } catch (e) { log('places rebuild error: ' + e.message); }
           try { log('places learn (Samsara stops) → ' + JSON.stringify(await places.learnFromSamsara(config, { days: 4, client: newmile }))); } catch (e) { log('places learn error: ' + e.message); }
+          // 📍 NewMile parking ping vs Samsara night — feeds the "NM ✓/✗" tag on the chips (one get_resource per truck, nightly only)
+          try { log('parking audit (NewMile ping vs Samsara) → ' + JSON.stringify(await auditParkingVsNewMile(newmile))); } catch (e) { log('parking audit error: ' + (e.message || e)); }
         } else log('roster sync saltado: NewMile sin sesión');
       }
       // Samsara diario desde las 4:10; el parking log solo se escribe si de verdad
