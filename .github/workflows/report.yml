@@ -280,8 +280,20 @@ jobs:
             node report-engine/report-cli.js "$KIND" --send
           fi
       # save the rotated token/lock back to cache for the next run
-      - uses: actions/cache/save@v4
+      # Save the rotating NewMile token + locks ONLY when this run actually connected to NewMile.
+      # restore-keys picks the NEWEST mab-state-* entry, so a run that failed to connect (its
+      # .state still holds the dead token) must not save: on 10/5 a 5-hour relay that had started
+      # before the token was fixed was still carrying the dead session and would have written it
+      # over the good one, taking the night report down again. report-cli writes the marker right
+      # after a successful connect; no marker, nothing worth keeping.
+      - name: Keep the token cache only if NewMile connected
+        id: tokok
         if: always()
+        run: |
+          if [ -f report-engine/.state/connect-ok ]; then echo "ok=yes" >> "$GITHUB_OUTPUT"
+          else echo "ok=no" >> "$GITHUB_OUTPUT"; echo "NewMile never connected in this run — leaving the cached token untouched"; fi
+      - uses: actions/cache/save@v4
+        if: always() && steps.tokok.outputs.ok == 'yes'
         with:
           path: report-engine/.state
           key: mab-state-${{ github.run_id }}
