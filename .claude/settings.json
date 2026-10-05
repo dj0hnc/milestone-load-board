@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git fetch *)",
+      "mcp__github__get_job_logs",
+      "mcp__github__actions_list",
+      "mcp__Microsoft_365__outlook_email_search",
+      "mcp__aa4987db-0bc5-4b53-8900-57ba2ab4ad42__outlook_email_search",
+      "mcp__NewMile__query_report",
+      "mcp__32c631da-fb75-4f76-8faf-f599b60a7dbc__query_report"
+    ]
+  }
+}
