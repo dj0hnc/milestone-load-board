@@ -136,6 +136,10 @@ function centralDate(offsetDays) {
     authorize: () => { throw new Error('headless: token expired/revoked — re-run login-cli to re-seed'); },
     onStatus: () => {}, onLog: (l) => { if (/refresh|connect|error/i.test(l)) console.log('  ' + l); }
   });
+  // Clear the connected-ok marker first: it arrives inside the restored cache from an earlier run,
+  // and it must describe THIS attempt, so a run that fails to connect never looks successful to
+  // the cache-save step (a relay re-writes it on every send it makes).
+  try { fs.unlinkSync(path.join(STATE_DIR, 'connect-ok')); } catch (e) {}
   let client = mkClient();
   let st = await client.resume();
   if ((!st || !st.connected) && process.env.MAB_NM_TOKEN) {
@@ -163,6 +167,9 @@ function centralDate(offsetDays) {
       + 'Reports resume by themselves on the next send after the secret is updated.');
     throw new Error('NewMile token did not connect — update the MAB_NM_TOKEN secret with a fresh NewMile login (the refresh token expired)');
   }
+  // Marker the workflow checks before saving .state to the Actions cache: the rotating token in
+  // here is only worth keeping once it has proven it connects. See the cache-save step.
+  try { fs.writeFileSync(path.join(STATE_DIR, 'connect-ok'), new Date().toISOString()); } catch (e) {}
 
   // Render the Design-style print layout to a PDF buffer, when a renderer is available:
   // puppeteer-core (workflow installs it to NODE_PATH, no browser download) + the runner's
