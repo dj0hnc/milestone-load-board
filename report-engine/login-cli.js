@@ -31,11 +31,20 @@ function loadConfig() {
   process.exit(1);
 }
 
+// Open the default browser. On Windows this must NOT go through `cmd /c start`: cmd treats the
+// "&" between OAuth query params as a command separator, so the browser receives a URL cut off at
+// the first "&" and NewMile answers "client_id, redirect_uri are missing". rundll32 hands the URL
+// to the shell's protocol handler verbatim, no cmd parsing; the escaped-cmd call is the fallback.
 function openBrowser(url) {
-  const cmd = process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]]
-    : process.platform === 'darwin' ? ['open', [url]]
-    : ['xdg-open', [url]];
-  try { execFile(cmd[0], cmd[1]); } catch (e) { /* user can copy-paste the printed URL */ }
+  const tries = process.platform === 'win32'
+    ? [['rundll32', ['url.dll,FileProtocolHandler', url]],
+       ['cmd', ['/c', 'start', '', url.replace(/&/g, '^&')]]]
+    : process.platform === 'darwin' ? [['open', [url]]] : [['xdg-open', [url]]];
+  (function next(i) {
+    if (i >= tries.length) return;                       // user can still paste the printed URL
+    try { execFile(tries[i][0], tries[i][1], (err) => { if (err) next(i + 1); }); }
+    catch (e) { next(i + 1); }
+  })(0);
 }
 
 // authorize(authUrl, redirectUri): serve the local callback, open the browser, resolve with the
