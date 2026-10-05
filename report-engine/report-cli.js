@@ -72,6 +72,34 @@ function markSent(kind, dateStr) {
   m[kind] = dateStr; try { fs.mkdirSync(STATE_DIR, { recursive: true }); fs.writeFileSync(SENT_FILE, JSON.stringify(m, null, 2)); } catch (e) {}
 }
 
+// OUTAGE ALERT: email the recipients when the reports CANNOT run, so a broken pipeline is never
+// silent. Mail goes through Resend, which is independent of whatever broke (NewMile, the board),
+// so the alert still lands. Throttled to one per Central day per reason via the same lock file.
+async function alertDown(reason, body) {
+  if (!SEND) { console.log('  (dry run — would alert: ' + reason + ')'); return; }
+  const key = 'alert:' + reason;
+  if (sentToday(key, centralDate(0))) { console.log('  alert already sent today for: ' + reason); return; }
+  try {
+    if (!mailer) return;
+    const to = process.env.REPORT_TO || arg('to', '').toString();
+    if (!to) return;
+    const text = 'MAB REPORTS ARE DOWN\n\n' + reason + '\n\n' + body + '\n';
+    const m = await mailer.sendEmail(
+      { to: to, from: process.env.REPORT_FROM || 'onboarding@resend.dev', resendKey: process.env.RESEND_KEY || arg('resend', '').toString() },
+      { subject: '⚠️ MAB Reports are DOWN — ' + reason,
+        text: text,
+        html: '<div style="font-family:Segoe UI,Arial,sans-serif;max-width:640px">'
+          + '<h2 style="margin:0 0 4px;color:#b4452e">⚠️ MAB Reports are DOWN</h2>'
+          + '<div style="color:#667;font-size:13px;margin-bottom:10px">' + esc(reason)
+          + ' &middot; no morning / re-check / night report can be sent until this is fixed.</div>'
+          + '<pre style="background:#f6f8fb;border:1px solid #e3e8f0;border-radius:6px;padding:12px;'
+          + 'font-size:12.5px;white-space:pre-wrap;font-family:Consolas,Menlo,monospace">' + esc(body) + '</pre></div>' });
+    console.log('  outage alert emailed: ' + JSON.stringify(m));
+    if (m && m.ok) markSent(key, centralDate(0));
+  } catch (e) { console.log('  outage alert failed to send: ' + (e.message || e)); }
+}
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
 function loadConfig() {
   if (LOCAL) return JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'newmile.config.json'), 'utf8'));
   if (process.env.MAB_NM_CONFIG) return JSON.parse(process.env.MAB_NM_CONFIG);
@@ -119,7 +147,22 @@ function centralDate(offsetDays) {
     client = mkClient();
     st = await client.resume();
   }
-  if (!st || !st.connected) throw new Error('NewMile token did not connect — update the MAB_NM_TOKEN secret with a fresh NewMile login (the refresh token expired)');
+  if (!st || !st.connected) {
+    // NewMile is down for us, but EMAIL still works — say so out loud. Without this the reports
+    // just stop and nobody finds out for days (10/2-10/5: three silent days, found only when a
+    // dispatcher complained). Once per Central day, so a multi-day outage pings once a day.
+    await alertDown('NewMile login expired', 'The reports cannot read NewMile: the saved login was rejected ('
+      + 'refresh token expired or replaced by the desktop app).\n\n'
+      + 'FIX (about 5 minutes, on the office PC):\n'
+      + '  1. Close the Milestone Load Board desktop app.\n'
+      + '  2. In the project folder run:  node report-engine/login-cli.js\n'
+      + '  3. Sign in to NewMile in the browser window that opens.\n'
+      + '  4. Copy the whole block it prints between the ==== lines.\n'
+      + '  5. GitHub -> milestone-load-board -> Settings -> Secrets and variables -> Actions\n'
+      + '     -> MAB_NM_TOKEN -> Update secret -> paste -> save.\n\n'
+      + 'Reports resume by themselves on the next send after the secret is updated.');
+    throw new Error('NewMile token did not connect — update the MAB_NM_TOKEN secret with a fresh NewMile login (the refresh token expired)');
+  }
 
   // Render the Design-style print layout to a PDF buffer, when a renderer is available:
   // puppeteer-core (workflow installs it to NODE_PATH, no browser download) + the runner's
