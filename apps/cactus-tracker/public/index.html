@@ -696,7 +696,7 @@ async function fetchBoard(){
       if(!r.ok)throw new Error("HTTP "+r.status);
       const j=await r.json();
       if(myseq!==_fetchSeq)return; // ya salió una navegación más nueva: descarta esta
-      board=j;
+      board=j; try{ Object.assign(SAMSARA_LOGIN_FLEET, j.samsaraLoginFleet||{}); }catch(e){}
       if(!date)date=board.date;
       applyRecentMarks(); // un fetch que venía EN VUELO trae el estado de ANTES de tus taps
       // AUTO-UPDATE: si el server ya trae versión nueva (auto-pull en el laptop),
@@ -718,7 +718,7 @@ async function fetchBoard(){
       }
       // Regla de oro: si la red falla, mostrar la última data buena CON timestamp, nunca inventar.
       const c=localStorage.getItem(CACHE_KEY+":"+ORG);
-      if(c&&!board){const j=JSON.parse(c);board=j.board;if(!date)date=board.date;applyRecentMarks();}
+      if(c&&!board){const j=JSON.parse(c);board=j.board;try{ Object.assign(SAMSARA_LOGIN_FLEET, (board&&board.samsaraLoginFleet)||{}); }catch(e){}if(!date)date=board.date;applyRecentMarks();}
       offline=true;
     }
   }
@@ -822,7 +822,7 @@ function trlClass(tt,rip){if(rip)return"rip";if((tt||"").startsWith("SD"))return
 function trlTxt(t){return [t.trailer_type,t.trailer_type2].filter(Boolean).join(" + ");}
 // Fleet ID que teclean los CHOFERES en el Driver App (uno por compañía, no está en la
 // API — Juan los dicta y quedan fijos aquí; la llave es el fleet/org de Samsara)
-const SAMSARA_LOGIN_FLEET={};
+const SAMSARA_LOGIN_FLEET={};   // filled from the office DB with the board (board.samsaraLoginFleet) — never hardcoded here
 // status: cómo está HOY (para planear); type: qué trae (equipo)
 function isOffNow(t){return t.state==="d"||t.state==="n"||outOfService(t)||restsToday(t);}
 function matchStatus(t){

@@ -48,7 +48,7 @@ function createRouter({ config, newmile, log }) {
   }
   const crypto = require('crypto');
   const pinCookie = PIN ? crypto.createHash('sha256').update('cactus|' + PIN).digest('hex').slice(0, 40) : '';
-  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/board-truck', '/api/sync-assignments', '/api/sync-roster', '/api/sync/parking-key', '/api/places-key', '/api/places/rebuild-key', '/api/places/learn-key', '/api/zones/parking-audit-key', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
+  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/samsara-login-fleet-key', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/board-truck', '/api/sync-assignments', '/api/sync-roster', '/api/sync/parking-key', '/api/places-key', '/api/places/rebuild-key', '/api/places/learn-key', '/api/zones/parking-audit-key', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
   if (PIN) {
     router.use((req, res, next) => {
       if (OPEN_PATHS.includes(req.path)) return next();
@@ -281,7 +281,9 @@ function createRouter({ config, newmile, log }) {
         return w;
       })(),
       identity: identity,   // 🪪 nombre real (NewMile) — el front firma notas/marcas con él
-      recruitAllowed: recruitAllowed(identity),   // 🔒 el botón RECRUIT solo se enseña a Juan/Tony
+      recruitAllowed: recruitAllowed(identity),
+      // 📲 Samsara Driver App Fleet ID per company (office DB only — never in this public repo)
+      samsaraLoginFleet: (() => { try { return JSON.parse(metaGet('samsara_login_fleet', '') || '{}'); } catch (e) { return {}; } })(),   // 🔒 el botón RECRUIT solo se enseña a Juan/Tony
       // huecos en las órdenes de NewMile de este día (calculado en cada sync de actividad)
       nm_gaps: (() => { try { return JSON.parse(metaGet('nm_gaps_' + date) || '[]'); } catch (e) { return []; } })(),
       week: weekDatesCT(date),
@@ -743,6 +745,17 @@ function createRouter({ config, newmile, log }) {
   });
   // 📊 parking audit (NewMile parking_location vs where trucks really sleep) — machine channel
   let _auditBusy = false;
+  // 📲 set the Samsara Driver App Fleet IDs (machine channel): {"CACTUS":"…","KT":"…"} — keys are org
+  // ids and/or Samsara org names; values are the short codes drivers type. Stored in meta only.
+  router.post('/api/samsara-login-fleet-key', (req, res) => {
+    if (String((req.query || {}).key || (req.body || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    const m = (req.body || {}).map || {};
+    const clean = {};
+    for (const [k, v] of Object.entries(m)) { const kk = String(k).trim().slice(0, 40), vv = String(v == null ? '' : v).trim().slice(0, 40); if (kk && vv) clean[kk] = vv; }
+    metaSet('samsara_login_fleet', JSON.stringify(clean));
+    bumpRev();
+    res.json({ ok: true, map: clean });
+  });
   router.post('/api/zones/parking-audit-key', async (req, res) => {
     if (String((req.query || {}).key || (req.body || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
     if (_auditBusy) return res.json({ ok: true, already: true });
