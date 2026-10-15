@@ -690,6 +690,39 @@ class NewMileClient {
     });
     const assignments = {};
     targets.forEach((oid, i) => { assignments[oid] = lists[i] || []; });
+
+    // SEGMENTS (suborders). Subcontracting a job moves those trucks onto a CHILD order owned by
+    // the subhauler, and `list_resources order` only returns orders hauled by us — so every
+    // subcontracted truck was invisible to the reports. On 10/15 that hid 22 trucks (9 BFM,
+    // 8 NTP, 5 LC) and the night report said 199 against NewMile's own 221; the parent order
+    // "Arcosa -> Sinacola Midlo" showed assignment_count 0 while its segment held all 9 BFM.
+    // Fold each segment's assignments into its parent, so one job stays one order carrying all
+    // of its trucks (counts dedupe by truck number downstream either way).
+    const segLists = await this._pool(targets, 6, async (oid) => {
+      try {
+        const r = await this.callTool('list_resources', { resource_type: 'order', filters: { parent_order_id: oid, page_size: 100 } });
+        return (r && (r.orders || r.results || r.rows)) || [];
+      } catch (e) { return []; }
+    });
+    const segParent = {};
+    targets.forEach((oid, i) => (segLists[i] || []).forEach(s => { if (s && s.id != null) segParent[s.id] = oid; }));
+    const segIds = Object.keys(segParent).map(Number);
+    if (segIds.length) {
+      const segAsg = await this._pool(segIds, 6, async (sid) => {
+        try {
+          const r = await this.orderAssignments(sid);
+          return (r && (r.order_assignments || r.results || r.rows)) || [];
+        } catch (e) { return []; }
+      });
+      let added = 0;
+      segIds.forEach((sid, i) => {
+        const parent = segParent[sid];
+        const dst = (assignments[parent] = assignments[parent] || []);
+        const seen = {}; dst.forEach(a => { if (a && a.id != null) seen[a.id] = 1; });
+        (segAsg[i] || []).forEach(a => { if (a && a.id != null && !seen[a.id]) { seen[a.id] = 1; dst.push(a); added++; } });
+      });
+      this.log('  segments: ' + segIds.length + ' suborders · ' + added + ' subcontracted assignments folded into their parent orders');
+    }
     const asgCount = Object.values(assignments).reduce((n, a) => n + a.length, 0);
 
     // order DETAILS (driver/dispatch notes) for today + tomorrow — the list endpoint
