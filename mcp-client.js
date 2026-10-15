@@ -646,17 +646,26 @@ class NewMileClient {
       this.listOrdersAllPages(yISO), this.listOrdersAllPages(dateISO), this.listOrdersAllPages(tmISO)
     ]);
 
-    // roster (paged) — page 1 tells us the count, then pull the rest IN PARALLEL (was serial = slow)
+    // roster (paged). NewMile's truck list IGNORES the sort parameter and hands back rows in an
+    // unstable order, so offset paging silently loses some and repeats others: on 10/14 one pass
+    // collected 1733 of 1810 trucks. Merge by truck id and re-sweep until the roster is complete
+    // (at most 3 sweeps). Whatever is still missing is rebuilt from the assignment rows in
+    // buildBoard, so a gap here can never drop an assigned truck from the reports again.
     let trucks = [];
     {
+      const byId = {};
+      const take = (r) => ((r && (r.trucks || r.results || r.rows)) || []).forEach(t => { if (t && t.id != null) byId[t.id] = t; });
       const r1 = await this.listTrucks(1);
-      trucks = (r1 && (r1.trucks || r1.results || r1.rows)) || [];
-      const tp = Math.min((r1 && (r1.total_pages || r1.pages)) || 1, 20);
-      if (tp > 1) {
-        const pages = []; for (let p = 2; p <= tp; p++) pages.push(p);
-        const more = await this._pool(pages, 6, (p) => this.listTrucks(p));
-        more.forEach(r => { trucks = trucks.concat((r && (r.trucks || r.results || r.rows)) || []); });
+      take(r1);
+      const total = (r1 && (r1.total_entries || r1.total)) || 0;
+      const tp = Math.min((r1 && (r1.total_pages || r1.pages)) || 1, 40);
+      const pages = []; for (let p = 1; p <= tp; p++) pages.push(p);
+      for (let sweep = 0; sweep < 3 && (!total || Object.keys(byId).length < total); sweep++) {
+        (await this._pool(pages, 6, (p) => this.listTrucks(p))).forEach(take);
       }
+      trucks = Object.keys(byId).map(k => byId[k]);
+      this.log('  roster: ' + trucks.length + (total ? ' of ' + total : '') + ' trucks'
+        + (total && trucks.length < total ? ' — NewMile paging dropped ' + (total - trucks.length) + '; assigned ones are rebuilt from their assignments' : ''));
     }
 
     // rotation tickets (prior working day, all pages) — same parallel-after-first-page pattern

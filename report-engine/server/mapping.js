@@ -21,8 +21,13 @@ function statusOf(s) { if (s === 'paused') return 'paused'; if (s === 'pending')
 function mapAssigns(rows, numToId, unit) {
   const out = [];
   (rows || []).forEach(r => {
-    const tid = numToId[(r.truck_number || '').trim().toLowerCase()];
-    if (!tid) return;
+    const number = (r.truck_number || '').trim();
+    if (!number) return;
+    // An assigned truck missing from the roster must still be counted — dropping it here is what
+    // made the night report say 199 trucks on 10/14 when NewMile had 221 (all of the loss was
+    // subhaulers). buildBoard rebuilds those trucks, so this fallback should never be needed;
+    // it stays as a last resort so a roster gap can never swallow real work again.
+    const tid = numToId[number.toLowerCase()] || ('x' + number.toLowerCase().replace(/\s+/g, '-'));
     // driver ON THIS assignment (orgs run several drivers) + whether NewMile still lacks one
     const driver = (r.driver_name || '').trim();
     const noDriver = (String(r.assignment_status || '').toLowerCase() === 'missing_driver') || !driver;
@@ -136,6 +141,25 @@ function buildBoard(raw, sam, groupsCfg) {
 
   const trucksRaw = dedupeTrucks(raw.trucks);
   const numToId = {}; trucksRaw.forEach(t => { numToId[(t.truck_number || '').trim().toLowerCase()] = 't' + t.id; });
+  // OFF-ROSTER TRUCKS: NewMile's truck list pages in an unstable order, so the roster comes back
+  // short (1733 of 1810 on 10/14) and which rows are missing changes run to run. An assigned
+  // truck that fell out used to vanish from every report — the 10/14 night email counted 199
+  // trucks against NewMile's 221, and the whole gap was subhaulers. Rebuild the missing ones from
+  // the assignment rows, which already carry the number, fleet, hauler and driver, so the counts
+  // no longer depend on the roster pull being complete.
+  const offRoster = {};
+  Object.keys(assignments).forEach(oid => (assignments[oid] || []).forEach(r => {
+    const n = (r.truck_number || '').trim(); if (!n) return;
+    const k = n.toLowerCase(); if (numToId[k] || offRoster[k]) return;
+    offRoster[k] = {
+      id: 'a' + (r.truck_id || r.id), truck_number: n,
+      fleet_id: (r.fleet_id != null ? r.fleet_id : null), fleet_name: null,
+      owner_name: r.hauler_name || '', driver_name: r.driver_name || '', on_call: false
+    };
+  }));
+  const offRows = dedupeTrucks(Object.keys(offRoster).map(k => offRoster[k]));
+  offRows.forEach(t => { numToId[(t.truck_number || '').trim().toLowerCase()] = 't' + t.id; });
+  const allRaw = trucksRaw.concat(offRows);
   const worked = workedSet(raw.tickets);
 
   // rolling = a live load_status or loads hauled on a TODAY assignment ONLY (matches desktop
@@ -146,7 +170,7 @@ function buildBoard(raw, sam, groupsCfg) {
     if (r.load_status || (r.load_count || 0) > 0) rolling[(r.truck_number || '').trim().toLowerCase()] = 1;
   }));
 
-  const trucks = trucksRaw.map(t => {
+  const trucks = allRaw.map(t => {
     const m = mapTruck(t, worked, groupsCfg);
     const key = m.num.toUpperCase().replace(/\s+/g, ' ');
     const g = sam && sam[key];
