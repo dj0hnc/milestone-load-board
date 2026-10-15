@@ -53,7 +53,7 @@ on:
         description: 'true = resend even if already sent today (manual tests). External pingers leave this blank so the once-per-day lock dedupes.'
         default: ''
       preview:
-        description: 'true = DRY RUN: build the report and print the full list to the log, send NO email.'
+        description: 'true = DRY RUN: build the report and print the full list to the log, send NO email. NOTE: a preview talks to NewMile too, so running one while a relay is alive can fail with refresh 400 — the relay holds the rotated token in its workspace and the preview restores the older cached copy. That failure is harmless (the run saves nothing) but it is NOT a real outage; check the live relay before believing it.'
         default: ''
       weeks:
         description: 'sftrend only: how many Mon-Sat weeks back to chart (default 6).'
