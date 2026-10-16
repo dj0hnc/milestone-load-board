@@ -134,7 +134,10 @@ function centralDate(offsetDays) {
   const mkClient = () => new NewMileClient({
     config: cfg, tokenPath: TOKEN_FILE,        // mcp-client refreshes + PERSISTS rotations here
     authorize: () => { throw new Error('headless: token expired/revoked — re-run login-cli to re-seed'); },
-    onStatus: () => {}, onLog: (l) => { if (/refresh|connect|error/i.test(l)) console.log('  ' + l); }
+    // roster/segments are the coverage counters: how much of the truck list came back and how many
+    // subcontracted assignments got folded in. Without them in the log, checking a reported count
+    // against NewMile means re-pulling every order by hand.
+    onStatus: () => {}, onLog: (l) => { if (/refresh|connect|error|roster|segments/i.test(l)) console.log('  ' + l); }
   });
   // Clear the connected-ok marker first: it arrives inside the restored cache from an earlier run,
   // and it must describe THIS attempt, so a run that fails to connect never looks successful to
