@@ -419,6 +419,46 @@ header{padding-top:calc(14px + env(safe-area-inset-top,0px));}
 
 /* ===== 🌙 SKIN LOAD BOARD — navy + oro, el mismo ADN del board. Switch en el header,
    se recuerda por dispositivo (localStorage). El tema claro queda intacto por default. ===== */
+/* 🚚 SUBS COMMAND CENTER — hero + cards por compañía + roster de una línea por truck */
+.subHero{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 4px;}
+.subHero .shc{flex:1;min-width:120px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 14px;box-shadow:0 2px 8px rgba(0,0,0,.05);}
+.shc b{display:block;font-family:'Barlow Condensed';font-weight:800;font-size:25px;line-height:1.05;}
+.shc span{font-size:10px;letter-spacing:.7px;color:var(--mut);text-transform:uppercase;font-weight:700;}
+.shBtn{border:1.5px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:9px 11px;font-family:'Barlow Condensed';font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;}
+.scoCard{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 2px 10px rgba(0,0,0,.06);margin:13px 0;overflow:hidden;}
+.scoCard.idle{opacity:.75;}
+.scoHead{display:flex;align-items:center;gap:11px;flex-wrap:wrap;padding:11px 15px;cursor:pointer;border-left:5px solid var(--green);background:linear-gradient(90deg,var(--warm),var(--card) 60%);}
+.scoCard.idle .scoHead{border-left-color:#b9b2a4;background:var(--card);}
+.scoName{font-family:'Barlow Condensed';font-weight:800;font-size:19px;letter-spacing:.5px;text-transform:uppercase;}
+.scoPill{font-size:10.5px;font-weight:800;letter-spacing:.6px;padding:3px 9px;border-radius:20px;background:var(--green-bg);color:var(--green);white-space:nowrap;}
+.scoCard.idle .scoPill{background:#efece4;color:var(--mut);}
+body.dark .scoCard.idle .scoPill{background:#2e3a47;}
+.scoKpis{display:flex;gap:16px;margin-left:auto;align-items:center;flex-wrap:wrap;}
+.scoKpi{display:flex;flex-direction:column;align-items:flex-end;line-height:1.1;}
+.scoKpi b{font-family:'Barlow Condensed';font-weight:800;font-size:16.5px;}
+.scoKpi span{font-size:9.5px;letter-spacing:.6px;color:var(--mut);text-transform:uppercase;font-weight:700;}
+.subtbl{overflow-x:auto;border-top:1px solid var(--line);}
+.srow{display:grid;grid-template-columns:132px minmax(170px,1.6fr) minmax(120px,1fr) 118px 70px 94px 58px minmax(110px,1.2fr) 182px;gap:8px;align-items:center;padding:7px 14px;border-top:1px solid var(--line);font-size:13.5px;cursor:pointer;min-width:900px;background:var(--card);}
+.srow:first-child{border-top:none;}
+.srow:hover{background:var(--warm);}
+.srow.shead{font-family:'Barlow Condensed';font-weight:700;font-size:11.5px;letter-spacing:.7px;color:var(--mut);text-transform:uppercase;cursor:default;}
+.srow.shead:hover{background:var(--card);}
+.srow.s-a{box-shadow:inset 4px 0 0 var(--green);background:var(--green-bg);}
+.srow.s-d{box-shadow:inset 4px 0 0 var(--red);background:var(--red-bg);}
+.srow.s-n{box-shadow:inset 4px 0 0 #D9B430;background:#FBF3D0;}
+body.dark .srow.s-n{background:#2d2a17;}
+.srow.s-off{box-shadow:inset 4px 0 0 #c98a2f;opacity:.72;}
+.srow .stk{font-family:'Barlow Condensed';font-weight:800;font-size:16.5px;display:flex;align-items:center;gap:5px;white-space:nowrap;}
+.srow .stk .star-btn{position:static;font-size:15px;}
+.srow .sdrv{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.srow .smut{color:var(--mut);font-size:12px;}
+.srow .sacts{display:flex;gap:4px;justify-content:flex-end;}
+.srow .sacts button{border:1.5px solid var(--line);background:var(--card);border-radius:8px;min-width:27px;height:27px;font-size:12px;cursor:pointer;padding:0 4px;color:var(--ink);}
+@media(max-width:760px){
+  .shc b{font-size:19px;}
+  .scoKpis{width:100%;justify-content:space-between;margin-left:0;gap:8px;}
+  .srow{font-size:12.5px;min-width:860px;padding:7px 10px;}
+}
 body.dark{
   --navy:#141b24; --navy2:#0e1a2e; --gold:#C8991F; --gold-d:#e3b84a;
   --bg:#1C2333; --card:#141b24; --ink:#e8ecf3; --mut:#8f97ab; --line:#2e3a47;
@@ -1250,20 +1290,9 @@ function render(){
     (groups[g]=groups[g]||[]).push(t);
   }
   let html="";
-  // 🚚 SUBS: resumen ejecutivo del tab — compañías vivas vs dormidas de un vistazo
-  if(ORG==="SUBS"){
-    const cos=Object.keys(groups);
-    const coDead=g=>Math.min(...groups[g].map(t=>t.days_since_last_load==null?9999:t.days_since_last_load));
-    const aliveCos=cos.filter(g=>coDead(g)<30).length;
-    const tot=cos.reduce((s,g)=>s+groups[g].length,0);
-    const cov=cos.reduce((s,g)=>s+groups[g].filter(t=>t.state==="a").length,0);
-    const revW=cos.reduce((s,g)=>s+groups[g].reduce((x,t)=>x+(t.rev_week||0),0),0);
-    html+=`<div class="banner" style="background:#F4F1EA;border:1.5px solid #B7A88C;display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:9px 14px;font-size:13.5px;">
-      <b style="font-family:'Barlow Condensed';font-size:16px;letter-spacing:.4px;">🚚 SUBHAULERS</b>
-      <span><b>${aliveCos}</b> active compan${aliveCos===1?"y":"ies"}${cos.length>aliveCos?` <span style="color:var(--mut)">(+${cos.length-aliveCos} idle)</span>`:""}</span>
-      <span><b>${tot}</b> trucks</span><span><b>${cov}</b> assigned</span>${revW?`<span>wk <b style="color:var(--green)">${money(revW)}</b></span>`:""}
-      <span style="margin-left:auto;color:var(--mut);font-size:11.5px;">companies with no loads in 30 days drop off by themselves — they come right back when they haul or get assigned</span></div>`;
-  }
+  // 🚚 SUBS COMMAND CENTER: el tab de subs tiene su propia vista (cards por compañía +
+  // roster de una línea por truck) — nada de cuadritos. Ver renderSubsHtml().
+  if(ORG==="SUBS")html+=renderSubsHtml(groups);
   // orden dentro del grupo: primero los útiles, luego SIN DRIVER (consecutivos al final),
   // y los DELEASED hasta abajo. En modo DUEÑO, sub-orden por ÁREA (por organización Y por
   // área). SUBS / (NO OWNER) siempre al final del board.
@@ -1278,7 +1307,7 @@ function render(){
   // grupo dormido: el que lleva MÁS tiempo sin carga se va más abajo (el alfabético no manda)
   const grpDead=g=>Math.min(...groups[g].map(dead));
   const areaCmp=(x,y)=>areaLbl(x.area||"(SIN YARD)").localeCompare(areaLbl(y.area||"(SIN YARD)"));
-  for(const g of Object.keys(groups).sort((a,b)=>allInact(a)-allInact(b)||last(a)-last(b)||
+  if(ORG!=="SUBS")for(const g of Object.keys(groups).sort((a,b)=>allInact(a)-allInact(b)||last(a)-last(b)||
       (allInact(a)?grpDead(a)-grpDead(b):0)||a.localeCompare(b))){
     const list=groups[g];
     list.sort((x,y)=>inact(x)-inact(y)||(inact(x)?dead(x)-dead(y):0)||rank(x)-rank(y)||(groupMode==="owner"?areaCmp(x,y):0)||String(dnum(x)).localeCompare(String(dnum(y)),undefined,{numeric:true}));
@@ -1288,19 +1317,6 @@ function render(){
     const act=list.filter(t=>t.state!=="d"&&!restsToday(t)&&!outOfService(t)).length;
     const full=act>0&&asig>=act;
     const sleeping=allInact(g)===1;
-    if(ORG==="SUBS"){
-      // 🚚 header PRO por compañía: viva/dormida, última carga, trucks, cobertura y dinero
-      const lastDays=grpDead(g);
-      const lastTxt=lastDays>=9999?"no load on record":(lastDays===0?"hauled today":lastDays===1?"last load yesterday":"last load "+lastDays+"d ago");
-      const alive=lastDays<30;
-      const revW=list.reduce((s,t)=>s+(t.rev_week||0),0);
-      const loadsW=list.reduce((s,t)=>s+(t.loads_week||0),0);
-      html+=`<div class="group ${closed?"closed":""}"${alive?"":' style="opacity:.72;"'}><h2 onclick="toggleGroup('${esc(key)}')">
-        <span><span class="chev">${closed?"▸":"▾"}</span>${esc(g)}
-          <span style="font-size:11px;font-weight:700;text-transform:none;letter-spacing:0;padding:2px 8px;border-radius:10px;${alive?"background:var(--green-bg);color:var(--green);":"background:#efece4;color:var(--mut);"}">${alive?"● ACTIVE":"💤 IDLE"}</span>
-          <span style="font-size:11px;font-weight:600;color:var(--mut);text-transform:none;letter-spacing:0;">${lastTxt}${loadsW?` · wk ${loadsW} load${loadsW>1?"s":""}`:""}${revW?` · <b style="color:var(--green)">${money(revW)}</b>`:""}</span></span>
-        <small class="${full&&!closed?"full":""}">${closed?list.length+(list.length===1?" truck hidden":" trucks hidden"):list.length+" truck"+(list.length!==1?"s":"")+" · "+(full?"✔ COMPLETE":asig+"/"+act+" assigned")}</small></h2><div class="grid">`;
-    }else
     html+=`<div class="group ${closed?"closed":""}"${sleeping?' style="opacity:.72;"':""}><h2 onclick="toggleGroup('${esc(key)}')"><span><span class="chev">${closed?"▸":"▾"}</span>${esc(areaLbl(g))}${sleeping?' <span style="font-size:11px;font-weight:600;color:var(--mut);text-transform:none;letter-spacing:0;">💤 no loads in a month</span>':""}</span><small class="${full&&!closed?"full":""}">${closed?list.length+(list.length===1?" truck hidden":" trucks hidden"):(full?"✔ COMPLETE":asig+"/"+act+" assigned")}</small></h2><div class="grid">`;
     if(!closed)for(const t of list)html+=chipHtml(t);
     html+="</div></div>";
@@ -1407,6 +1423,103 @@ function chipHtml(t){
     ${t.suggested_area&&!board.historical?`<span class="badge" style="background:var(--blue-bg);color:var(--blue);cursor:pointer;" onclick="event.stopPropagation();openAreaSuggest('${t.org_id}','${esc(t.number)}')">📍 parks @ ${esc(t.suggested_area)}</span>`:""}
     ${t.note?`<div class="note">${esc(t.note)}</div>`:""}
     ${t.last_call?`<div class="lastcall">📞 <b>${esc(t.last_call.author||"?")}</b> ${tsMdy(t.last_call.ts)} — ${esc(t.last_call.text)}</div>`:""}
+  </div>`;
+}
+
+// ---------- 🚚 SUBS COMMAND CENTER ----------
+// Vista PROPIA del tab SUBS (Juan: "ke sea algo mamalon, no igual ke los otros tabs"):
+// hero con números grandes, un card premium por compañía (ACTIVE/IDLE, última carga,
+// trucks, cobertura, producción semanal) y un roster de UNA LÍNEA por truck con lo que
+// importa de un sub: chofer+tel, qué trae hoy, última carga, cargas y $ de la semana,
+// tickets inválidos, nota. Tap en la fila = Truck Panel. Cero info Samsara (no tienen).
+let __subsKeys=[];
+function renderSubsHtml(groups){
+  const dead=t=>t.days_since_last_load==null?9999:t.days_since_last_load;
+  const names=Object.keys(groups);
+  __subsKeys=names.map(g=>groupKey(g));
+  const coDead=g=>Math.min(...groups[g].map(dead));
+  const coRev=g=>groups[g].reduce((s,t)=>s+(t.rev_week||0),0);
+  // activas primero ordenadas por producción de la semana; dormidas al fondo por frescura
+  names.sort((a,b)=>{const ia=coDead(a)<30?0:1,ib=coDead(b)<30?0:1;return ia-ib||(ia===0?coRev(b)-coRev(a):coDead(a)-coDead(b))||a.localeCompare(b);});
+  const tot=names.reduce((s,g)=>s+groups[g].length,0);
+  const act=names.filter(g=>coDead(g)<30).length;
+  const asg=names.reduce((s,g)=>s+groups[g].filter(t=>t.state==="a").length,0);
+  const revW=names.reduce((s,g)=>s+coRev(g),0);
+  let h=`<div class="subHero">
+    <div class="shc"><b>${act}</b><span>active companies${names.length>act?" · +"+(names.length-act)+" idle":""}</span></div>
+    <div class="shc"><b>${tot}</b><span>trucks</span></div>
+    <div class="shc"><b>${asg}</b><span>assigned ${date===board.today?"today":"this day"}</span></div>
+    <div class="shc"><b style="color:var(--green)">${money(revW)}</b><span>week freight</span></div>
+    <div class="shc" style="flex:0 0 auto;display:flex;flex-direction:row;gap:6px;align-items:center;">
+      <button class="shBtn" onclick="subsCollapseAll(1)">▸ Collapse all</button><button class="shBtn" onclick="subsCollapseAll(0)">▾ Expand all</button></div>
+  </div>`;
+  for(const g of names){
+    const list=groups[g].slice().sort((x,y)=>((y.state==="a")?1:0)-((x.state==="a")?1:0)||(y.rev_week||0)-(x.rev_week||0)||dead(x)-dead(y)||String(dnum(x)).localeCompare(String(dnum(y)),undefined,{numeric:true}));
+    const key=groupKey(g),closed=collapsed.has(key);
+    const lastD=coDead(g),alive=lastD<30;
+    const lastTxt=lastD>=9999?"no load on record":lastD===0?"hauled today":lastD===1?"last load yesterday":`last load ${lastD}d ago`;
+    const rw=coRev(g),lw=groups[g].reduce((s,t)=>s+(t.loads_week||0),0);
+    const a=list.filter(t=>t.state==="a").length;
+    h+=`<div class="scoCard ${alive?"":"idle"}">
+      <div class="scoHead" onclick="toggleGroup('${esc(key)}')">
+        <span class="chev" style="color:var(--mut);font-size:15px;">${closed?"▸":"▾"}</span>
+        <span class="scoName">${esc(g)}</span>
+        <span class="scoPill">${alive?"● ACTIVE":"IDLE"}</span>
+        <span style="font-size:11.5px;color:var(--mut);font-weight:600;white-space:nowrap;">${lastTxt}</span>
+        <div class="scoKpis">
+          <div class="scoKpi"><b>${list.length}</b><span>trucks</span></div>
+          <div class="scoKpi"><b>${a}/${list.length}</b><span>assigned</span></div>
+          <div class="scoKpi"><b>${lw||0}</b><span>wk loads</span></div>
+          <div class="scoKpi"><b style="color:var(--green)">${rw?money(rw):"$0"}</b><span>wk freight</span></div>
+        </div>
+      </div>`;
+    if(!closed){
+      h+=`<div class="subtbl"><div class="srow shead"><span>Truck</span><span>Driver</span><span>${date===board.today?"Today":"This day"}</span><span>Last load</span><span>Wk loads</span><span>Wk $</span><span>🎫</span><span>Note</span><span></span></div>`;
+      for(const t of list)h+=subRowHtml(t);
+      h+=`</div>`;
+    }
+    h+=`</div>`;
+  }
+  return h;
+}
+function subsCollapseAll(close){
+  for(const k of __subsKeys){close?collapsed.add(k):collapsed.delete(k);}
+  localStorage.setItem("ct-collapsed",JSON.stringify([...collapsed]));
+  render();
+}
+function subRowHtml(t){
+  const rest=restsToday(t);
+  const off=outOfService(t);
+  const offEntry=offOf(t);
+  const cls=t.state==="a"?"s-a":t.state==="d"?"s-d":t.state==="n"?"s-n":(off||rest?"s-off":"");
+  const d=t.days_since_last_load;
+  const lastStyle=(d==null||d>=14)?"color:var(--red);font-weight:700;":d>=5?"color:#8a5a10;font-weight:700;":"";
+  const lastTxt=t.loads_today>0?`🟢 today ×${t.loads_today}`:(t.last_load_date?`${mdy(t.last_load_date)} · ${d}d`:"never");
+  const today=t.state==="a"?(t.nm_dest&&t.nm_dest.length?`<b style="color:var(--green)">🚚 ${esc(t.nm_dest.map(x=>x.c||x.n).filter(Boolean).join(" + "))}</b>`:'<b style="color:var(--green)">✓ assigned</b>')
+    :t.state==="d"?'<b style="color:var(--red)">✕ down</b>'
+    :t.state==="n"?'<b style="color:#8a6d00">NW</b>'
+    :rest?'<span class="smut">OFF today</span>'
+    :offEntry?`<span class="smut">${OFF_EMOJI[offEntry.reason]||"⛔"} ${esc(offEntry.reason)}</span>`
+    :off?`<span class="smut">${esc(STATUS_LBL[t.status]||t.status)}</span>`:'<span class="smut">—</span>';
+  const inv=Number(t.invalid_tickets)||0;
+  const note=[t.note,t.last_call?"📞 "+t.last_call.text:""].filter(Boolean).join(" · ");
+  return `<div class="srow ${cls}" id="chip-${cssId(t.org_id+"-"+t.number)}" onclick="openCalls('${t.org_id}','${esc(t.number)}')">
+    <span class="stk"><button class="star-btn ${t.star?"on":""}" onclick="event.stopPropagation();toggleStar(event,'${t.org_id}','${esc(t.number)}')">${t.star?"★":"☆"}</button>${esc(dnum(t))}</span>
+    <span class="sdrv">${esc(t.driver)||'<span style="color:var(--red)">⚠ no driver</span>'}${t.phone?` <a href="tel:${esc(t.phone)}" onclick="event.stopPropagation()" class="smut" style="text-decoration:none;">${esc(t.phone)}</a>`:""}</span>
+    <span>${today}</span>
+    <span style="${lastStyle}">${lastTxt}</span>
+    <span>${t.loads_week||'<span class="smut">—</span>'}</span>
+    <span style="color:var(--green);font-weight:700;">${t.rev_week?money(t.rev_week):'<span class="smut">—</span>'}</span>
+    <span>${inv?`<b style="color:var(--red);cursor:pointer;" onclick="event.stopPropagation();openInvalid('${t.org_id}','${esc(t.number)}')">🎫${inv}</b>`:'<span class="smut">—</span>'}</span>
+    <span class="smut" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(note)}">${esc(note)}</span>
+    <span class="sacts">
+      <button title="Assign this truck to a NewMile order" onclick="event.stopPropagation();openSendTruck('${t.org_id}','${esc(t.number)}')">⚡</button>
+      <button title="Truck panel — calls, status, everything" onclick="event.stopPropagation();openCalls('${t.org_id}','${esc(t.number)}')">📞</button>
+      <button title="All notes" onclick="event.stopPropagation();openNotesHist('${t.org_id}','${esc(t.number)}')">📝</button>
+      <button title="Edit" onclick="event.stopPropagation();openEdit('${t.org_id}','${esc(t.number)}')">✎</button>
+      <button title="Mark down" onclick="event.stopPropagation();tapDown(event,'${t.org_id}','${esc(t.number)}')">✕</button>
+      <button title="NO WORK this day" onclick="event.stopPropagation();tapNW(event,'${t.org_id}','${esc(t.number)}')">NW</button>
+    </span>
   </div>`;
 }
 
