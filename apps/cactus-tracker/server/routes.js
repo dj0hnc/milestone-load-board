@@ -860,6 +860,25 @@ function createRouter({ config, newmile, log }) {
     res.json({ results: out });
   });
 
+  // 🚚 DESGLOSE SEMANAL por truck (SUBS Command Center): cargas (tickets) y dinero por
+  // día de la semana vista + los tickets inválidos abiertos — todo en un solo jalón para
+  // el modal del 🎫. Sesión normal (PIN); la semana es Lun–Sáb como el resto del tracker.
+  router.get('/api/truck/:org/:number/week', (req, res) => {
+    const orgId = normNum(req.params.org), number = normNum(req.params.number);
+    const t = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number);
+    if (!t) return res.status(404).json({ error: 'truck not found' });
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || '')) ? String(req.query.date) : todayCT();
+    const wk = weekDatesCT(date);
+    const days = all(`SELECT load_date, loads, ROUND(revenue, 2) AS revenue, driver FROM activity_log
+                      WHERE org_id = ? AND number = ? AND load_date >= ? AND load_date <= ? ORDER BY load_date`,
+      orgId, number, wk.Mon, wk.Sat);
+    let invalid = []; try { invalid = JSON.parse(t.invalid_tickets_json || '[]') || []; } catch (e) {}
+    res.json({
+      ok: true, truck: t.display_number || t.number, driver: t.driver || '', owner: t.owner_name || '',
+      week: wk, days, invalid, invalid_total: t.invalid_tickets || 0, checked_at: t.invalid_tickets_at || ''
+    });
+  });
+
   // Restaurar un archivado desde el navegador del cel (GET a propósito, con ?yes=1)
   router.get('/api/truck/:org/:number/restore', (req, res) => {
     if (req.query.yes !== '1') return res.status(400).json({ error: 'add ?yes=1 to confirm' });

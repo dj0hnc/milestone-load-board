@@ -1500,7 +1500,11 @@ function subRowHtml(t){
   const d=t.days_since_last_load;
   const lastStyle=(d==null||d>=14)?"color:var(--red);font-weight:700;":d>=5?"color:#8a5a10;font-weight:700;":"";
   const lastTxt=t.loads_today>0?`🟢 today ×${t.loads_today}`:(t.last_load_date?`${mdy(t.last_load_date)} · ${d}d`:"never");
-  const today=t.state==="a"?(t.nm_dest&&t.nm_dest.length?`<b style="color:var(--green)">🚚 ${esc(t.nm_dest.map(x=>x.c||x.n).filter(Boolean).join(" + "))}</b>`:'<b style="color:var(--green)">✓ assigned</b>')
+  // asignados IGUAL que los chips: ⚡ = corrió/asignado en NewMile (o confirmado), ✓ = lo
+  // marcaste tú y aún no se coteja; ⚠ = marcado aquí pero NewMile no lo trae (se te va)
+  const nmOk=t.state==="a"&&(t.state_source==="auto"||t.nm_confirmed);
+  const nmWarn=t.state==="a"&&t.state_source!=="auto"&&!t.nm_confirmed&&board.nm_checked&&!board.historical;
+  const today=t.state==="a"?`<b style="color:var(--green)" title="${nmOk?"covered: hauled or assigned in NewMile":"assigned by you — not yet verified vs NewMile"}">${nmOk?"⚡":"✓"} ${t.nm_dest&&t.nm_dest.length?"🚚 "+esc(t.nm_dest.map(x=>x.c||x.n).filter(Boolean).join(" + ")):"assigned"}</b>${nmWarn?' <span title="marked here but NOT found in NewMile" style="color:#8a5a10;font-weight:800;">⚠ not in NM</span>':""}`
     :t.state==="d"?'<b style="color:var(--red)">✕ down</b>'
     :t.state==="n"?'<b style="color:#8a6d00">NW</b>'
     :rest?'<span class="smut">OFF today</span>'
@@ -1513,9 +1517,9 @@ function subRowHtml(t){
     <span class="sdrv">${esc(t.driver)||'<span style="color:var(--red)">⚠ no driver</span>'}${t.phone?` <a href="tel:${esc(t.phone)}" onclick="event.stopPropagation()" class="smut" style="text-decoration:none;">${esc(t.phone)}</a>`:""}</span>
     <span>${today}</span>
     <span style="${lastStyle}">${lastTxt}</span>
-    <span>${t.loads_week||'<span class="smut">—</span>'}</span>
-    <span style="color:var(--green);font-weight:700;">${t.rev_week?money(t.rev_week):'<span class="smut">—</span>'}</span>
-    <span>${inv?`<b style="color:var(--red);cursor:pointer;" onclick="event.stopPropagation();openInvalid('${t.org_id}','${esc(t.number)}')">🎫${inv}</b>`:'<span class="smut">—</span>'}</span>
+    <span onclick="event.stopPropagation();openSubWeek('${t.org_id}','${esc(t.number)}')" title="Tap for the day-by-day breakdown">${t.loads_week||'<span class="smut">—</span>'}</span>
+    <span onclick="event.stopPropagation();openSubWeek('${t.org_id}','${esc(t.number)}')" title="Tap for the day-by-day breakdown" style="color:var(--green);font-weight:700;">${t.rev_week?money(t.rev_week):'<span class="smut">—</span>'}</span>
+    <span onclick="event.stopPropagation();openSubWeek('${t.org_id}','${esc(t.number)}')" title="Tickets day by day — valid, invalid, freight">${inv?`<b style="color:var(--red);">🎫${inv}</b>`:'<span class="smut">🎫</span>'}</span>
     <span class="smut" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(note)}">${esc(note)}</span>
     <span class="sacts">
       <button title="Assign this truck to a NewMile order" onclick="event.stopPropagation();openSendTruck('${t.org_id}','${esc(t.number)}')">⚡</button>
@@ -1526,6 +1530,43 @@ function subRowHtml(t){
       <button title="NO WORK this day" onclick="event.stopPropagation();tapNW(event,'${t.org_id}','${esc(t.number)}')">NW</button>
     </span>
   </div>`;
+}
+
+// 🎫 DESGLOSE DEL TRUCK (SUBS): tickets por día de la semana vista — cargas, válidos,
+// inválidos y dinero — + la lista de tickets inválidos abiertos con liga a la orden en
+// NewMile. Se abre tocando Wk loads / Wk $ / 🎫 en el roster.
+async function openSubWeek(org,num){
+  const t0=truckOf(org,num);
+  openModal(`<h3>🎫 ${esc(t0?dnum(t0):num)} — week breakdown</h3><p style="color:var(--mut);font-size:13px;">Loading…</p>`);
+  let j=null;
+  try{const r=await fetch(`${API}/api/truck/${encodeURIComponent(org)}/${encodeURIComponent(num)}/week?date=${date}`);j=await r.json();}catch(e){}
+  if(!j||!j.ok){openModal(`<h3>🎫 Week breakdown</h3><p style="color:var(--red)">Could not load (${esc((j&&j.error)||"network")}).</p><div class="actions"><button class="b-cancel" onclick="closeModal()">Close</button></div>`);return;}
+  const byDay=new Map();(j.days||[]).forEach(d=>byDay.set(d.load_date,d));
+  const invByDay={};(j.invalid||[]).forEach(l=>{invByDay[l.at]=(invByDay[l.at]||0)+1;});
+  const order=["Mon","Tue","Wed","Thu","Fri","Sat"];
+  let loadsT=0,revT=0,invT=0;
+  const rows=order.map(dn=>{
+    const iso=j.week[dn],d=byDay.get(iso),inv=invByDay[iso]||0;
+    const loads=d?(d.loads||0):0,rev=d?(d.revenue||0):0,valid=Math.max(0,loads-inv);
+    loadsT+=loads;revT+=rev;invT+=inv;
+    return `<div style="display:grid;grid-template-columns:88px 1fr 1fr 1fr 92px;gap:6px;padding:6px 2px;border-top:1px solid var(--line);font-size:13px;${loads||inv?"":"opacity:.45;"}">
+      <b style="font-family:'Barlow Condensed';">${dn} ${mdy(iso)}</b>
+      <span>${loads?loads+" load"+(loads===1?"":"s"):"—"}</span>
+      <span style="color:var(--green);">${loads?"✓ "+valid+" ok":"—"}</span>
+      <span style="${inv?"color:var(--red);font-weight:700;":"color:var(--mut);"}">${inv?"⚠ "+inv+" invalid":"—"}</span>
+      <span style="text-align:right;font-weight:700;color:var(--green);">${rev?money(rev):"—"}</span></div>`;
+  }).join("");
+  const invList=(j.invalid||[]).map(l=>`<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--line);font-size:12.5px;">
+    <span style="font-family:'Barlow Condensed';font-weight:700;color:var(--mut);min-width:80px;">${esc(l.at)}</span>
+    <span style="flex:1;min-width:0;"><b>${esc(l.order||("Order "+l.order_id))}</b>${l.driver?" · "+esc(l.driver):""} <span style="color:var(--mut);">· ${l.status==="invalid"?"invalid (final)":"pending driver"}</span></span>
+    <a href="https://app.newmile.com/orders/${l.order_id}" target="_blank" style="font-size:12px;white-space:nowrap;">open ↗</a></div>`).join("");
+  openModal(`<h3>🚚 ${esc(j.truck)} — ${esc(j.driver||"no driver")}${j.owner?` <span style="font-size:13px;color:var(--mut);font-weight:600;">· ${esc(j.owner)}</span>`:""}</h3>
+    <p style="font-size:12px;color:var(--mut);margin:2px 0 8px;">Week ${mdy(j.week.Mon)} – ${mdy(j.week.Sat)} · a ticket = a load hauled in NewMile</p>
+    ${rows}
+    <div style="display:grid;grid-template-columns:88px 1fr 1fr 1fr 92px;gap:6px;padding:8px 2px;border-top:2px solid var(--ink);font-size:13.5px;font-weight:800;">
+      <b>WEEK</b><span>${loadsT} loads</span><span style="color:var(--green);">✓ ${Math.max(0,loadsT-invT)} ok</span><span style="color:${invT?"var(--red)":"var(--mut)"};">⚠ ${invT} invalid</span><span style="text-align:right;color:var(--green);">${money(revT)}</span></div>
+    ${j.invalid_total?`<h3 style="margin-top:14px;">⚠ Open invalid tickets — ${j.invalid_total}${(j.invalid||[]).length<j.invalid_total?` <span style="font-size:12px;color:var(--mut);">(newest ${j.invalid.length} shown)</span>`:""}</h3><p style="font-size:11.5px;color:var(--mut);margin:0 0 4px;">The driver still has to fix these in NewMile${j.checked_at?" · checked "+new Date(j.checked_at).toLocaleString("en-US",{weekday:"short",hour:"numeric",minute:"2-digit"}):""}. Tap "open" to jump to the order.</p>${invList}`:`<p style="margin-top:12px;color:var(--green);font-weight:700;">No open invalid tickets. 🎉</p>`}
+    <div class="actions"><button class="b-cancel" onclick="closeModal()">Close</button></div>`);
 }
 
 function renderBanners(){
