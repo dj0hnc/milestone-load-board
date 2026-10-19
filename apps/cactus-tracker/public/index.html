@@ -639,6 +639,9 @@ function buildFamilies(){
   }
 }
 function groupOf(t){
+  // 🚚 tab SUBS: SIEMPRE por compañía — la unidad de vida de un sub es su company, no el
+  // truck ni la zona (no traen Samsara; su actividad es 100% NewMile).
+  if(ORG==="SUBS")return (t.owner_name&&t.owner_name.trim())||"(NO COMPANY)";
   // en modo DUEÑO, un truck sin owner todavía (NewMile no sincronizado) cae a su ZONA en
   // vez de a un blob "(NO OWNER)": así nunca se ve roto, y se reagrupa solo cuando NewMile
   // llene los dueños.
@@ -1208,6 +1211,9 @@ function render(){
   const curArea=areaSel.value;
   areaSel.innerHTML=`<option value="">Area: all</option>`+areas.map(a=>`<option value="${esc(a)}" ${a===curArea?"selected":""}>${esc(areaLbl(a))}</option>`).join("");
 
+  // 🚚 SUBS: el toggle zona/dueño no aplica (siempre por compañía)
+  $("grpZone").style.display=ORG==="SUBS"?"none":"";
+  $("grpOwner").style.display=ORG==="SUBS"?"none":"";
   $("grpZone").classList.toggle("on",groupMode==="zone");
   $("grpOwner").classList.toggle("on",groupMode==="owner");
   renderSeg(divTrucks);
@@ -1244,6 +1250,20 @@ function render(){
     (groups[g]=groups[g]||[]).push(t);
   }
   let html="";
+  // 🚚 SUBS: resumen ejecutivo del tab — compañías vivas vs dormidas de un vistazo
+  if(ORG==="SUBS"){
+    const cos=Object.keys(groups);
+    const coDead=g=>Math.min(...groups[g].map(t=>t.days_since_last_load==null?9999:t.days_since_last_load));
+    const aliveCos=cos.filter(g=>coDead(g)<30).length;
+    const tot=cos.reduce((s,g)=>s+groups[g].length,0);
+    const cov=cos.reduce((s,g)=>s+groups[g].filter(t=>t.state==="a").length,0);
+    const revW=cos.reduce((s,g)=>s+groups[g].reduce((x,t)=>x+(t.rev_week||0),0),0);
+    html+=`<div class="banner" style="background:#F4F1EA;border:1.5px solid #B7A88C;display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:9px 14px;font-size:13.5px;">
+      <b style="font-family:'Barlow Condensed';font-size:16px;letter-spacing:.4px;">🚚 SUBHAULERS</b>
+      <span><b>${aliveCos}</b> active compan${aliveCos===1?"y":"ies"}${cos.length>aliveCos?` <span style="color:var(--mut)">(+${cos.length-aliveCos} idle)</span>`:""}</span>
+      <span><b>${tot}</b> trucks</span><span><b>${cov}</b> assigned</span>${revW?`<span>wk <b style="color:var(--green)">${money(revW)}</b></span>`:""}
+      <span style="margin-left:auto;color:var(--mut);font-size:11.5px;">companies with no loads in 30 days drop off by themselves — they come right back when they haul or get assigned</span></div>`;
+  }
   // orden dentro del grupo: primero los útiles, luego SIN DRIVER (consecutivos al final),
   // y los DELEASED hasta abajo. En modo DUEÑO, sub-orden por ÁREA (por organización Y por
   // área). SUBS / (NO OWNER) siempre al final del board.
@@ -1268,6 +1288,19 @@ function render(){
     const act=list.filter(t=>t.state!=="d"&&!restsToday(t)&&!outOfService(t)).length;
     const full=act>0&&asig>=act;
     const sleeping=allInact(g)===1;
+    if(ORG==="SUBS"){
+      // 🚚 header PRO por compañía: viva/dormida, última carga, trucks, cobertura y dinero
+      const lastDays=grpDead(g);
+      const lastTxt=lastDays>=9999?"no load on record":(lastDays===0?"hauled today":lastDays===1?"last load yesterday":"last load "+lastDays+"d ago");
+      const alive=lastDays<30;
+      const revW=list.reduce((s,t)=>s+(t.rev_week||0),0);
+      const loadsW=list.reduce((s,t)=>s+(t.loads_week||0),0);
+      html+=`<div class="group ${closed?"closed":""}"${alive?"":' style="opacity:.72;"'}><h2 onclick="toggleGroup('${esc(key)}')">
+        <span><span class="chev">${closed?"▸":"▾"}</span>${esc(g)}
+          <span style="font-size:11px;font-weight:700;text-transform:none;letter-spacing:0;padding:2px 8px;border-radius:10px;${alive?"background:var(--green-bg);color:var(--green);":"background:#efece4;color:var(--mut);"}">${alive?"● ACTIVE":"💤 IDLE"}</span>
+          <span style="font-size:11px;font-weight:600;color:var(--mut);text-transform:none;letter-spacing:0;">${lastTxt}${loadsW?` · wk ${loadsW} load${loadsW>1?"s":""}`:""}${revW?` · <b style="color:var(--green)">${money(revW)}</b>`:""}</span></span>
+        <small class="${full&&!closed?"full":""}">${closed?list.length+(list.length===1?" truck hidden":" trucks hidden"):list.length+" truck"+(list.length!==1?"s":"")+" · "+(full?"✔ COMPLETE":asig+"/"+act+" assigned")}</small></h2><div class="grid">`;
+    }else
     html+=`<div class="group ${closed?"closed":""}"${sleeping?' style="opacity:.72;"':""}><h2 onclick="toggleGroup('${esc(key)}')"><span><span class="chev">${closed?"▸":"▾"}</span>${esc(areaLbl(g))}${sleeping?' <span style="font-size:11px;font-weight:600;color:var(--mut);text-transform:none;letter-spacing:0;">💤 no loads in a month</span>':""}</span><small class="${full&&!closed?"full":""}">${closed?list.length+(list.length===1?" truck hidden":" trucks hidden"):(full?"✔ COMPLETE":asig+"/"+act+" assigned")}</small></h2><div class="grid">`;
     if(!closed)for(const t of list)html+=chipHtml(t);
     html+="</div></div>";
@@ -1353,7 +1386,7 @@ function chipHtml(t){
     <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ NO DRIVER"}</div>
     ${t.state==="a"&&t.nm_dest&&t.nm_dest.length?`<div class="dest" title="${esc(t.nm_dest.map(d=>[d.n,d.c,d.m,d.d].filter(Boolean).join(" · ")).join("  +  "))}">🚚 ${t.nm_dest.map(d=>esc([d.c||d.n,d.d||d.m].filter(Boolean).join(" → "))).join(" + ")}</div>`:""}
     ${hosHtml(t)}
-    ${groupMode==="owner"?`<div class="park mut" style="color:#7a2fa8;">📌 zone: ${esc(areaLbl(t.area||"(SIN YARD)"))}</div>`:""}
+    ${groupMode==="owner"&&ORG!=="SUBS"?`<div class="park mut" style="color:#7a2fa8;">📌 zone: ${esc(areaLbl(t.area||"(SIN YARD)"))}</div>`:""}
     ${parkHtml(t)}
     ${actHtml(t)}
     ${revHtml(t)}

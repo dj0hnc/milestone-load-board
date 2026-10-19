@@ -445,7 +445,7 @@ async function syncActivity(client, days) {
       if (row.archived) {
         // estaba archivado por inactividad pero VOLVIÓ a correr carga → regresa al board
         // en su mismo lugar (división/área que ya tenía)
-        run(`UPDATE trucks SET archived = 0, maybe_removed = 0, updated_at = ? WHERE org_id = ? AND number = ?`, nowISO(), orgId, num);
+        run(`UPDATE trucks SET archived = 0, maybe_removed = 0, removed_src = '', updated_at = ? WHERE org_id = ? AND number = ?`, nowISO(), orgId, num);
         summary.resurfaced = (summary.resurfaced || 0) + 1;
       }
       if (v.owner && v.owner !== row.owner_name) {
@@ -497,8 +497,9 @@ async function syncActivity(client, days) {
   // jalón fallido de NewMile no archive media flota.
   if ((days || ACTIVITY_WINDOW_DAYS) >= 21 && summary.matched >= 50) {
     const cutoff = shiftISO(today, -30);
-    const r = run(`UPDATE trucks SET archived = 1
+    const r = run(`UPDATE trucks SET archived = 1, removed_src = 'auto'
          WHERE archived = 0 AND is_new = 0 AND star = 0
+           AND NOT (is_sub = 1 AND COALESCE(owner_name, '') <> '')
            AND (last_load_date IS NULL OR last_load_date < ?)
            AND updated_at < ?
            AND NOT EXISTS (SELECT 1 FROM time_off o WHERE o.org_id = trucks.org_id AND o.number = trucks.number AND o.to_date >= ?)
@@ -506,12 +507,33 @@ async function syncActivity(client, days) {
       cutoff, cutoff + 'T00:00:00.000Z', today, shiftISO(today, -14));
     summary.dormantArchived = r.changes;
 
+    // 🚚 SUBS POR COMPAÑÍA (2026-10-18): la vida de un sub se mide por su COMPAÑÍA
+    // (owner_name), no por el truck. Compañía CON carga en 30 días = activa → TODOS sus
+    // trucks visibles (aunque alguno no haya corrido — Juan los quiere ver igual);
+    // compañía SIN carga en 30 días = muerta → todos sus trucks fuera, incluidos los ⚑.
+    // Subs sin owner conocido siguen con la regla de truck individual de arriba.
+    // Protegidos: ⭐ stars, time off vigente, marcas manuales recientes — y los removidos
+    // A MANO (removed_src = 'manual') jamás regresan solos por esta regla.
+    const subOut = run(`UPDATE trucks SET archived = 1, is_new = 0, removed_src = 'auto'
+         WHERE archived = 0 AND is_sub = 1 AND star = 0 AND COALESCE(owner_name, '') <> ''
+           AND NOT EXISTS (SELECT 1 FROM trucks t2 WHERE t2.is_sub = 1 AND t2.owner_name = trucks.owner_name AND t2.last_load_date >= ?)
+           AND NOT EXISTS (SELECT 1 FROM time_off o WHERE o.org_id = trucks.org_id AND o.number = trucks.number AND o.to_date >= ?)
+           AND NOT EXISTS (SELECT 1 FROM dispatch_state s WHERE s.org_id = trucks.org_id AND s.number = trucks.number AND s.date >= ? AND s.source = 'manual')`,
+      cutoff, today, shiftISO(today, -14));
+    summary.subsOrgArchived = subOut.changes;
+    const subBack = run(`UPDATE trucks SET archived = 0, maybe_removed = 0, removed_src = '', updated_at = ?
+         WHERE archived = 1 AND is_sub = 1 AND COALESCE(removed_src, '') <> 'manual'
+           AND COALESCE(owner_name, '') <> ''
+           AND EXISTS (SELECT 1 FROM trucks t2 WHERE t2.is_sub = 1 AND t2.owner_name = trucks.owner_name AND t2.last_load_date >= ?)`,
+      nowISO(), cutoff);
+    summary.subsOrgRestored = subBack.changes;
+
     // RUIDO FUERA: SIN CHOFER + dueño/org INACTIVO (ningún truck de ese dueño ha corrido
     // carga en 30 días) = no pinta en el board, aunque traiga bandera de NUEVO. Solo
     // flota propia (is_sub = 0): los SUBS no tienen Samsara y se rigen por la regla de
     // 30 días sin carga de arriba (su trabajo SÍ se ve en NewMile). Protegidos: ⭐ stars,
     // time off vigente y marcas manuales recientes. Regresan solos con carga/asignación.
-    const noDrv = run(`UPDATE trucks SET archived = 1, is_new = 0
+    const noDrv = run(`UPDATE trucks SET archived = 1, is_new = 0, removed_src = 'auto'
          WHERE archived = 0 AND star = 0 AND is_sub = 0
            AND (TRIM(COALESCE(driver, '')) = '' OR status = 'no_driver'
                 OR driver LIKE '%SIN DRIVER%' OR driver LIKE '%NO DRIVER%')

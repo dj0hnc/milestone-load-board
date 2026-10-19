@@ -441,7 +441,7 @@ function createRouter({ config, newmile, log }) {
     }
     const existing = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, num);
     if (existing) {
-      run(`UPDATE trucks SET archived = 0, maybe_removed = 0, is_new = 0${div ? ', division = ?' : ''}, updated_at = ? WHERE org_id = ? AND number = ?`,
+      run(`UPDATE trucks SET archived = 0, maybe_removed = 0, is_new = 0, removed_src = ''${div ? ', division = ?' : ''}, updated_at = ? WHERE org_id = ? AND number = ?`,
         ...(div ? [div] : []), nowISO(), orgId, num);
       logChange(orgId, num, 'restored', '', 'added back via ➕' + (existing.archived ? ' (was archived)' : ''), by || 'web');
       return res.json({ ok: true, restored: true, truck: existing.display_number || num, was_archived: !!existing.archived });
@@ -469,6 +469,18 @@ function createRouter({ config, newmile, log }) {
   // en la DB local — nunca en el repo (que es público). Juan la ve en /api/states-key.
   let statesKey = metaGet('states_key', '');
   if (!statesKey) { statesKey = crypto.randomBytes(24).toString('hex'); metaSet('states_key', statesKey); }
+
+  // BACKFILL removed_src (una sola vez, 2026-10-18): los archivados de ANTES de la columna.
+  // 'manual' = su último evento removed/restored en truck_log fue un remove a mano (esos
+  // NUNCA los restaura la regla de orgs de SUBS); el resto = 'auto' (archivador dormante).
+  if (metaGet('removed_src_backfill', '') !== '1') {
+    run(`UPDATE trucks SET removed_src = 'manual'
+         WHERE archived = 1 AND COALESCE(removed_src, '') = ''
+           AND COALESCE((SELECT MAX(ts) FROM truck_log l WHERE l.org_id = trucks.org_id AND l.number = trucks.number AND l.field = 'removed'), '') >
+               COALESCE((SELECT MAX(ts) FROM truck_log l WHERE l.org_id = trucks.org_id AND l.number = trucks.number AND l.field = 'restored'), '')`);
+    run(`UPDATE trucks SET removed_src = 'auto' WHERE archived = 1 AND COALESCE(removed_src, '') = ''`);
+    metaSet('removed_src_backfill', '1');
+  }
 
   router.get('/api/states', (req, res) => {
     if (String(req.query.key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
@@ -532,6 +544,56 @@ function createRouter({ config, newmile, log }) {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.json(out);
+  });
+
+  // 🚚 CENSO DE SUBS POR COMPAÑÍA — canal de máquinas (states-key). La vida de un sub se
+  // mide por su COMPAÑÍA (owner_name), no por el truck: compañía con carga en la ventana
+  // (default 30 d) = ACTIVA y TODOS sus trucks pertenecen al board, aunque alguno no haya
+  // corrido; compañía muerta = todos fuera. Este endpoint SOLO reporta (no toca nada):
+  // agrupa todos los subs del tab (incluidos archivados) y dice qué haría la regla.
+  router.get('/api/subs-census', (req, res) => {
+    if (String(req.query.key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    const days = Math.max(7, Math.min(120, parseInt(req.query.days, 10) || 30));
+    const cutoff = new Date(Date.now() - days * 86400e3).toISOString().slice(0, 10);
+    const rows = all(`SELECT t.org_id, t.number, t.display_number, t.owner_name, t.last_load_date,
+                             t.archived, t.removed_src, t.is_new, t.star, t.division, t.area, t.driver
+                      FROM trucks t JOIN orgs o ON o.id = t.org_id
+                      WHERE o.enabled = 1 AND t.is_sub = 1 AND NOT (t.org_id = 'KT' AND t.number LIKE 'CKJ%')`);
+    const byCo = new Map();
+    for (const t of rows) {
+      const co = (t.owner_name || '').trim() || '(NO COMPANY)';
+      if (!byCo.has(co)) byCo.set(co, { company: co, lastLoad: null, trucks: [] });
+      const g = byCo.get(co);
+      if (t.last_load_date && (!g.lastLoad || t.last_load_date > g.lastLoad)) g.lastLoad = t.last_load_date;
+      g.trucks.push({
+        n: t.display_number || t.number, org: t.org_id, lastLoad: t.last_load_date || null,
+        archived: t.archived ? 1 : 0, removedSrc: t.removed_src || '', isNew: t.is_new ? 1 : 0, star: t.star ? 1 : 0
+      });
+    }
+    const companies = [...byCo.values()].map(g => {
+      g.active = !!(g.lastLoad && g.lastLoad >= cutoff);
+      g.visible = g.trucks.filter(t => !t.archived).length;
+      g.archived = g.trucks.length - g.visible;
+      // what the org rule would do (manual removes never come back by themselves)
+      g.wouldRestore = g.active ? g.trucks.filter(t => t.archived && t.removedSrc !== 'manual').length : 0;
+      g.wouldArchive = (!g.active && g.company !== '(NO COMPANY)') ? g.trucks.filter(t => !t.archived && !t.star).length : 0;
+      g.trucks.sort((a, b) => String(b.lastLoad || '').localeCompare(String(a.lastLoad || '')));
+      return g;
+    }).sort((a, b) => String(b.lastLoad || '').localeCompare(String(a.lastLoad || '')));
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+      _meta: { windowDays: days, cutoff, generatedAt: nowISO() },
+      summary: {
+        companies: companies.length,
+        activeCompanies: companies.filter(c => c.active).length,
+        trucksTotal: rows.length,
+        trucksVisible: companies.reduce((s, c) => s + c.visible, 0),
+        trucksArchived: companies.reduce((s, c) => s + c.archived, 0),
+        wouldRestore: companies.reduce((s, c) => s + c.wouldRestore, 0),
+        wouldArchive: companies.reduce((s, c) => s + c.wouldArchive, 0)
+      },
+      companies
+    });
   });
 
   // La llave del canal — SOLO detrás del PIN. Juan la copia y se la pasa al board.
@@ -804,7 +866,7 @@ function createRouter({ config, newmile, log }) {
     const orgId = normNum(req.params.org), number = normNum(req.params.number);
     const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number);
     if (!row) return res.status(404).json({ error: 'truck not found' });
-    run(`UPDATE trucks SET archived = 0, maybe_removed = 0 WHERE org_id = ? AND number = ?`, orgId, number);
+    run(`UPDATE trucks SET archived = 0, maybe_removed = 0, removed_src = '' WHERE org_id = ? AND number = ?`, orgId, number);
     logChange(orgId, number, 'restored', '', 'restored to board via /restore', 'web');
     res.json({ ok: true, truck: row.display_number || row.number, back_on_board: true });
   });
@@ -835,7 +897,7 @@ function createRouter({ config, newmile, log }) {
     const row = get('SELECT * FROM trucks WHERE org_id = ? AND number = ?', orgId, number);
     if (!row) return res.status(404).json({ error: 'truck not found' });
     const by = String((req.body || {}).by || '').slice(0, 40);
-    run(`UPDATE trucks SET archived = 1, is_new = 0, maybe_removed = 0 WHERE org_id = ? AND number = ?`, orgId, number);
+    run(`UPDATE trucks SET archived = 1, is_new = 0, maybe_removed = 0, removed_src = 'manual' WHERE org_id = ? AND number = ?`, orgId, number);
     logChange(orgId, number, 'removed', '', 'removed from board (returns by itself if it hauls again)', by);
     res.json({ ok: true });
   });
@@ -1262,8 +1324,8 @@ function createRouter({ config, newmile, log }) {
     const action = (req.body || {}).action;
     if (!['archive', 'keep'].includes(action)) return res.status(400).json({ error: "action: 'archive' | 'keep'" });
     // "keep" = yo sé que sigue activo: el sweep del roster no re-avisa por 21 días
-    const r = run(`UPDATE trucks SET maybe_removed = 0, archived = ?, baja_dismissed_at = ?, updated_at = ? WHERE org_id = ? AND number = ?`,
-      action === 'archive' ? 1 : 0, action === 'keep' ? nowISO() : '', nowISO(), orgId, number);
+    const r = run(`UPDATE trucks SET maybe_removed = 0, archived = ?, removed_src = ?, baja_dismissed_at = ?, updated_at = ? WHERE org_id = ? AND number = ?`,
+      action === 'archive' ? 1 : 0, action === 'archive' ? 'manual' : '', action === 'keep' ? nowISO() : '', nowISO(), orgId, number);
     if (!r.changes) return res.status(404).json({ error: 'truck not found' });
     res.json({ ok: true });
   });
@@ -1690,7 +1752,7 @@ function createRouter({ config, newmile, log }) {
       // 🗄 remove / restore through the machine channel (same as the tracker's Remove button:
       // archived, never deleted; comes back by itself if it hauls or gets assigned in NewMile)
       if (f.remove || f.restore) {
-        run('UPDATE trucks SET archived = ?, is_new = 0, maybe_removed = 0, updated_at = ? WHERE org_id = ? AND number = ?', f.remove ? 1 : 0, nowISO(), row.org_id, row.number);
+        run('UPDATE trucks SET archived = ?, is_new = 0, maybe_removed = 0, removed_src = ?, updated_at = ? WHERE org_id = ? AND number = ?', f.remove ? 1 : 0, f.remove ? 'manual' : '', nowISO(), row.org_id, row.number);
         logChange(row.org_id, row.number, f.remove ? 'removed' : 'restored', '', f.remove ? 'removed from board (returns by itself if it hauls again)' : 'restored to board', by);
         bumpRev();
         if (!sets.length) return res.json({ ok: true, updated: true, archived: f.remove ? 1 : 0 });
