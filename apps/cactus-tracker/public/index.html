@@ -438,7 +438,7 @@ body.dark .scoCard.idle .scoPill{background:#2e3a47;}
 .scoKpi b{font-family:'Barlow Condensed';font-weight:800;font-size:16.5px;}
 .scoKpi span{font-size:9.5px;letter-spacing:.6px;color:var(--mut);text-transform:uppercase;font-weight:700;}
 .subtbl{overflow-x:auto;border-top:1px solid var(--line);}
-.srow{display:grid;grid-template-columns:132px minmax(170px,1.6fr) minmax(120px,1fr) 118px 70px 94px 58px minmax(110px,1.2fr) 182px;gap:8px;align-items:center;padding:7px 14px;border-top:1px solid var(--line);font-size:13.5px;cursor:pointer;min-width:900px;background:var(--card);}
+.srow{display:grid;grid-template-columns:192px minmax(170px,1.6fr) minmax(120px,1fr) 118px 70px 94px 58px minmax(110px,1.2fr) 182px;gap:8px;align-items:center;padding:7px 14px;border-top:1px solid var(--line);font-size:13.5px;cursor:pointer;min-width:960px;background:var(--card);}
 .srow:first-child{border-top:none;}
 .srow:hover{background:var(--warm);}
 .srow.shead{font-family:'Barlow Condensed';font-weight:700;font-size:11.5px;letter-spacing:.7px;color:var(--mut);text-transform:uppercase;cursor:default;}
@@ -448,7 +448,9 @@ body.dark .scoCard.idle .scoPill{background:#2e3a47;}
 .srow.s-n{box-shadow:inset 4px 0 0 #D9B430;background:#FBF3D0;}
 body.dark .srow.s-n{background:#2d2a17;}
 .srow.s-off{box-shadow:inset 4px 0 0 #c98a2f;opacity:.72;}
-.srow .stk{font-family:'Barlow Condensed';font-weight:800;font-size:16.5px;display:flex;align-items:center;gap:5px;white-space:nowrap;}
+.srow .stk{font-family:'Barlow Condensed';font-weight:800;font-size:16.5px;display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden;min-width:0;}
+.srow .stk .stknum{overflow:hidden;text-overflow:ellipsis;}
+.srow .stk .newflag{font-size:9.5px;font-weight:800;letter-spacing:.4px;padding:2px 6px;border-radius:9px;background:var(--red-bg);color:var(--red);flex:0 0 auto;}
 .srow .stk .star-btn{position:static;font-size:15px;}
 .srow .sdrv{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .srow .smut{color:var(--mut);font-size:12px;}
@@ -457,7 +459,7 @@ body.dark .srow.s-n{background:#2d2a17;}
 @media(max-width:760px){
   .shc b{font-size:19px;}
   .scoKpis{width:100%;justify-content:space-between;margin-left:0;gap:8px;}
-  .srow{font-size:12.5px;min-width:860px;padding:7px 10px;}
+  .srow{font-size:12.5px;min-width:920px;padding:7px 10px;}
 }
 body.dark{
   --navy:#141b24; --navy2:#0e1a2e; --gold:#C8991F; --gold-d:#e3b84a;
@@ -1276,7 +1278,10 @@ function render(){
   renderBulkBar(bulk);
   const groups={};
   for(const t of divTrucks){
-    if(t.is_new)continue; // NEW trucks live in Review until placed
+    // NEW trucks live in Review until placed — EXCEPT in SUBS: ahí la compañía ES su
+    // lugar, así que los ⚑ pintan en su card con bandera (si no, compañías enteras de
+    // subs nuevos ni aparecían — Buck Final Mile con 32 trucks invisible, 2026-10-18)
+    if(t.is_new&&ORG!=="SUBS")continue;
     if(!matchStatus(t))continue;
     if(!matchTypeSel(t))continue;
     if(!matchDisp(t))continue;
@@ -1504,7 +1509,7 @@ function subRowHtml(t){
   const inv=Number(t.invalid_tickets)||0;
   const note=[t.note,t.last_call?"📞 "+t.last_call.text:""].filter(Boolean).join(" · ");
   return `<div class="srow ${cls}" id="chip-${cssId(t.org_id+"-"+t.number)}" onclick="openCalls('${t.org_id}','${esc(t.number)}')">
-    <span class="stk"><button class="star-btn ${t.star?"on":""}" onclick="event.stopPropagation();toggleStar(event,'${t.org_id}','${esc(t.number)}')">${t.star?"★":"☆"}</button>${esc(dnum(t))}</span>
+    <span class="stk"><button class="star-btn ${t.star?"on":""}" onclick="event.stopPropagation();toggleStar(event,'${t.org_id}','${esc(t.number)}')">${t.star?"★":"☆"}</button><span class="stknum">${esc(dnum(t))}</span>${t.is_new?'<span class="newflag" title="NEW — came in from NewMile, not reviewed yet">⚑ NEW</span>':""}</span>
     <span class="sdrv">${esc(t.driver)||'<span style="color:var(--red)">⚠ no driver</span>'}${t.phone?` <a href="tel:${esc(t.phone)}" onclick="event.stopPropagation()" class="smut" style="text-decoration:none;">${esc(t.phone)}</a>`:""}</span>
     <span>${today}</span>
     <span style="${lastStyle}">${lastTxt}</span>
