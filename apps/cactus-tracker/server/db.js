@@ -340,6 +340,13 @@ function migrate(d) {
   addCol(d, 'trucks', 'removed_src', "TEXT DEFAULT ''"); // quién lo archivó: 'manual' (Juan, nunca regresa solo salvo carga) | 'auto' (archivador — la regla de orgs de SUBS sí lo puede restaurar)
   // HISTORIAL HOS día a día (Samsara daily logs): cuánto MANEJÓ/TRABAJÓ cada driver
   // cada día — el board lo enseña por fecha y acumula la semana.
+  // 🧾 DVIRs from Samsara, one row per truck per CT day (pre-trip first, post-trip last)
+  d.exec(`CREATE TABLE IF NOT EXISTS dvir_days (
+    org_id TEXT NOT NULL, number TEXT NOT NULL, date TEXT NOT NULL,
+    pre_at TEXT DEFAULT '', pre_driver TEXT DEFAULT '', post_at TEXT DEFAULT '', post_driver TEXT DEFAULT '',
+    other_at TEXT DEFAULT '', defects INTEGER DEFAULT 0, unsafe INTEGER DEFAULT 0, count INTEGER DEFAULT 0, updated_at TEXT DEFAULT '',
+    PRIMARY KEY (org_id, number, date)
+  )`);
   d.exec(`CREATE TABLE IF NOT EXISTS hos_days (
     driver_id TEXT NOT NULL,
     date TEXT NOT NULL,

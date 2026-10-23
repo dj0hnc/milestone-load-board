@@ -11,7 +11,7 @@ const path = require('path');
 const { all, get, run, metaGet, metaSet, nowISO } = require('./db');
 const { todayCT, weekDatesCT, daysBetween, normNum, canonArea, canonicalTruckNumber, isKtScoped, shortTrailer } = require('./util');
 const { syncRoster, syncActivity, syncAssignments, scanRipRap, reconcileICs, syncParkingFromNewMile, auditParkingVsNewMile, syncInvalidTickets } = require('./sync-newmile');
-const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking, locateTruck, debugHOS, auditHOS, refreshHOSTruck, cameraSnapshot, cameraCheck } = require('./sync-samsara');
+const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking, locateTruck, debugHOS, auditHOS, refreshHOSTruck, cameraSnapshot, cameraCheck, syncDvirs } = require('./sync-samsara');
 const { logChange, snapshotTruckDay, historyOf, daySnapshots } = require('./history');
 const zones = require('./zones'); // 🗺 dispatcher zones (Juan / Mary / Jimmy)
 const places = require('./places'); // 📍 plants / pits / drop-off sites catalog
@@ -48,7 +48,7 @@ function createRouter({ config, newmile, log }) {
   }
   const crypto = require('crypto');
   const pinCookie = PIN ? crypto.createHash('sha256').update('cactus|' + PIN).digest('hex').slice(0, 40) : '';
-  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/samsara-login-fleet-key', '/api/samsara-probe-key', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/board-truck', '/api/sync-assignments', '/api/sync-roster', '/api/subs-census', '/api/sync/parking-key', '/api/places-key', '/api/places/rebuild-key', '/api/places/learn-key', '/api/zones/parking-audit-key', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
+  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/samsara-login-fleet-key', '/api/samsara-probe-key', '/api/sync/dvirs-key', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/board-truck', '/api/sync-assignments', '/api/sync-roster', '/api/subs-census', '/api/sync/parking-key', '/api/places-key', '/api/places/rebuild-key', '/api/places/learn-key', '/api/zones/parking-audit-key', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
   if (PIN) {
     router.use((req, res, next) => {
       if (OPEN_PATHS.includes(req.path)) return next();
@@ -145,6 +145,14 @@ function createRouter({ config, newmile, log }) {
         for (const t of trucks) { const p = t.nm_truck_id != null ? byNm.get(String(t.nm_truck_id)) : null; if (p) t.nm_park = p; }
       }
     } catch (e) { /* no audit yet → no tag */ }
+    // 🧾 DVIRs of THIS board date (Samsara pre-trip / post-trip) → t.dvir for the chip line + DVIR MISSING filter
+    try {
+      const dv = new Map(all('SELECT * FROM dvir_days WHERE date = ?', date).map(r => [r.org_id + '|' + r.number, r]));
+      for (const t of trucks) {
+        const r = dv.get(t.org_id + '|' + t.number);
+        if (r) t.dvir = { pre: r.pre_at || '', preDrv: r.pre_driver || '', post: r.post_at || '', postDrv: r.post_driver || '', other: r.other_at || '', defects: r.defects || 0, unsafe: r.unsafe || 0, count: r.count || 0 };
+      }
+    } catch (e) { /* table not there yet */ }
     const states = virtual
       ? all('SELECT * FROM dispatch_state WHERE date = ?', date)
       : all('SELECT * FROM dispatch_state WHERE date = ? AND org_id = ?', date, orgId);
@@ -869,6 +877,12 @@ function createRouter({ config, newmile, log }) {
   // 📲 set the Samsara Driver App Fleet IDs (machine channel): {"CACTUS":"…","KT":"…"} — keys are org
   // ids and/or Samsara org names; values are the short codes drivers type. Stored in meta only.
   // 🔎 what Samsara's vehicle / trailer objects carry on this account (keys only, no values) — machine channel
+  // 🧾 run the DVIR pull now + show what Samsara returned (machine channel)
+  router.post('/api/sync/dvirs-key', async (req, res) => {
+    if (String((req.query || {}).key || (req.body || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    try { const summary = await syncDvirs(config); let probe = {}; try { probe = JSON.parse(metaGet('dvir_probe', '{}')); } catch (e) {} res.json({ ok: true, summary, probe }); }
+    catch (e) { res.status(500).json({ error: String(e.message || e) }); }
+  });
   router.get('/api/samsara-probe-key', (req, res) => {
     if (String((req.query || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
     let probe = {}; try { probe = JSON.parse(metaGet('samsara_probe', '{}')) || {}; } catch (e) {}

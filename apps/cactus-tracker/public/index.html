@@ -123,6 +123,8 @@ body.sz-l .chip .num{font-size:29px;}
 /* HOS: horas de servicio que le quedan al driver (hoy y de la semana) */
 .chip .hos{font-size:10.5px;font-weight:600;color:var(--mut);margin-top:2px;line-height:1.35;}
 .chip .hos b.ok{color:var(--green);} .chip .hos b.low{color:#b8853a;} .chip .hos b.out{color:var(--red);}
+.chip .dvir{font-size:10.5px;font-weight:600;color:var(--mut);margin-top:2px;line-height:1.35;}
+.chip .dvir b.ok{color:var(--green);} .chip .dvir b.out{color:var(--red);} .chip .dvir b.low{color:#b8853a;} .chip .dvir b.pend{color:#9aa1b2;}
 .chip .park.mut{color:#9aa1b2;font-weight:600;}
 .chip .nmp{font-size:10px;font-weight:700;letter-spacing:.2px;}
 .chip .nmp.ok{color:var(--green);} .chip .nmp.bad{color:var(--red);} .chip .nmp.mut{color:#9aa1b2;}
@@ -881,6 +883,7 @@ function matchStatus(t){
     case "off": return isOffNow(t);
     case "rip": return !!t.rip_rap;
     case "star": return !!t.star;
+    case "dvir": return dvirMissing(t);                                  // 🧾 worked / assigned but no pre-trip (or no post-trip on past days)
   }
   return true;
 }
@@ -925,7 +928,7 @@ function matchTypeSel(t){
   return true;
 }
 function renderSeg(list){
-  const c={all:0,open:0,cov:0,asg:0,wrk:0,asgnw:0,off:0,rip:0,star:0};
+  const c={all:0,open:0,cov:0,asg:0,wrk:0,asgnw:0,off:0,rip:0,star:0,dvir:0};
   for(const t of list){
     if(t.is_new)continue;
     c.all++;
@@ -939,8 +942,9 @@ function renderSeg(list){
     if(assigned&&!worked)c.asgnw++;
     if(t.rip_rap)c.rip++;
     if(t.star)c.star++;
+    if(dvirMissing(t))c.dvir++;
   }
-  const segs=[["","ALL",c.all,""],["open","OPEN",c.open,""],["cov","COVERED",c.cov,""],["asg","📋 ASSIGNED",c.asg,""],["wrk","🟢 WORKED",c.wrk,""],["asgnw","⏳ NOT YET",c.asgnw,"off-seg"],["off","OFF",c.off,"off-seg"],["rip","RIP",c.rip,"rip"],["star","⭐ STAR",c.star,"star-seg"]];
+  const segs=[["","ALL",c.all,""],["open","OPEN",c.open,""],["cov","COVERED",c.cov,""],["asg","📋 ASSIGNED",c.asg,""],["wrk","🟢 WORKED",c.wrk,""],["asgnw","⏳ NOT YET",c.asgnw,"off-seg"],["off","OFF",c.off,"off-seg"],["rip","RIP",c.rip,"rip"],["star","⭐ STAR",c.star,"star-seg"],["dvir","🧾 DVIR MISSING",c.dvir,"off-seg"]];
   $("segStatus").innerHTML=segs.map(s=>`<button class="${s[3]} ${statusFilter===s[0]?"on":""}" onclick="setStatus('${s[0]}')">${s[1]}<span>${s[2]}</span></button>`).join("");
 }
 function setStatus(v){statusFilter=v;render();}
@@ -1163,6 +1167,31 @@ function hosCycleEff(t){
   if(t.hos_cycle_ms==null)return null;
   if(t.hos_cycle_ms<=0&&t.hos_viol_cycle_ms>0)return -t.hos_viol_cycle_ms;
   return t.hos_cycle_ms;
+}
+// 🧾 DVIR line (Samsara pre-trip / post-trip) — safety follows up on missing ones. Shown for own trucks
+// with Samsara that work / are assigned this day, or that already sent a DVIR.
+function dvirNeeded(t){return !!(t.samsara_id&&!t.is_sub&&!t.archived&&(t.state==="a"||(t.loads_today||0)>0||t.dvir));}
+function dvirMissing(t){
+  if(!dvirNeeded(t))return false;
+  const d=t.dvir||{};
+  if(d.other&&!d.pre&&!d.post)return false;                 // account doesn't label pre/post: any DVIR counts
+  const past=date<board.today;
+  return !d.pre||(past&&!d.post);
+}
+function dvirTime(iso){try{return new Date(iso).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",timeZone:"America/Chicago"}).replace(":00","").replace(" ","").toLowerCase();}catch(e){return "";}}
+function dvirHtml(t){
+  if(!dvirNeeded(t))return "";
+  const d=t.dvir||{}, past=date<board.today;
+  const tip=(lbl,iso,who)=>`${lbl} sent ${new Date(iso).toLocaleString("en-US",{month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit",timeZone:"America/Chicago"})}${who?" by "+who:""}`;
+  let parts;
+  if(d.other&&!d.pre&&!d.post) parts=[`<b class="ok" title="${esc(tip("DVIR",d.other,""))}">DVIR ✓ ${dvirTime(d.other)}</b>`];
+  else parts=[
+    d.pre?`<b class="ok" title="${esc(tip("Pre-trip",d.pre,d.preDrv))}">PRE ✓ ${dvirTime(d.pre)}</b>`:`<b class="out" title="No pre-trip DVIR in Samsara for this day">PRE ✗</b>`,
+    d.post?`<b class="ok" title="${esc(tip("Post-trip",d.post,d.postDrv))}">POST ✓ ${dvirTime(d.post)}</b>`:(past?`<b class="out" title="No post-trip DVIR in Samsara for this day">POST ✗</b>`:`<b class="pend" title="Post-trip not sent yet (due at end of shift)">POST …</b>`)
+  ];
+  if(d.unsafe)parts.push(`<b class="out" title="Samsara marked a DVIR unsafe">UNSAFE</b>`);
+  else if(d.defects)parts.push(`<b class="low" title="Defects reported on the DVIR">⚠ ${d.defects} defect${d.defects>1?"s":""}</b>`);
+  return `<div class="dvir" title="DVIR from Samsara">🧾 ${parts.join(" · ")}</div>`;
 }
 function hosHtml(t){
   // HISTORIAL: viendo un día pasado, enseña lo que TRABAJÓ ese día + acumulado semanal
@@ -1407,6 +1436,7 @@ function chipHtml(t){
     <div class="drv ${t.driver?"":"none"}">${esc(t.driver)||"⚠ NO DRIVER"}</div>
     ${t.state==="a"&&t.nm_dest&&t.nm_dest.length?`<div class="dest" title="${esc(t.nm_dest.map(d=>[d.n,d.c,d.m,d.d].filter(Boolean).join(" · ")).join("  +  "))}">🚚 ${t.nm_dest.map(d=>esc([d.c||d.n,d.d||d.m].filter(Boolean).join(" → "))).join(" + ")}</div>`:""}
     ${hosHtml(t)}
+    ${dvirHtml(t)}
     ${groupMode==="owner"&&ORG!=="SUBS"?`<div class="park mut" style="color:#7a2fa8;">📌 zone: ${esc(areaLbl(t.area||"(SIN YARD)"))}</div>`:""}
     ${parkHtml(t)}
     ${actHtml(t)}

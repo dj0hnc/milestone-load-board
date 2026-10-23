@@ -1189,4 +1189,84 @@ async function locateTruck(cfg, orgRow, truck) {
   return { city: city || '', time: g.time || null, speed, moved, last_moved_at: (finalRow && finalRow.last_moved_at) || null };
 }
 
-module.exports = { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, refreshHOSTruck, cameraSnapshot, cameraCheck, debugHOS, auditHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck, fetchGpsHistory, tokenFor };
+// 🧾 DVIRs (pre-trip / post-trip inspections) from Samsara — safety follows up on who did / didn't.
+// One list call per org (paged) covering the last 36 h; each DVIR lands on its truck (samsara_id) and
+// on the CT date it was signed. Endpoint + object shape vary by account/API version, so it tries the
+// v2 history endpoint first, then the stream endpoint, and reads several possible key names. The keys
+// and type values seen are kept in meta dvir_probe (GET /api/sync/dvirs-key shows them).
+const CT_DAY = (iso) => { try { return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }); } catch (e) { return String(iso || '').slice(0, 10); } };
+async function fetchDvirs(token, startISO, endISO) {
+  const tries = [
+    (after) => 'https://api.samsara.com/fleet/dvirs/history?startTime=' + encodeURIComponent(startISO) + '&endTime=' + encodeURIComponent(endISO) + '&limit=200' + (after ? '&after=' + encodeURIComponent(after) : ''),
+    (after) => 'https://api.samsara.com/dvirs/stream?startTime=' + encodeURIComponent(startISO) + '&endTime=' + encodeURIComponent(endISO) + '&limit=200' + (after ? '&after=' + encodeURIComponent(after) : '')
+  ];
+  let lastErr = '';
+  for (let ti = 0; ti < tries.length; ti++) {
+    let out = [], after = '', pages = 0, ok = true;
+    do {
+      const r = await fetch(tries[ti](after), { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
+      if (!r.ok) { ok = false; lastErr = 'HTTP ' + r.status + ' on ' + (ti === 0 ? 'fleet/dvirs/history' : 'dvirs/stream'); break; }
+      const j = await r.json();
+      out = out.concat(j.data || j.dvirs || []);
+      after = (j.pagination && j.pagination.hasNextPage) ? j.pagination.endCursor : '';
+      pages++;
+    } while (after && pages < 20);
+    if (ok) return { rows: out, endpoint: ti === 0 ? 'fleet/dvirs/history' : 'dvirs/stream' };
+  }
+  throw new Error('Samsara DVIRs: ' + lastErr);
+}
+function dvirParse(d) {
+  const veh = d.vehicle || d.vehicleInfo || {};
+  const vid = veh.id != null ? String(veh.id) : (d.vehicleId != null ? String(d.vehicleId) : null);
+  const type = String(d.type || d.inspectionType || d.dvirType || '').toLowerCase();
+  const sig = d.authorSignature || d.driverSignature || {};
+  const at = d.endTime || sig.signedAtTime || d.startTime || d.createdAtTime || d.time || '';
+  const who = (sig.signatoryUser && sig.signatoryUser.name) || sig.name || (d.driver && d.driver.name) || (d.author && d.author.name) || '';
+  const defects = (Array.isArray(d.vehicleDefects) ? d.vehicleDefects.length : 0) + (Array.isArray(d.trailerDefects) ? d.trailerDefects.length : 0) + (Array.isArray(d.defects) ? d.defects.length : 0);
+  const unsafe = /unsafe/i.test(String(d.safetyStatus || d.vehicleCondition || '')) ? 1 : 0;
+  return { vid, kind: type.includes('pre') ? 'pre' : type.includes('post') ? 'post' : 'other', type, at, who, defects, unsafe };
+}
+async function syncDvirs(cfg) {
+  const orgs = all('SELECT * FROM orgs WHERE enabled = 1 AND samsara = 1 ORDER BY sort');
+  const endISO = new Date().toISOString(), startISO = new Date(Date.now() - 36 * 3600e3).toISOString();
+  const summary = { dvirs: 0, matched: 0, trucks: 0, skippedOrgs: [] };
+  let probe = {}; try { probe = JSON.parse(metaGet('dvir_probe', '{}')) || {}; } catch (e) {}
+  for (const org of orgs) {
+    const token = tokenFor(cfg, org.samsara_org);
+    if (!token) { summary.skippedOrgs.push(org.id + ' (no token)'); continue; }
+    let res;
+    try { res = await fetchDvirs(token, startISO, endISO); } catch (e) { summary['error_' + org.id] = String(e.message || e); probe[org.id] = { at: nowISO(), error: String(e.message || e) }; continue; }
+    summary.dvirs += res.rows.length;
+    const keys = new Set(), types = new Set();
+    res.rows.slice(0, 30).forEach(d => { Object.keys(d || {}).forEach(k => keys.add(k)); const p = dvirParse(d); if (p.type) types.add(p.type); });
+    probe[org.id] = { at: nowISO(), endpoint: res.endpoint, count: res.rows.length, keys: [...keys], types: [...types] };
+    const agg = new Map();   // org|number|date → day record
+    for (const d of res.rows) {
+      const p = dvirParse(d); if (!p.vid || !p.at) continue;
+      const row = get('SELECT org_id, number FROM trucks WHERE org_id = ? AND samsara_id = ?', org.id, p.vid);
+      if (!row) continue;
+      summary.matched++;
+      const date = CT_DAY(p.at), k = row.org_id + '|' + row.number + '|' + date;
+      const a = agg.get(k) || { org: row.org_id, num: row.number, date, pre_at: '', pre_driver: '', post_at: '', post_driver: '', other_at: '', defects: 0, unsafe: 0, count: 0 };
+      if (p.kind === 'pre') { if (!a.pre_at || p.at < a.pre_at) { a.pre_at = p.at; a.pre_driver = p.who; } }
+      else if (p.kind === 'post') { if (!a.post_at || p.at > a.post_at) { a.post_at = p.at; a.post_driver = p.who; } }
+      else if (!a.other_at || p.at > a.other_at) a.other_at = p.at;
+      a.defects += p.defects; a.unsafe = a.unsafe || p.unsafe; a.count++;
+      agg.set(k, a);
+    }
+    for (const a of agg.values()) {
+      run(`INSERT INTO dvir_days (org_id, number, date, pre_at, pre_driver, post_at, post_driver, other_at, defects, unsafe, count, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(org_id, number, date) DO UPDATE SET pre_at = excluded.pre_at, pre_driver = excluded.pre_driver, post_at = excluded.post_at,
+             post_driver = excluded.post_driver, other_at = excluded.other_at, defects = excluded.defects, unsafe = excluded.unsafe,
+             count = excluded.count, updated_at = excluded.updated_at`,
+        a.org, a.num, a.date, a.pre_at, a.pre_driver, a.post_at, a.post_driver, a.other_at, a.defects, a.unsafe, a.count, nowISO());
+      summary.trucks++;
+    }
+  }
+  metaSet('dvir_probe', JSON.stringify(probe));
+  metaSet('last_sync_dvirs', nowISO());
+  return summary;
+}
+
+module.exports = { syncDvirs, syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, refreshHOSTruck, cameraSnapshot, cameraCheck, debugHOS, auditHOS, backfillParking, applyPlacements, placeTruck, mapCityToArea, nearestTown, discoverIC, resolveSamsaraTruck, locateTruck, fetchGpsHistory, tokenFor };

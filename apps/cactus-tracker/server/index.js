@@ -24,7 +24,7 @@ const { createRouter } = require('./routes');
 const { NewMileClient } = require('./newmile-client');
 const { syncRoster, syncActivity, syncAssignments, scanRipRap, syncInvalidTickets, auditParkingVsNewMile } = require('./sync-newmile');
 const places = require('./places'); // 📍 plants catalog (nightly rebuild)
-const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking } = require('./sync-samsara');
+const { syncSamsara, syncHOS, syncHOSDaily, syncWorkTimes, backfillParking, syncDvirs } = require('./sync-samsara');
 const { snapshotAllToday } = require('./history');
 const { ctParts } = require('./util');
 
@@ -378,6 +378,7 @@ function createTracker(opts) {
         try {
           const s = await syncSamsara(config, { light: true, skipExtras: true }); // censo + GPS + acomodo
           await syncHOS(config, s.vehiclesByOrg); // relojes con la lista ya en mano
+          try { await syncDvirs(config); } catch (e) { log('dvir sync error: ' + (e.message || e)); } // 🧾 pre/post-trip DVIRs (safety)
         } catch (e) { log('fast sync error: ' + (e.message || e)); }
         finally { fastBusy = false; }
       })();
