@@ -1100,7 +1100,14 @@ async function syncSamsara(cfg, opts) {
             run('UPDATE trucks SET samsara_meta = ? WHERE org_id = ? AND number = ?', JSON.stringify(meta), row.org_id, row.number);
             paired++;
           }
-          summary['trailers_' + org.id] = { listed: trs.length, paired };
+          const plateByName = new Map(trs.filter(t => t && t.name).map(t => [String(t.name).trim().toUpperCase(), t.licensePlate || '']));
+          let plated = 0;
+          for (const row of all("SELECT number, samsara_meta FROM trucks WHERE org_id = ? AND samsara_meta LIKE '%\"trailer\"%'", org.id)) {
+            let meta = {}; try { meta = JSON.parse(row.samsara_meta); } catch (e) { continue; }
+            const pl = meta.trailer && meta.trailer.name ? plateByName.get(String(meta.trailer.name).trim().toUpperCase()) : '';
+            if (pl && pl !== meta.trailer.plate) { meta.trailer.plate = pl; run('UPDATE trucks SET samsara_meta = ? WHERE org_id = ? AND number = ?', JSON.stringify(meta), org.id, row.number); plated++; }
+          }
+          summary['trailers_' + org.id] = { listed: trs.length, paired, plated };
           let probe = {}; try { probe = JSON.parse(metaGet('samsara_probe', '{}')) || {}; } catch (e) {}
           probe[org.id] = { at: nowISO(), trailers: trs.length, paired, trailerKeys: [...keys], vehicleKeys: [...vkeys] };
           metaSet('samsara_probe', JSON.stringify(probe));
@@ -1224,7 +1231,9 @@ function dvirParse(d) {
   const who = (sig.signatoryUser && sig.signatoryUser.name) || sig.name || (d.driver && d.driver.name) || (d.author && d.author.name) || '';
   const defects = (Array.isArray(d.vehicleDefects) ? d.vehicleDefects.length : 0) + (Array.isArray(d.trailerDefects) ? d.trailerDefects.length : 0) + (Array.isArray(d.defects) ? d.defects.length : 0);
   const unsafe = /unsafe/i.test(String(d.safetyStatus || d.vehicleCondition || '')) ? 1 : 0;
-  return { vid, kind: type.includes('pre') ? 'pre' : type.includes('post') ? 'post' : 'other', type, at, who, defects, unsafe };
+  const trl = d.trailer || {};
+  const trailer = String(d.trailerName || trl.name || '').trim();
+  return { vid, kind: type.includes('pre') ? 'pre' : type.includes('post') ? 'post' : 'other', type, at, who, defects, unsafe, trailer, trailerId: trl.id != null ? String(trl.id) : '' };
 }
 async function syncDvirs(cfg) {
   const orgs = all('SELECT * FROM orgs WHERE enabled = 1 AND samsara = 1 ORDER BY sort');
@@ -1238,9 +1247,11 @@ async function syncDvirs(cfg) {
     try { res = await fetchDvirs(token, startISO, endISO); } catch (e) { summary['error_' + org.id] = String(e.message || e); probe[org.id] = { at: nowISO(), error: String(e.message || e) }; continue; }
     summary.dvirs += res.rows.length;
     const keys = new Set(), types = new Set();
-    res.rows.slice(0, 30).forEach(d => { Object.keys(d || {}).forEach(k => keys.add(k)); const p = dvirParse(d); if (p.type) types.add(p.type); });
+    res.rows.slice(0, 30).forEach(d => Object.keys(d || {}).forEach(k => keys.add(k)));
+    res.rows.forEach(d => { const p = dvirParse(d); if (p.type) types.add(p.type); });
     probe[org.id] = { at: nowISO(), endpoint: res.endpoint, count: res.rows.length, keys: [...keys], types: [...types] };
     const agg = new Map();   // org|number|date → day record
+    const lastTrailer = new Map();   // org|number → newest DVIR that named a trailer
     for (const d of res.rows) {
       const p = dvirParse(d); if (!p.vid || !p.at) continue;
       const row = get('SELECT org_id, number FROM trucks WHERE org_id = ? AND samsara_id = ?', org.id, p.vid);
@@ -1253,6 +1264,17 @@ async function syncDvirs(cfg) {
       else if (!a.other_at || p.at > a.other_at) a.other_at = p.at;
       a.defects += p.defects; a.unsafe = a.unsafe || p.unsafe; a.count++;
       agg.set(k, a);
+      if (p.trailer) { const tk = row.org_id + '|' + row.number, prev = lastTrailer.get(tk); if (!prev || p.at > prev.at) lastTrailer.set(tk, { name: p.trailer, id: p.trailerId, at: p.at }); }
+    }
+    // 🚚 current trailer per truck = the one on its newest DVIR (Samsara doesn't pair trailers otherwise)
+    for (const [tk, tr] of lastTrailer) {
+      const [o, n] = tk.split('|');
+      const row = get('SELECT samsara_meta FROM trucks WHERE org_id = ? AND number = ?', o, n); if (!row) continue;
+      let meta = {}; try { meta = row.samsara_meta ? JSON.parse(row.samsara_meta) : {}; } catch (e) {}
+      if (meta.trailer && meta.trailer.at && meta.trailer.at >= tr.at) continue;
+      meta.trailer = Object.assign({}, meta.trailer && meta.trailer.name === tr.name ? meta.trailer : {}, { name: tr.name, at: tr.at, src: 'dvir' });
+      run('UPDATE trucks SET samsara_meta = ? WHERE org_id = ? AND number = ?', JSON.stringify(meta), o, n);
+      summary.trailers = (summary.trailers || 0) + 1;
     }
     for (const a of agg.values()) {
       run(`INSERT INTO dvir_days (org_id, number, date, pre_at, pre_driver, post_at, post_driver, other_at, defects, unsafe, count, updated_at)
