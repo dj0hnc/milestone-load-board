@@ -118,18 +118,26 @@ function buildMorning(board, opts) {
     if (r.pLat != null && la != null) r.distMi = Math.round(haverMi(la, lo, r.pLat, r.pLng) * 10) / 10;
     r.staged = !!((e && ((e.movedToday && e.lastMoveMs && (now - e.lastMoveMs) <= 45 * 60000) || e.engineOn === true)) || (r.distMi != null && r.distMi <= 1.5));
   });
-  const callFirst = rows.filter(r => !r.staged).length, stagedN = rows.length - callFirst;
-  const byFleet = {}; rows.forEach(r => { (byFleet[r.fleet] = byFleet[r.fleet] || []).push(r); });
+  // Subcontracted trucks carry no Samsara device, so "no GPS" is their normal state rather than a
+  // symptom: we can only see them once they log a load in NewMile. Mixing them into the call list
+  // buried the real one — on 10/22 it read 58 "to call", 44 of them subs the dispatcher cannot
+  // phone anyway (he calls the hauler's dispatcher). They get their own bucket.
+  rows.forEach(r => { r.subNoGps = (r.fleet === 'SUBHAULERS' && r.state === 'review'); });
+  const subConfirm = rows.filter(r => r.subNoGps).sort((a, b) => a.num.localeCompare(b.num, undefined, { numeric: true }));
+  const chase = rows.filter(r => !r.subNoGps);
+  const callFirst = chase.filter(r => !r.staged).length, stagedN = chase.length - callFirst;
+  const byFleet = {}; chase.forEach(r => { (byFleet[r.fleet] = byFleet[r.fleet] || []).push(r); });
   Object.keys(byFleet).forEach(f => byFleet[f].sort((a, b) => ((a.staged ? 1 : 0) - (b.staged ? 1 : 0)) || a.num.localeCompare(b.num, undefined, { numeric: true })));
   const fleets = orderFleets(Object.keys(byFleet));
   const workFleets = orderFleets(Object.keys(working));
   workFleets.forEach(f => working[f].sort((a, b) => a.num.localeCompare(b.num, undefined, { numeric: true })));
   const totalWorking = Object.keys(working).reduce((n, f) => n + working[f].length, 0);
-  const parked = rows.filter(r => r.state === 'parked').length, review = rows.filter(r => r.state === 'review').length;
+  const parked = chase.filter(r => r.state === 'parked').length, review = chase.filter(r => r.state === 'review').length;
   const dstr = ctStr(now);
 
   let text = 'MAB — MORNING NO-SHOW REPORT (' + dstr + ' CT)\n';
-  text += 'Assigned today: ' + totalAssigned + '  |  Not working: ' + rows.length + '  (' + parked + ' parked, ' + review + ' no GPS)';
+  text += 'Assigned today: ' + totalAssigned + '  |  Not working: ' + chase.length + '  (' + parked + ' parked, ' + review + ' no GPS)';
+  if (subConfirm.length) text += '  |  🤝 subcontracted, no GPS — confirm with the hauler: ' + subConfirm.length;
   if (evMap) text += '  |  ☎ CALL FIRST: ' + callFirst + ' · ⏳ likely staged: ' + stagedN;
   text += '  |  accepted, not moving yet: ' + acceptedIdle.length + '  |  not due yet: ' + notDue.length + '\n';
   if (planDiff) text += 'Changes vs last night\'s 8:00pm plan (' + planDiff.planned + ' planned): +' + planDiff.added.length + ' added'
@@ -137,7 +145,12 @@ function buildMorning(board, opts) {
     + (planDiff.removed.length ? ' [' + planDiff.removed.join(', ') + ']' : '') + '\n';
   text += '\n';
   fleets.forEach(f => { text += '== ' + f + ' — ' + byFleet[f].length + ' not working ==\n'; byFleet[f].forEach(r => { const ev = evLine(r); text += '  - ' + (evMap ? (r.staged ? '⏳ ' : '☎ ') : '') + r.num + (r.driver ? ' (' + r.driver + ')' : '') + ' · ' + (r.state === 'parked' ? 'PARKED, 0 loads' : 'NO GPS — call') + (ev ? ' · [' + ev + ']' : '') + ' -> ' + r.orders.join(', ') + '\n'; }); text += '\n'; });
-  if (!rows.length) text += 'No confirmed no-shows to chase. ✅\n';
+  if (!chase.length) text += 'No confirmed no-shows to chase. ✅\n';
+  if (subConfirm.length) {
+    text += '== 🤝 SUBCONTRACTED — no GPS, confirm with the hauler (' + subConfirm.length + ') ==\n';
+    subConfirm.forEach(r => { text += '  - ' + r.num + (r.owner ? ' [' + r.owner + ']' : '') + (r.driver ? ' (' + r.driver + ')' : '') + ' -> ' + r.orders.join(', ') + '\n'; });
+    text += '\n';
+  }
   text += '\n=== WORKING / ROLLING by fleet (' + totalWorking + ') ===\n';
   workFleets.forEach(f => { text += '  ' + f + ': ' + working[f].length + '\n'; });
   text += '  OFF-APP SUBS: ' + off + '\n';
@@ -157,7 +170,8 @@ function buildMorning(board, opts) {
     + rs.map(r => '<tr' + (evMap && !r.staged ? ' style="background:#fdf3f1"' : '') + '><td style="padding:3px 9px;font-weight:700">' + esc(r.num) + '</td><td style="padding:3px 9px">' + esc(r.driver) + '</td><td style="padding:3px 9px;color:' + (r.state === 'parked' ? '#b4452e' : '#b8862b') + '">' + (r.state === 'parked' ? 'Parked · 0 loads' : 'No GPS — call') + '</td>' + evCell(r) + '<td style="padding:3px 9px">' + esc(r.orders.join(', ')) + '</td></tr>').join('') + '</table>';
   let html = '<div style="font-family:Segoe UI,Arial,sans-serif;max-width:760px">'
     + '<h2 style="margin:0 0 2px">🚛 Morning No-Show Report</h2>'
-    + '<div style="color:#667;font-size:13px;margin-bottom:12px">' + esc(dstr) + ' CT &middot; assigned today: ' + totalAssigned + ' &middot; not working: <b>' + rows.length + '</b> (' + parked + ' parked, ' + review + ' no GPS)'
+    + '<div style="color:#667;font-size:13px;margin-bottom:12px">' + esc(dstr) + ' CT &middot; assigned today: ' + totalAssigned + ' &middot; not working: <b>' + chase.length + '</b> (' + parked + ' parked, ' + review + ' no GPS)'
+    + (subConfirm.length ? ' &middot; 🤝 subcontracted, no GPS: <b>' + subConfirm.length + '</b>' : '')
     + (evMap ? ' &middot; <b style="color:#b4452e">☎️ call first: ' + callFirst + '</b> &middot; ⏳ likely staged: ' + stagedN : '')
     + ' &middot; accepted, not moving yet: ' + acceptedIdle.length + ' &middot; not due yet: ' + notDue.length + '</div>'
     + (evMap ? '<div style="color:#667;font-size:12px;margin:-6px 0 10px">☎️ = no movement today / engine off / far from pickup — call these first. ⏳ = moved recently, engine running, or sitting AT the pickup — probably staged, check later.</div>' : '');
@@ -166,15 +180,21 @@ function buildMorning(board, opts) {
     + '<span style="color:#3a9d6e;font-weight:700">+' + planDiff.added.length + ' added</span>' + (planDiff.added.length ? ' — ' + esc(planDiff.added.join(', ')) : '')
     + ' &middot; <span style="color:#b4452e;font-weight:700">(' + planDiff.removed.length + ') removed</span>' + (planDiff.removed.length ? ' — ' + esc(planDiff.removed.join(', ')) : '')
     + '</div>';
-  if (!rows.length) html += '<div style="color:#3a9d6e;font-size:15px">No confirmed no-shows to chase. 🎉</div>';
+  if (!chase.length) html += '<div style="color:#3a9d6e;font-size:15px">No confirmed no-shows to chase. 🎉</div>';
   fleets.forEach(f => { html += '<h3 style="margin:14px 0 2px">' + esc(f) + ' <span style="color:#99a;font-weight:400">— ' + byFleet[f].length + ' not working</span></h3>' + tbl(byFleet[f]); });
+  // Subcontracted, no device: not a call list — the hauler's dispatcher is who gets phoned.
+  if (subConfirm.length) html += '<h3 style="margin:18px 0 2px;color:#2c74b4">🤝 Subcontracted — no GPS, confirm with the hauler <span style="color:#99a;font-weight:400">(' + subConfirm.length + ')</span></h3>'
+    + '<div style="color:#667;font-size:12px;margin:0 0 4px">These trucks carry no Samsara device, so they only become visible once they log a load in NewMile. Not a no-show list — check with the subhauler.</div>'
+    + '<table style="border-collapse:collapse;font-size:13px;width:100%;margin:2px 0 10px"><tr style="background:#f3f4f6"><td style="padding:3px 9px">Truck</td><td style="padding:3px 9px">Hauler</td><td style="padding:3px 9px">Driver</td><td style="padding:3px 9px">Orders</td></tr>'
+    + subConfirm.map(r => '<tr><td style="padding:3px 9px;font-weight:700">' + esc(r.num) + '</td><td style="padding:3px 9px">' + esc(r.owner || '') + '</td><td style="padding:3px 9px">' + esc(r.driver) + '</td><td style="padding:3px 9px">' + esc(r.orders.join(', ')) + '</td></tr>').join('') + '</table>';
   // MIDDLE: combined totals by fleet (not working | working)
   const allF = orderFleets(Array.from(new Set([].concat(Object.keys(byFleet), Object.keys(working)))));
   html += '<h3 style="margin:18px 0 6px">📊 Totals by fleet</h3>'
     + '<table style="border-collapse:collapse;font-size:14px;min-width:430px"><tr style="background:#f3f4f6"><td style="padding:5px 12px">Fleet</td><td style="padding:5px 12px;text-align:right;color:#b4452e">Not working</td><td style="padding:5px 12px;text-align:right;color:#3a9d6e">Working</td></tr>'
     + allF.map(f => '<tr><td style="padding:5px 12px;font-weight:700">' + esc(f) + '</td><td style="padding:5px 12px;text-align:right;font-weight:700;color:#b4452e">' + ((byFleet[f] || []).length) + '</td><td style="padding:5px 12px;text-align:right;font-weight:700;color:#3a9d6e">' + ((working[f] || []).length) + '</td></tr>').join('')
+    + (subConfirm.length ? '<tr><td style="padding:5px 12px;font-weight:700">SUBCONTRACTED — no GPS</td><td style="padding:5px 12px;text-align:right;font-weight:700;color:#2c74b4">' + subConfirm.length + '</td><td style="padding:5px 12px;text-align:right;color:#99a">—</td></tr>' : '')
     + '<tr><td style="padding:5px 12px;font-weight:700">OFF-APP SUBS</td><td style="padding:5px 12px;text-align:right;color:#99a">—</td><td style="padding:5px 12px;text-align:right;font-weight:800;color:#b8862b">' + off + '</td></tr>'
-    + '<tr style="border-top:2px solid #ddd"><td style="padding:5px 12px;font-weight:800">TOTAL</td><td style="padding:5px 12px;text-align:right;font-weight:800;color:#b4452e">' + rows.length + '</td><td style="padding:5px 12px;text-align:right;font-weight:800;color:#3a9d6e">' + (totalWorking + off) + '</td></tr></table>';
+    + '<tr style="border-top:2px solid #ddd"><td style="padding:5px 12px;font-weight:800">TOTAL</td><td style="padding:5px 12px;text-align:right;font-weight:800;color:#b4452e">' + (chase.length + subConfirm.length) + '</td><td style="padding:5px 12px;text-align:right;font-weight:800;color:#3a9d6e">' + (totalWorking + off) + '</td></tr></table>';
   // INFO buckets: accepted-but-idle and not-due-yet (context, not no-shows)
   const miniTbl = (title, color, arr) => arr.length ? ('<h3 style="margin:16px 0 4px;color:' + color + '">' + title + ' (' + arr.length + ')</h3>'
     + '<table style="border-collapse:collapse;font-size:13px;width:100%;margin-bottom:6px"><tr style="background:#f3f4f6"><td style="padding:3px 9px">Truck</td><td style="padding:3px 9px">Driver</td><td style="padding:3px 9px">Assigned to</td></tr>'
@@ -187,7 +207,7 @@ function buildMorning(board, opts) {
     + '<table style="border-collapse:collapse;font-size:13px;width:100%;margin-bottom:6px"><tr style="background:#f3f4f6"><td style="padding:3px 9px">Truck</td><td style="padding:3px 9px">Driver</td><td style="padding:3px 9px">Assigned to</td></tr>'
     + working[f].map(w => '<tr><td style="padding:3px 9px;font-weight:700">' + esc(w.num) + '</td><td style="padding:3px 9px">' + esc(w.driver) + '</td><td style="padding:3px 9px">' + esc((w.orders || []).join(', ')) + '</td></tr>').join('') + '</table>'; });
   html += '<div style="color:#99a;font-size:11px;margin-top:12px">Milestone OS &middot; Samsara movement + NewMile assignments. "Parked" = assigned, 0 loads, not moving. "No GPS" = subhauler/no device — call to confirm. "Working" = hauled a load, rolling, or moving.</div></div>';
-  return { kind: 'morning', count: rows.length, parked: parked, review: review, totalAssigned: totalAssigned, byFleet: byFleet, rows: rows, working: working, totalWorking: totalWorking, offSubs: off, grandTotalWorking: totalWorking + off, notDue: notDue, acceptedIdle: acceptedIdle, callFirst: callFirst, stagedN: stagedN, planDiff: planDiff, dateKey: opts.dateKey || '', text: text, html: html, dateStr: dstr };
+  return { kind: 'morning', count: chase.length, subConfirm: subConfirm.length, parked: parked, review: review, totalAssigned: totalAssigned, byFleet: byFleet, rows: rows, working: working, totalWorking: totalWorking, offSubs: off, grandTotalWorking: totalWorking + off, notDue: notDue, acceptedIdle: acceptedIdle, callFirst: callFirst, stagedN: stagedN, planDiff: planDiff, dateKey: opts.dateKey || '', text: text, html: html, dateStr: dstr };
 }
 
 // ---------- RE-CHECK (~9 AM): second pass over the morning call list. Who started working on
@@ -205,7 +225,7 @@ function buildRecheck(board, opts) {
   (fl.rows || []).forEach(r0 => {
     const k = (r0.num || '').trim().toUpperCase();
     const t = byNum[k], lv = live[k], e = evMap[k.replace(/\s+/g, ' ')];
-    const r = { num: r0.num, driver: r0.driver || (t && t.driver) || '', orders: r0.orders || [], fleet: r0.fleet || fleetLabelFor(t, r0.num) };
+    const r = { num: r0.num, driver: r0.driver || (t && t.driver) || '', orders: r0.orders || [], fleet: r0.fleet || fleetLabelFor(t, r0.num), owner: r0.owner || (t && t.owner) || '', sub: !!r0.sub };
     let how = null;
     if (lv && lv.done > 0) how = 'hauled ' + lv.done + ' load' + (lv.done > 1 ? 's' : '');
     else if (t && t.rolling) how = 'live load in NewMile';
@@ -218,29 +238,41 @@ function buildRecheck(board, opts) {
     r.line = e ? (((e.movedToday && e.lastMoveMs) ? ('last moved ' + ctTime(e.lastMoveMs)) : 'NO movement today') + (e.engineOn === true ? ' · engine ON' : (e.engineOn === false ? ' · engine off' : ''))) : 'no GPS data — phone only';
     still.push(r);
   });
+  // Same split as the 7:30 email: a subcontracted truck with no device is not someone to phone.
+  const stillSub = still.filter(r => r.sub), stillCall = still.filter(r => !r.sub);
   const dstr = ctStr(now);
 
   let text = 'MAB — MORNING RE-CHECK (' + dstr + ' CT)\n';
-  text += 'Second pass on the ' + (fl.rows || []).length + ' trucks flagged at ' + (fl.sentAt ? ctTime(fl.sentAt) : '7:30am') + ':  ✅ now working: ' + resolved.length + '  ·  ☎ STILL DOWN: ' + still.length + '\n\n';
-  if (still.length) { text += '== ☎ STILL DOWN — call these (' + still.length + ') ==\n'; still.forEach(r => { text += '  - ' + r.num + (r.driver ? ' (' + r.driver + ')' : '') + ' · ' + r.line + ' -> ' + r.orders.join(', ') + '\n'; }); text += '\n'; }
-  else text += 'Everyone from the morning list is moving. 🎉\n\n';
+  text += 'Second pass on the ' + (fl.rows || []).length + ' trucks flagged at ' + (fl.sentAt ? ctTime(fl.sentAt) : '7:30am') + ':  ✅ now working: ' + resolved.length + '  ·  ☎ STILL DOWN: ' + stillCall.length;
+  if (stillSub.length) text += '  ·  🤝 subcontracted, still no sign: ' + stillSub.length;
+  text += '\n\n';
+  if (stillCall.length) { text += '== ☎ STILL DOWN — call these (' + stillCall.length + ') ==\n'; stillCall.forEach(r => { text += '  - ' + r.num + (r.driver ? ' (' + r.driver + ')' : '') + ' · ' + r.line + ' -> ' + r.orders.join(', ') + '\n'; }); text += '\n'; }
+  else text += 'Everyone from the morning call list is moving. 🎉\n\n';
+  if (stillSub.length) { text += '== 🤝 SUBCONTRACTED — still no load in NewMile, confirm with the hauler (' + stillSub.length + ') ==\n'; stillSub.forEach(r => { text += '  - ' + r.num + (r.owner ? ' [' + r.owner + ']' : '') + (r.driver ? ' (' + r.driver + ')' : '') + ' -> ' + r.orders.join(', ') + '\n'; }); text += '\n'; }
   if (resolved.length) { text += '== ✅ Resolved on their own (' + resolved.length + ') ==\n'; resolved.forEach(r => { text += '  - ' + r.num + (r.driver ? ' (' + r.driver + ')' : '') + ' · ' + r.how + '\n'; }); }
 
   let html = '<div style="font-family:Segoe UI,Arial,sans-serif;max-width:760px">'
     + '<h2 style="margin:0 0 2px">🔁 Morning Re-check</h2>'
-    + '<div style="color:#667;font-size:13px;margin-bottom:12px">' + esc(dstr) + ' CT &middot; second pass on the <b>' + (fl.rows || []).length + '</b> trucks flagged at ' + (fl.sentAt ? esc(ctTime(fl.sentAt)) : '7:30am') + ' &middot; ✅ now working: <b style="color:#3a9d6e">' + resolved.length + '</b> &middot; ☎️ still down: <b style="color:#b4452e">' + still.length + '</b></div>';
-  if (still.length) {
-    html += '<h3 style="margin:14px 0 2px;color:#b4452e">☎️ STILL DOWN — this is the real call list (' + still.length + ')</h3>'
+    + '<div style="color:#667;font-size:13px;margin-bottom:12px">' + esc(dstr) + ' CT &middot; second pass on the <b>' + (fl.rows || []).length + '</b> trucks flagged at ' + (fl.sentAt ? esc(ctTime(fl.sentAt)) : '7:30am') + ' &middot; ✅ now working: <b style="color:#3a9d6e">' + resolved.length + '</b> &middot; ☎️ still down: <b style="color:#b4452e">' + stillCall.length + '</b>'
+    + (stillSub.length ? ' &middot; 🤝 subcontracted, still no sign: <b style="color:#2c74b4">' + stillSub.length + '</b>' : '') + '</div>';
+  if (stillCall.length) {
+    html += '<h3 style="margin:14px 0 2px;color:#b4452e">☎️ STILL DOWN — this is the real call list (' + stillCall.length + ')</h3>'
       + '<table style="border-collapse:collapse;font-size:13px;width:100%;margin:2px 0 10px"><tr style="background:#f3f4f6"><td style="padding:3px 9px">Truck</td><td style="padding:3px 9px">Driver</td><td style="padding:3px 9px">Evidence</td><td style="padding:3px 9px">Orders</td></tr>'
-      + still.map(r => { const url = (r.lat != null) ? ('https://maps.google.com/?q=' + r.lat + ',' + r.lon) : null; return '<tr style="background:#fdf3f1"><td style="padding:3px 9px;font-weight:700">' + esc(r.num) + '</td><td style="padding:3px 9px">' + esc(r.driver) + '</td><td style="padding:3px 9px;font-size:12px;color:#556">' + esc(r.line) + (url ? ' <a href="' + esc(url) + '" style="color:#2c74b4">map</a>' : '') + '</td><td style="padding:3px 9px">' + esc(r.orders.join(', ')) + '</td></tr>'; }).join('') + '</table>';
-  } else html += '<div style="color:#3a9d6e;font-size:15px">Everyone from the morning list is moving. 🎉</div>';
+      + stillCall.map(r => { const url = (r.lat != null) ? ('https://maps.google.com/?q=' + r.lat + ',' + r.lon) : null; return '<tr style="background:#fdf3f1"><td style="padding:3px 9px;font-weight:700">' + esc(r.num) + '</td><td style="padding:3px 9px">' + esc(r.driver) + '</td><td style="padding:3px 9px;font-size:12px;color:#556">' + esc(r.line) + (url ? ' <a href="' + esc(url) + '" style="color:#2c74b4">map</a>' : '') + '</td><td style="padding:3px 9px">' + esc(r.orders.join(', ')) + '</td></tr>'; }).join('') + '</table>';
+  } else html += '<div style="color:#3a9d6e;font-size:15px">Everyone from the morning call list is moving. 🎉</div>';
+  if (stillSub.length) {
+    html += '<h3 style="margin:16px 0 2px;color:#2c74b4">🤝 Subcontracted — still no load in NewMile (' + stillSub.length + ')</h3>'
+      + '<div style="color:#667;font-size:12px;margin:0 0 4px">No Samsara device on these, so there is nothing to track — confirm with the subhauler\'s dispatcher.</div>'
+      + '<table style="border-collapse:collapse;font-size:13px;width:100%;margin:2px 0 10px"><tr style="background:#f3f4f6"><td style="padding:3px 9px">Truck</td><td style="padding:3px 9px">Hauler</td><td style="padding:3px 9px">Driver</td><td style="padding:3px 9px">Orders</td></tr>'
+      + stillSub.map(r => '<tr><td style="padding:3px 9px;font-weight:700">' + esc(r.num) + '</td><td style="padding:3px 9px">' + esc(r.owner || '') + '</td><td style="padding:3px 9px">' + esc(r.driver) + '</td><td style="padding:3px 9px">' + esc(r.orders.join(', ')) + '</td></tr>').join('') + '</table>';
+  }
   if (resolved.length) {
     html += '<h3 style="margin:16px 0 2px;color:#3a9d6e">✅ Resolved on their own (' + resolved.length + ')</h3>'
       + '<table style="border-collapse:collapse;font-size:13px;width:100%;margin:2px 0 10px"><tr style="background:#f3f4f6"><td style="padding:3px 9px">Truck</td><td style="padding:3px 9px">Driver</td><td style="padding:3px 9px">How</td></tr>'
       + resolved.map(r => '<tr><td style="padding:3px 9px;font-weight:700">' + esc(r.num) + '</td><td style="padding:3px 9px">' + esc(r.driver) + '</td><td style="padding:3px 9px;color:#3a9d6e">' + esc(r.how) + '</td></tr>').join('') + '</table>';
   }
   html += '<div style="color:#99a;font-size:11px;margin-top:12px">Milestone OS &middot; follow-up on the 7:30am no-show list. "Resolved" = hauled a load, live load, moving now, or moved since the morning email.</div></div>';
-  return { kind: 'recheck', resolvedCount: resolved.length, stillCount: still.length, resolved: resolved, still: still, dateKey: opts.dateKey || '', text: text, html: html, dateStr: dstr };
+  return { kind: 'recheck', resolvedCount: resolved.length, stillCount: stillCall.length, subCount: stillSub.length, resolved: resolved, still: stillCall, stillSub: stillSub, dateKey: opts.dateKey || '', text: text, html: html, dateStr: dstr };
 }
 
 // ---------- NIGHT: trucks assigned per fleet (default TOMORROW; opts.dayIdx/label for previews) ----------
