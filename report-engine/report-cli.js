@@ -332,8 +332,9 @@ function centralDate(offsetDays) {
     rep = buildMorning(board, { offSubs: OFF, dateKey: today, nightPlan: nightPlan });
     const ev = await getEvidence(rep.rows);
     if (ev && Object.keys(ev).length) rep = buildMorning(board, { offSubs: OFF, dateKey: today, evidence: ev, nightPlan: nightPlan });
-    subject = '🚛 Morning No-Show Report — ' + (rep.callFirst != null && rep.callFirst !== rep.count ? rep.callFirst + ' to call / ' + rep.count + ' not working' : rep.count + ' not working') + ' (' + rep.dateStr + ' CT)';
-    console.log('MORNING: not-working ' + rep.count + ' (call-first ' + rep.callFirst + ', staged ' + rep.stagedN + ') · working ' + rep.totalWorking + ' · off-app ' + OFF);
+    subject = '🚛 Morning No-Show Report — ' + (rep.callFirst != null && rep.callFirst !== rep.count ? rep.callFirst + ' to call / ' + rep.count + ' not working' : rep.count + ' not working')
+      + (rep.subConfirm ? ' · ' + rep.subConfirm + ' subs to confirm' : '') + ' (' + rep.dateStr + ' CT)';
+    console.log('MORNING: not-working ' + rep.count + ' (call-first ' + rep.callFirst + ', staged ' + rep.stagedN + ') · subs to confirm ' + rep.subConfirm + ' · working ' + rep.totalWorking + ' · off-app ' + OFF);
     if (rep.planDiff) console.log('  vs 8pm plan (' + rep.planDiff.planned + '): +' + rep.planDiff.added.length + ' added [' + rep.planDiff.added.join(', ') + '] · -' + rep.planDiff.removed.length + ' removed [' + rep.planDiff.removed.join(', ') + ']');
   } else if (KIND === 'recheck') {
     // second pass over the 7:30 call list: who fixed themselves, who is still down
@@ -343,8 +344,9 @@ function centralDate(offsetDays) {
     if (SEND && !FORCE && fl.sentAt && (Date.now() - fl.sentAt) < 45 * 60000) { console.log('morning went out only ' + Math.round((Date.now() - fl.sentAt) / 60000) + ' min ago — re-check would add nothing yet'); return; }
     const ev = await getEvidence(fl.rows);
     rep = buildRecheck(board, { flagged: fl, evidence: ev || {}, dateKey: today });
-    subject = '🔁 Morning Re-check — ' + rep.stillCount + ' still down / ' + rep.resolvedCount + ' now working (' + rep.dateStr + ' CT)';
-    console.log('RECHECK: still-down ' + rep.stillCount + ' · resolved ' + rep.resolvedCount + ' of ' + fl.rows.length);
+    subject = '🔁 Morning Re-check — ' + rep.stillCount + ' still down / ' + rep.resolvedCount + ' now working'
+      + (rep.subCount ? ' · ' + rep.subCount + ' subs to confirm' : '') + ' (' + rep.dateStr + ' CT)';
+    console.log('RECHECK: still-down ' + rep.stillCount + ' · subs ' + rep.subCount + ' · resolved ' + rep.resolvedCount + ' of ' + fl.rows.length);
   } else {
     const dayParam = (arg('day', 'tomorrow') || 'tomorrow').toString();
     const dayIdx = dayParam === 'today' ? 4 : (dayParam === 'yesterday' ? 3 : 5);
@@ -364,7 +366,7 @@ function centralDate(offsetDays) {
     markSent(KIND, centralDate(0));   // lock so it won't re-send today
     // persist the emailed call list so the ~9am re-check can diff against it
     if (KIND === 'morning') {
-      try { fs.writeFileSync(FLAGGED_FILE, JSON.stringify({ date: today, sentAt: Date.now(), rows: (rep.rows || []).map(r => ({ num: r.num, driver: r.driver, orders: r.orders, fleet: r.fleet, state: r.state })) }, null, 1)); } catch (e) {}
+      try { fs.writeFileSync(FLAGGED_FILE, JSON.stringify({ date: today, sentAt: Date.now(), rows: (rep.rows || []).map(r => ({ num: r.num, driver: r.driver, owner: r.owner, orders: r.orders, fleet: r.fleet, state: r.state, sub: !!r.subNoGps })) }, null, 1)); } catch (e) {}
     }
     // persist the night plan so tomorrow's morning report can show added/removed vs 8pm
     if (KIND === 'night' && rep.byFleet) {
