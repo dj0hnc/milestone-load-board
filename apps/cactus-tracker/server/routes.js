@@ -549,6 +549,74 @@ function createRouter({ config, newmile, log }) {
       ics: rows.filter(r => r.group === 'IC'), kt: rows.filter(r => r.group === 'KT'), cactus: rows.filter(r => r.group === 'CACTUS') });
   };
   router.get('/api/report/ic-audit', icAudit);
+  // 🛡 KEN REPORT (2026-10-23, Juan): Cactus Express truck roster for Ken Adams, Cactus safety manager.
+  // Own Cactus fleet only (subs excluded), SOUTH / NORTH (+ NO DIVISION) tabs, ACTIVE on top and INACTIVE
+  // below, with when each truck last worked. Same data as the MIGUEL report (icAudit). English only.
+  // PIN-gated like every page API; ?days=30|45|60 sets the "active" window.
+  function kenRoster(days) {
+    let data = null;
+    icAudit({ query: { days: String(days || 30) } }, { setHeader() {}, json(o) { data = o; } });
+    const mdy = (iso) => { if (!iso) return ''; const p = String(iso).slice(0, 10).split('-'); return p.length === 3 ? Number(p[1]) + '/' + Number(p[2]) + '/' + p[0] : iso; };
+    const en = (s) => { const v = String(s || '').replace(/SIN DRIVER|SIN CHOFER/ig, 'NO DRIVER').replace(/\(SIN YARD\)/ig, '').trim(); return /^(samsara|n\/a|na|none|-)$/i.test(v) ? '' : v; };
+    const STATUS = { ok: '', shop: 'In the shop', down: 'Down', no_driver: 'No driver', vacation: 'Vacation', deleased: 'De-leased' };
+    const byUnit = (a, b) => String(a.unit).localeCompare(String(b.unit), undefined, { numeric: true });
+    const row = (r, label) => {
+      const m = r.samsaraMeta || {};
+      return {
+        status: label, truck: r.unit, driver: en(r.driver) || 'NO DRIVER', owner: r.company || '', phone: r.phone || '', yard: en(r.yard),
+        lastWorked: r.lastLoad ? mdy(r.lastLoad) : 'No load on record', lastISO: r.lastLoad || '', daysSince: r.daysIdle == null ? '' : r.daysIdle,
+        loads30: r.loads || 0, days30: r.daysWorked || 0, drivers: (r.driversSeen || []).map(en).filter(Boolean).join(', '),
+        trailer: r.trailer || '', unit: [m.year, m.make, m.model].filter(Boolean).join(' '), vin: m.vin || '', plate: m.plate || '',
+        samsara: r.samsara ? 'Yes' : 'No',
+        notes: [STATUS[r.status] != null ? STATUS[r.status] : r.status, en(r.statusNote), r.archived ? ('Removed from dispatch board' + (r.removedOn ? ' ' + mdy(r.removedOn) : '')) : ''].filter(Boolean).join(' · ')
+      };
+    };
+    const split = (list) => ({
+      active: list.filter(r => r.active).sort(byUnit).map(r => row(r, 'ACTIVE')),
+      inactive: list.filter(r => !r.active).sort((a, b) => (a.archived - b.archived) || String(b.lastLoad || '').localeCompare(String(a.lastLoad || '')) || byUnit(a, b)).map(r => row(r, 'INACTIVE'))
+    });
+    const ca = data.cactus || [];
+    const divs = [['SOUTH', ca.filter(r => r.terminal === 'SOUTH')], ['NORTH', ca.filter(r => r.terminal === 'NORTH')], ['NO DIVISION', ca.filter(r => r.terminal !== 'SOUTH' && r.terminal !== 'NORTH')]]
+      .filter(([n, l]) => n !== 'NO DIVISION' || l.length).map(([name, list]) => Object.assign({ name }, split(list)));
+    return { today: data.today, cutoff: data.cutoff, windowDays: data.windowDays, divisions: divs };
+  }
+  router.get('/api/report/ken', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(Object.assign({ ok: true }, kenRoster(parseInt(req.query.days, 10) || 30)));
+  });
+  router.get('/api/report/ken.xlsx', (req, res) => {
+    const { buildXlsx } = require('./xlsx');
+    const k = kenRoster(parseInt(req.query.days, 10) || 30);
+    const mdy = (iso) => { const p = String(iso || '').slice(0, 10).split('-'); return p.length === 3 ? Number(p[1]) + '/' + Number(p[2]) + '/' + p[0] : ''; };
+    const columns = [
+      { header: 'Status', key: 'status', width: 11 }, { header: 'Truck #', key: 'truck', width: 10 }, { header: 'Driver', key: 'driver', width: 22 },
+      { header: 'Owner', key: 'owner', width: 28 }, { header: 'Phone', key: 'phone', width: 14 }, { header: 'Yard', key: 'yard', width: 14 },
+      { header: 'Last worked', key: 'lastWorked', width: 15 }, { header: 'Days since last worked', key: 'daysSince', width: 12, type: 'number' },
+      { header: 'Loads (last ' + k.windowDays + ' days)', key: 'loads30', width: 11, type: 'number' }, { header: 'Days worked (last ' + k.windowDays + ' days)', key: 'days30', width: 12, type: 'number' },
+      { header: 'Drivers who ran it', key: 'drivers', width: 28, wrap: true }, { header: 'Trailer type', key: 'trailer', width: 11 },
+      { header: 'Truck (year make model)', key: 'unit', width: 24 }, { header: 'VIN', key: 'vin', width: 20 }, { header: 'Plate', key: 'plate', width: 12 },
+      { header: 'Samsara', key: 'samsara', width: 9 }, { header: 'Notes', key: 'notes', width: 34, wrap: true }
+    ];
+    const sheets = k.divisions.map(d => {
+      const rows = d.active.slice();
+      if (d.active.length) rows.push({});
+      rows.push({ status: 'INACTIVE', truck: d.inactive.length + ' trucks', driver: 'No load in the last ' + k.windowDays + ' days' });
+      return { name: d.name, columns, rows: rows.concat(d.inactive) };
+    });
+    const summary = {
+      name: 'SUMMARY',
+      columns: [{ header: 'Division', key: 'd', width: 16 }, { header: 'Active trucks', key: 'a', width: 14, type: 'number' }, { header: 'Inactive trucks', key: 'i', width: 15, type: 'number' }, { header: 'Total', key: 't', width: 10, type: 'number' }],
+      rows: k.divisions.map(d => ({ d: d.name, a: d.active.length, i: d.inactive.length, t: d.active.length + d.inactive.length }))
+        .concat([{}, { d: 'Cactus Express truck roster' }, { d: 'Prepared ' + mdy(k.today) + ' for Ken Adams, Cactus Express Safety' },
+          { d: 'Active = hauled at least one load since ' + mdy(k.cutoff) + ' (last ' + k.windowDays + ' days). Load history from NewMile; truck details from Samsara.' },
+          { d: 'Inactive includes trucks still on the dispatch board with no load in that window and trucks already removed from the board.' }])
+    };
+    const buf = buildXlsx([summary, ...sheets]);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="Cactus-Express-Truck-Roster-' + k.today + '.xlsx"');
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(buf);
+  });
   // same data through the machine channel (states key) — for fleet lists built from the laptop
   router.get('/api/report/ic-audit-key', (req, res) => {
     if (String((req.query || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });

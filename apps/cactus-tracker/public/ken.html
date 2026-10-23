@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cactus Truck Roster</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* KEN's report: Cactus Express truck roster for the Cactus safety manager (Ken Adams). English only.
+   SOUTH / NORTH (+ no division), active on top, inactive below, when each truck last worked.
+   Same Milestone look as the MIGUEL report; Excel comes straight from the tracker. */
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{--road:#4A4F55;--sand:#B89A4E;--stone:#7A7D80;--line:#E5E2DB;--green:#4E8C63;--red:#B0442F;--amber:#8a5a10;--warm:#FBFAF7;}
+body{font-family:'Poppins','Segoe UI',system-ui,-apple-system,Roboto,sans-serif;color:var(--road);background:#fff;padding:18px 16px 40px;max-width:1080px;margin:0 auto;font-size:14px;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.rephead{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-bottom:3px solid var(--sand);padding-bottom:10px;}
+.rephead img{height:46px;width:auto;}
+.rephead .rtitle{margin-left:auto;text-align:right;}
+.rephead .rtitle b{display:block;font-size:16px;font-weight:700;letter-spacing:1px;text-transform:uppercase;}
+.rephead .rtitle span{font-size:13px;color:var(--stone);font-weight:600;}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 10px;align-items:center;}
+.toolbar button,.toolbar a,.toolbar select{border:none;border-radius:10px;padding:11px 15px;font-family:inherit;font-weight:700;font-size:13.5px;cursor:pointer;text-decoration:none;display:inline-block;}
+.toolbar select{background:#eef0f5;color:var(--road);}
+.b-xls{background:var(--green);color:#fff;}
+.b-pdf{background:var(--road);color:#fff;}
+.b-soft{background:#eef0f5;color:var(--road);}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:var(--warm);border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;margin:0 0 10px;}
+.filters input[type=search]{flex:1;min-width:220px;border:1.5px solid var(--line);border-radius:9px;padding:8px 10px;font-family:inherit;font-size:13px;}
+.filters label{font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px;cursor:pointer;}
+.filters label input{accent-color:var(--sand);width:15px;height:15px;}
+.bigsum{font-size:15px;line-height:1.7;background:var(--warm);border:1.5px solid var(--line);border-radius:14px;padding:12px 18px;margin-bottom:10px;}
+.bigsum b.g{color:var(--green);} .bigsum b.r{color:var(--red);}
+details.grp{border:1.5px solid var(--line);border-radius:14px;margin:12px 0;}
+details.grp>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 14px;font-size:15.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;border-bottom:2px solid var(--sand);border-radius:14px 14px 0 0;background:var(--warm);}
+details.grp:not([open])>summary{border-bottom:none;border-radius:14px;}
+details>summary::-webkit-details-marker{display:none;}
+.caret{display:inline-block;transition:transform .15s;color:var(--sand);font-size:12px;}
+details[open]>summary .caret{transform:rotate(90deg);}
+details.grp>summary .cnt{margin-left:auto;font-size:12px;font-weight:600;color:var(--stone);text-transform:none;letter-spacing:0;}
+.grpbody{padding:4px 14px 12px;}
+details.sec{border-bottom:1px solid var(--line);}
+details.sec:last-child{border-bottom:none;}
+details.sec>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:9px;padding:10px 0;font-size:13.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;}
+details.sec>summary .n{margin-left:auto;color:#fff;border-radius:999px;padding:1px 10px;font-size:12px;letter-spacing:0;}
+.n.g{background:var(--green);} .n.r{background:var(--red);}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;}
+th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--stone);padding:4px 10px 4px 0;border-bottom:1px solid var(--line);}
+td{padding:6px 10px 6px 0;border-bottom:1px solid #F1EFE9;vertical-align:top;}
+tr{page-break-inside:avoid;}
+td.num{font-weight:700;white-space:nowrap;}
+.idle{color:var(--red);font-weight:700;white-space:nowrap;}
+.small{font-size:11.5px;color:var(--stone);}
+.empty{color:var(--stone);padding:4px 0 8px;}
+footer{margin-top:24px;border-top:1.5px solid var(--line);padding-top:8px;color:var(--stone);font-size:11px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+footer b{color:var(--sand);}
+.err{background:#F7EAE6;border:1.5px solid var(--red);color:var(--red);border-radius:12px;padding:12px;}
+@page{size:letter landscape;margin:10mm;}
+@media print{
+  .toolbar,.filters,.caret{display:none !important;}
+  body{padding:0;font-size:11px;max-width:none;}
+  .rephead img{height:34px;}
+  .bigsum{font-size:11.5px;padding:7px 12px;}
+  details.grp{border:none;margin:8px 0;}
+  details.grp>summary{padding:4px 0;font-size:12.5px;background:none;border-radius:0;}
+  .grpbody{padding:0;}
+  details.sec>summary{padding:6px 0 3px;font-size:11px;}
+  table{font-size:9.5px;} th{font-size:8px;} td{padding:2px 6px 2px 0;}
+}
+</style>
+</head>
+<body>
+<div class="rephead">
+  <img src="milestone-supply.png" alt="Milestone Supply">
+  <div class="rtitle"><b>Cactus Express Truck Roster</b><span id="sub">Loading…</span></div>
+</div>
+<div class="toolbar">
+  <a class="b-xls" id="xls" href="api/report/ken.xlsx?days=30">⬇ Excel for Ken</a>
+  <button class="b-pdf" onclick="printAll()">🖨 Print / PDF</button>
+  <button class="b-soft" onclick="openAll(true)">⊕ Expand all</button>
+  <button class="b-soft" onclick="openAll(false)">⊖ Collapse all</button>
+  <select id="win" onchange="setWin(this.value)" title="Activity window">
+    <option value="30">Active = hauled in the last 30 days</option>
+    <option value="45">Active = hauled in the last 45 days</option>
+    <option value="60">Active = hauled in the last 60 days</option>
+  </select>
+  <a class="b-soft" href="report.html">← Reports</a>
+</div>
+<div class="filters">
+  <input type="search" id="fq" placeholder="🔎 Truck, driver, owner, yard, VIN, plate…" oninput="Q=this.value;render()">
+  <label><input type="checkbox" id="fnd" onchange="ND=this.checked;render()"> No driver only</label>
+</div>
+<div id="out"><p class="empty">Loading…</p></div>
+<footer id="foot"></footer>
+<script>
+const qs=new URLSearchParams(location.search);
+let days=[30,45,60].includes(Number(qs.get("days")))?Number(qs.get("days")):30;
+document.getElementById("win").value=String(days);
+let data=null, Q="", ND=false;
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pass=r=>{
+  if(ND&&r.driver!=="NO DRIVER")return false;
+  if(!Q)return true;
+  const q=Q.toLowerCase();
+  return [r.truck,r.driver,r.owner,r.yard,r.vin,r.plate,r.unit,r.drivers].join(" ").toLowerCase().includes(q);
+};
+function setWin(v){days=Number(v)||30;history.replaceState(null,"","?days="+days);document.getElementById("xls").href="api/report/ken.xlsx?days="+days;load();}
+async function load(){
+  document.getElementById("out").innerHTML='<p class="empty">Loading…</p>';
+  try{
+    const r=await fetch("./api/report/ken?days="+days);
+    if(r.status===401){location.href="login.html";return;}
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    data=await r.json();render();
+  }catch(e){document.getElementById("out").innerHTML='<div class="err">Could not load: '+esc(e.message)+'. Check the connection and refresh.</div>';}
+}
+const table=(rows,inactive)=>'<table><tr><th>Truck</th><th>Driver</th><th>Owner</th><th>Yard</th><th>Last worked</th><th>Loads ('+data.windowDays+' d)</th><th>Days worked</th><th>Truck</th><th>VIN / plate</th><th>Notes</th></tr>'+
+  rows.map(r=>'<tr><td class="num">'+esc(r.truck)+'</td><td>'+esc(r.driver)+(r.drivers&&r.drivers!==r.driver?'<div class="small">ran it: '+esc(r.drivers)+'</div>':'')+'</td><td>'+esc(r.owner||"·")+'</td><td>'+esc(r.yard||"")+'</td>'+
+    '<td>'+esc(r.lastWorked)+(r.daysSince!==""?(inactive?' <span class="idle">· '+r.daysSince+' days ago</span>':'<div class="small">'+r.daysSince+' days ago</div>'):'')+'</td>'+
+    '<td>'+r.loads30+'</td><td>'+r.days30+'</td><td class="small">'+esc(r.unit||"")+(r.trailer?'<div>Trailer '+esc(r.trailer)+'</div>':'')+'</td><td class="small">'+esc(r.vin||"")+(r.plate?'<div>'+esc(r.plate)+'</div>':'')+'</td><td class="small">'+esc(r.notes||"")+'</td></tr>').join("")+'</table>';
+function render(){
+  if(!data)return;
+  const mdy=iso=>{const p=String(iso||"").slice(0,10).split("-");return p.length===3?Number(p[1])+"/"+Number(p[2])+"/"+p[0]:"";};
+  document.getElementById("sub").textContent="Prepared "+mdy(data.today)+" for Ken Adams, Cactus Express Safety";
+  document.title="Cactus Truck Roster "+data.today;
+  let tA=0,tI=0; data.divisions.forEach(d=>{tA+=d.active.length;tI+=d.inactive.length;});
+  let h='<div class="bigsum"><b>Cactus Express fleet:</b> <b class="g">'+tA+' active</b> · <b class="r">'+tI+' inactive</b> · '+
+    data.divisions.map(d=>esc(d.name)+' '+d.active.length+' / '+d.inactive.length).join(" · ")+
+    '<br><span class="small">Active = hauled at least one load since '+mdy(data.cutoff)+' (last '+data.windowDays+' days). Load history from NewMile; truck details from Samsara. Inactive includes trucks already removed from the dispatch board.</span></div>';
+  for(const d of data.divisions){
+    const a=d.active.filter(pass), i=d.inactive.filter(pass);
+    h+='<details class="grp" open><summary><span class="caret">▶</span>'+esc(d.name)+'<span class="cnt">'+(a.length+i.length)+' trucks</span></summary><div class="grpbody">'+
+      '<details class="sec" open><summary><span class="caret">▶</span>Active<span class="n g">'+a.length+'</span></summary>'+(a.length?table(a,false):'<p class="empty">None.</p>')+'</details>'+
+      '<details class="sec" open><summary><span class="caret">▶</span>Inactive: no load in the last '+data.windowDays+' days<span class="n r">'+i.length+'</span></summary>'+(i.length?table(i,true):'<p class="empty">None.</p>')+'</details>'+
+      '</div></details>';
+  }
+  document.getElementById("out").innerHTML=h;
+  document.getElementById("foot").innerHTML='<span><b>MILESTONE SUPPLY</b> · Cactus Express fleet roster</span><span>Prepared '+esc(new Date().toLocaleString("en-US",{month:"numeric",day:"numeric",year:"2-digit",hour:"numeric",minute:"2-digit"}))+'</span>';
+}
+function openAll(on){document.querySelectorAll("details").forEach(d=>{d.open=on;});}
+function printAll(){openAll(true);setTimeout(()=>window.print(),50);}
+load();
+</script>
+</body>
+</html>
