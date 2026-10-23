@@ -336,6 +336,7 @@ function migrate(d) {
   addCol(d, 'trucks', 'camera_rid', "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'camera_rid_at', "TEXT DEFAULT ''");
   addCol(d, 'trucks', 'camera_rid_meta', "TEXT DEFAULT ''"); // {at,live} del momento capturado
+  addCol(d, 'trucks', 'samsara_meta', "TEXT DEFAULT ''"); // JSON from Samsara: vin, year/make/model, plate, gateway/camera serial, notes, trailer
   addCol(d, 'trucks', 'removed_src', "TEXT DEFAULT ''"); // quién lo archivó: 'manual' (Juan, nunca regresa solo salvo carga) | 'auto' (archivador — la regla de orgs de SUBS sí lo puede restaurar)
   // HISTORIAL HOS día a día (Samsara daily logs): cuánto MANEJÓ/TRABAJÓ cada driver
   // cada día — el board lo enseña por fecha y acumula la semana.

@@ -117,6 +117,40 @@ function discoverIC(orgId, number, city, lat, lon, summary) {
   return get(`SELECT * FROM trucks WHERE org_id = 'KT' AND number = ?`, icNum);
 }
 
+// 🚛 vehicle details for audits (Miguel's report): only what Samsara actually has, compact
+function vehicleMeta(v) {
+  const g = v.gateway || {};
+  const m = {
+    vin: v.vin || '', year: v.year || '', make: v.make || '', model: v.model || '', plate: v.licensePlate || '',
+    gateway: g.serial || v.serial || '', gatewayModel: g.model || '',
+    camera: v.cameraSerial || (v.camera && v.camera.serial) || '', notes: String(v.notes || '').slice(0, 120)
+  };
+  for (const k of Object.keys(m)) if (m[k] === '' || m[k] == null) delete m[k];
+  return m;
+}
+// trailers (once an hour per org): Samsara lists them at /fleet/trailers. Which vehicle a trailer is on
+// depends on the account (paired gateway / assignment), so look for any vehicle reference we can see.
+async function fetchTrailers(token) {
+  let out = [], after = '', pages = 0;
+  do {
+    const url = 'https://api.samsara.com/fleet/trailers?limit=512' + (after ? '&after=' + encodeURIComponent(after) : '');
+    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' } });
+    if (!r.ok) throw new Error('Samsara trailers HTTP ' + r.status);
+    const j = await r.json();
+    out = out.concat(j.data || []);
+    after = (j.pagination && j.pagination.hasNextPage) ? j.pagination.endCursor : '';
+    pages++;
+  } while (after && pages < 10);
+  return out;
+}
+function trailerVehicleId(tr) {
+  for (const k of ['attachedVehicle', 'vehicle', 'currentVehicle', 'pairedVehicle', 'assignedVehicle', 'tractor']) {
+    const v = tr[k]; if (v && (v.id != null)) return String(v.id);
+  }
+  for (const k of ['attachedVehicleId', 'vehicleId', 'pairedVehicleId', 'tractorId']) if (tr[k] != null) return String(tr[k]);
+  return null;
+}
+
 async function fetchVehicles(token) {
   let out = [], after = '', pages = 0;
   do {
@@ -980,6 +1014,13 @@ async function syncSamsara(cfg, opts) {
 
       // terminal → suggestion ONLY while the truck has no division (⚑ NUEVO).
       // KT: la letra del nombre ("KT-7040 P") manda; si no hay letra, el tag de terminal.
+      // 🚛 truck details for audits (VIN, year/make/model, plate, gateway/camera serial) — keeps any trailer already attached
+      try {
+        const prev = row.samsara_meta ? JSON.parse(row.samsara_meta) : {};
+        const meta = Object.assign(vehicleMeta(v), prev.trailer ? { trailer: prev.trailer } : {});
+        const js = JSON.stringify(meta);
+        if (js !== (row.samsara_meta || '')) { sets.push('samsara_meta = ?'); vals.push(js); }
+      } catch (e) { /* bad old JSON → rewritten next sync */ }
       if (!row.division) {
         const tagIds = (v.tags || []).map(t => String(t.id));
         const div = (org.id === 'KT' && ktDivisionHint(v.name || '')) || tagIds.map(t => tagToDiv.get(t)).find(Boolean);
@@ -1038,6 +1079,33 @@ async function syncSamsara(cfg, opts) {
       applyPlacements(org, summary);
     } catch (e) {
       summary.gpsError = String(e.message || e);
+    }
+    // 🚚 trailers (hourly per org, full syncs only): attach to the vehicle Samsara pairs them with
+    if (!gpsOnly) {
+      const tk = 'samsara_trailers_at_' + org.id;
+      if (Date.now() - Date.parse(metaGet(tk, '1970-01-01')) > 60 * 60 * 1000) {
+        metaSet(tk, nowISO());
+        try {
+          const trs = await fetchTrailers(token);
+          const keys = new Set(); trs.slice(0, 20).forEach(t => Object.keys(t || {}).forEach(k => keys.add(k)));
+          const vkeys = new Set(); vehicles.slice(0, 20).forEach(v => Object.keys(v || {}).forEach(k => vkeys.add(k)));
+          let paired = 0;
+          for (const tr of trs) {
+            const vid = trailerVehicleId(tr); if (!vid) continue;
+            const row = get('SELECT org_id, number, samsara_meta FROM trucks WHERE org_id = ? AND samsara_id = ?', org.id, vid);
+            if (!row) continue;
+            let meta = {}; try { meta = row.samsara_meta ? JSON.parse(row.samsara_meta) : {}; } catch (e) {}
+            meta.trailer = { name: tr.name || '', plate: tr.licensePlate || '', vin: tr.vin || '', make: tr.make || '', model: tr.model || '', year: tr.year || '' };
+            for (const k of Object.keys(meta.trailer)) if (!meta.trailer[k]) delete meta.trailer[k];
+            run('UPDATE trucks SET samsara_meta = ? WHERE org_id = ? AND number = ?', JSON.stringify(meta), row.org_id, row.number);
+            paired++;
+          }
+          summary['trailers_' + org.id] = { listed: trs.length, paired };
+          let probe = {}; try { probe = JSON.parse(metaGet('samsara_probe', '{}')) || {}; } catch (e) {}
+          probe[org.id] = { at: nowISO(), trailers: trs.length, paired, trailerKeys: [...keys], vehicleKeys: [...vkeys] };
+          metaSet('samsara_probe', JSON.stringify(probe));
+        } catch (e) { summary['trailersError_' + org.id] = String(e.message || e); }
+      }
     }
   })().catch((e) => { summary['orgError_' + org.id] = String(e.message || e); })));
 
