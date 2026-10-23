@@ -26,6 +26,17 @@ body{font-family:'Poppins','Segoe UI',system-ui,-apple-system,Roboto,sans-serif;
 .b-soft{background:#eef0f5;color:var(--road);}
 .selbar{font-size:12.5px;color:var(--stone);margin:0 0 12px;}
 .selbar b{color:var(--road);}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:var(--warm);border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;margin:0 0 10px;}
+.filters input[type=search],.filters select{border:1.5px solid var(--line);border-radius:9px;padding:8px 10px;font-family:inherit;font-size:13px;background:#fff;color:var(--road);}
+.filters input[type=search]{flex:1;min-width:200px;}
+.filters label{font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px;cursor:pointer;}
+.filters label input{accent-color:var(--sand);width:15px;height:15px;}
+.filters .clr{background:#eef0f5;border:none;border-radius:9px;padding:8px 12px;font-family:inherit;font-weight:700;cursor:pointer;color:var(--road);}
+.fnote{color:var(--amber);font-weight:700;}
+td.rp,th.rp{width:22px;padding-right:4px;}
+input.rowpick{width:15px;height:15px;accent-color:var(--sand);cursor:pointer;}
+tr.picked td{background:#FBF6E8;}
+details.sec>summary .n small{font-weight:600;opacity:.8;}
 .bigsum{font-size:15px;line-height:1.7;background:var(--warm);border:1.5px solid var(--line);border-radius:14px;padding:12px 18px;margin-bottom:10px;}
 .bigsum b.g{color:var(--green);} .bigsum b.r{color:var(--red);} .bigsum b.a{color:var(--amber);} .bigsum b.b{color:var(--blue);}
 /* groups + sections (collapsible) */
@@ -61,7 +72,8 @@ footer b{color:var(--sand);}
 .err{background:#F7EAE6;border:1.5px solid var(--red);color:var(--red);border-radius:12px;padding:12px;}
 @page{size:letter landscape;margin:10mm;}
 @media print{
-  .toolbar,.selbar,input.pick,.caret{display:none !important;}
+  .toolbar,.selbar,.filters,input.pick,.caret,td.rp,th.rp{display:none !important;}
+  tr.picked td{background:none;}
   .excluded{display:none !important;}
   body{padding:0;font-size:11px;max-width:none;}
   .rephead img{height:34px;}
@@ -96,6 +108,7 @@ footer b{color:var(--sand);}
   </select>
   <a class="b-soft" href="report.html">← Reports</a>
 </div>
+<div class="filters" id="filters"></div>
 <div class="selbar" id="selbar"></div>
 <div id="out"><p class="empty">Loading…</p></div>
 <footer id="foot"></footer>
@@ -132,15 +145,64 @@ function setWin(v){days=Number(v)||30;history.replaceState(null,"","?days="+days
 
 // ---- sections: id, title, hint, rows, table builder ----
 const T={
-  inactive:(rs)=>`<table><tr><th>Unit</th><th>Truck / trailer (Samsara)</th><th>Company / owner</th><th>Last driver</th><th>Last load</th><th>Samsara</th><th>Notes</th><th>Insurance off</th><th>Camera pulled</th></tr>`+
-    rs.map(r=>`<tr><td class="num">${esc(r.unit)}</td><td>${equip(r)}</td><td>${esc(r.company||"·")}</td><td>${esc(en(r.driver)||"·")}</td><td>${idleTxt(r)}</td><td>${sams(r)}</td><td class="small">${esc(stat(r))}</td><td><span class="box"></span></td><td><span class="box"></span></td></tr>`).join("")+`</table>`,
-  removed:(rs)=>`<table><tr><th>Unit</th><th>Truck / trailer (Samsara)</th><th>Company / owner</th><th>Last driver</th><th>Last load</th><th>Removed</th><th>Samsara</th><th>Insurance off</th><th>Camera pulled</th></tr>`+
-    rs.map(r=>`<tr><td class="num">${esc(r.unit)}</td><td>${equip(r)}</td><td>${esc(r.company||"·")}</td><td>${esc(en(r.driver)||"·")}</td><td>${r.lastLoad?esc(mdy(r.lastLoad)):'<span class="mut">none</span>'}</td><td>${r.removedOn?esc(mdy(r.removedOn)):'<span class="mut">·</span>'}<div class="small">${r.removedBy==="manual"?"by dispatch":r.removedBy==="auto"?"inactive rule":""}</div></td><td>${sams(r)}</td><td><span class="box"></span></td><td><span class="box"></span></td></tr>`).join("")+`</table>`,
-  active:(rs)=>`<table><tr><th>Unit</th><th>Truck / trailer (Samsara)</th><th>Company / owner</th><th>Driver</th><th>Phone</th><th>Loads</th><th>Days worked</th><th>Last load</th><th>Drivers who ran it</th><th>Driver changes</th><th>Samsara</th></tr>`+
-    rs.map(r=>`<tr><td class="num">${esc(r.unit)}</td><td>${equip(r)}</td><td>${esc(r.company||"·")}</td><td>${esc(en(r.driver)||"·")}</td><td class="small">${esc(r.phone||"")}</td><td>${r.loads}</td><td>${r.daysWorked}</td><td>${esc(mdy(r.lastLoad))}</td><td class="small">${drvSeen(r)}</td><td class="small">${drvChg(r)}</td><td>${sams(r)}</td></tr>`).join("")+`</table>`,
-  kt:(rs)=>`<table><tr><th>Unit</th><th>Truck / trailer (Samsara)</th><th>Terminal</th><th>Current driver</th><th>Drivers who ran it</th><th>Driver changes logged</th><th>Loads</th><th>Last load</th><th>Samsara</th></tr>`+
-    rs.map(r=>`<tr><td class="num">${esc(r.unit)}</td><td>${equip(r)}</td><td>${esc(r.terminal||"·")}</td><td>${esc(en(r.driver)||"·")}${STATUS[r.status]?`<div class="small">${esc(STATUS[r.status])}</div>`:""}</td><td class="small">${drvSeen(r)}</td><td class="small">${drvChg(r)}</td><td>${r.loads}</td><td>${r.lastLoad?esc(mdy(r.lastLoad)):'<span class="mut">none</span>'}</td><td>${sams(r)}</td></tr>`).join("")+`</table>`
+  inactive:(rs)=>`<table><tr><th class="rp"></th><th>Unit</th><th>Truck / trailer (Samsara)</th><th>Company / owner</th><th>Last driver</th><th>Last load</th><th>Samsara</th><th>Notes</th><th>Insurance off</th><th>Camera pulled</th></tr>`+
+    rs.map(r=>`<tr${PICK.has(rk(r))?' class="picked"':''}><td class="rp"><input type="checkbox" class="rowpick" data-k="${esc(rk(r))}"${PICK.has(rk(r))?" checked":""} onchange="pickRow(this)"></td><td class="num">${esc(r.unit)}</td><td>${equip(r)}</td><td>${esc(r.company||"·")}</td><td>${esc(en(r.driver)||"·")}</td><td>${idleTxt(r)}</td><td>${sams(r)}</td><td class="small">${esc(stat(r))}</td><td><span class="box"></span></td><td><span class="box"></span></td></tr>`).join("")+`</table>`,
+  removed:(rs)=>`<table><tr><th class="rp"></th><th>Unit</th><th>Truck / trailer (Samsara)</th><th>Company / owner</th><th>Last driver</th><th>Last load</th><th>Removed</th><th>Samsara</th><th>Insurance off</th><th>Camera pulled</th></tr>`+
+    rs.map(r=>`<tr${PICK.has(rk(r))?' class="picked"':''}><td class="rp"><input type="checkbox" class="rowpick" data-k="${esc(rk(r))}"${PICK.has(rk(r))?" checked":""} onchange="pickRow(this)"></td><td class="num">${esc(r.unit)}</td><td>${equip(r)}</td><td>${esc(r.company||"·")}</td><td>${esc(en(r.driver)||"·")}</td><td>${r.lastLoad?esc(mdy(r.lastLoad)):'<span class="mut">none</span>'}</td><td>${r.removedOn?esc(mdy(r.removedOn)):'<span class="mut">·</span>'}<div class="small">${r.removedBy==="manual"?"by dispatch":r.removedBy==="auto"?"inactive rule":""}</div></td><td>${sams(r)}</td><td><span class="box"></span></td><td><span class="box"></span></td></tr>`).join("")+`</table>`,
+  active:(rs)=>`<table><tr><th class="rp"></th><th>Unit</th><th>Truck / trailer (Samsara)</th><th>Company / owner</th><th>Driver</th><th>Phone</th><th>Loads</th><th>Days worked</th><th>Last load</th><th>Drivers who ran it</th><th>Driver changes</th><th>Samsara</th></tr>`+
+    rs.map(r=>`<tr${PICK.has(rk(r))?' class="picked"':''}><td class="rp"><input type="checkbox" class="rowpick" data-k="${esc(rk(r))}"${PICK.has(rk(r))?" checked":""} onchange="pickRow(this)"></td><td class="num">${esc(r.unit)}</td><td>${equip(r)}</td><td>${esc(r.company||"·")}</td><td>${esc(en(r.driver)||"·")}</td><td class="small">${esc(r.phone||"")}</td><td>${r.loads}</td><td>${r.daysWorked}</td><td>${esc(mdy(r.lastLoad))}</td><td class="small">${drvSeen(r)}</td><td class="small">${drvChg(r)}</td><td>${sams(r)}</td></tr>`).join("")+`</table>`,
+  kt:(rs)=>`<table><tr><th class="rp"></th><th>Unit</th><th>Truck / trailer (Samsara)</th><th>Terminal</th><th>Current driver</th><th>Drivers who ran it</th><th>Driver changes logged</th><th>Loads</th><th>Last load</th><th>Samsara</th></tr>`+
+    rs.map(r=>`<tr${PICK.has(rk(r))?' class="picked"':''}><td class="rp"><input type="checkbox" class="rowpick" data-k="${esc(rk(r))}"${PICK.has(rk(r))?" checked":""} onchange="pickRow(this)"></td><td class="num">${esc(r.unit)}</td><td>${equip(r)}</td><td>${esc(r.terminal||"·")}</td><td>${esc(en(r.driver)||"·")}${STATUS[r.status]?`<div class="small">${esc(STATUS[r.status])}</div>`:""}</td><td class="small">${drvSeen(r)}</td><td class="small">${drvChg(r)}</td><td>${r.loads}</td><td>${r.lastLoad?esc(mdy(r.lastLoad)):'<span class="mut">none</span>'}</td><td>${sams(r)}</td></tr>`).join("")+`</table>`
 };
+// ---- filters (narrow every list) + per-unit checkboxes ("only checked units") ----
+const F={q:"",company:"",terminal:"",samsara:"",multi:false,idle:"",only:false};
+const PICK=new Set();
+const rk=r=>r.group+"|"+r.unit;
+function passes(r){
+  if(F.only&&!PICK.has(rk(r)))return false;
+  if(F.company&&(r.company||"")!==F.company)return false;
+  if(F.terminal&&(r.terminal||"")!==F.terminal)return false;
+  const m=r.samsaraMeta||{};
+  if(F.samsara==="yes"&&!r.samsara)return false;
+  if(F.samsara==="no"&&r.samsara)return false;
+  if(F.samsara==="cam"&&!m.camera)return false;
+  if(F.samsara==="nocam"&&(m.camera||!r.samsara))return false;
+  if(F.multi&&!(r.driversSeen.length>1||r.driverChanges.length))return false;
+  if(F.idle&&!(r.daysIdle==null||r.daysIdle>=Number(F.idle)))return false;
+  if(F.q){
+    const q=F.q.toLowerCase();
+    const hay=[r.unit,r.company,r.driver,r.terminal,r.phone,m.vin,m.plate,m.make,m.model,m.gateway,m.camera,(m.trailer||{}).name,r.driversSeen.join(" ")].join(" ").toLowerCase();
+    if(!hay.includes(q))return false;
+  }
+  return true;
+}
+const vis=s=>s.rows.filter(passes);
+function filtersOn(){return !!(F.q||F.company||F.terminal||F.samsara||F.multi||F.idle||F.only);}
+function filtersTxt(){
+  const p=[];
+  if(F.q)p.push('search "'+F.q+'"'); if(F.company)p.push("company "+F.company); if(F.terminal)p.push("terminal "+F.terminal);
+  if(F.samsara)p.push({yes:"has a Samsara unit",no:"no Samsara unit",cam:"has a camera",nocam:"Samsara but no camera"}[F.samsara]);
+  if(F.idle)p.push("idle "+F.idle+"+ days"); if(F.multi)p.push("more than one driver"); if(F.only)p.push("only checked units");
+  return p.join(" · ");
+}
+function setF(k,v){F[k]=v;render();}
+function clearF(){Object.assign(F,{q:"",company:"",terminal:"",samsara:"",multi:false,idle:"",only:false});buildFilters();render();}
+function pickRow(cb){const k=cb.dataset.k;if(cb.checked)PICK.add(k);else PICK.delete(k);cb.closest("tr").classList.toggle("picked",cb.checked);if(F.only)render();else syncPicks();}
+function buildFilters(){
+  const all=[...(data.ics||[]),...(data.cactus||[]),...(data.kt||[])];
+  const uniq=a=>[...new Set(a.filter(Boolean))].sort((x,y)=>String(x).localeCompare(String(y)));
+  const opt=(arr,cur)=>arr.map(v=>'<option'+(v===cur?' selected':'')+'>'+esc(v)+'</option>').join("");
+  const sel=(v)=>F.samsara===v?" selected":"";
+  document.getElementById("filters").innerHTML=
+    '<input type="search" id="fq" placeholder="🔎 Unit, company, driver, VIN, plate, serial…" value="'+esc(F.q)+'" oninput="setF(\'q\',this.value)">'+
+    '<select onchange="setF(\'company\',this.value)"><option value="">All companies / owners</option>'+opt(uniq(all.map(r=>r.company)),F.company)+'</select>'+
+    '<select onchange="setF(\'terminal\',this.value)"><option value="">All terminals / tabs</option>'+opt(uniq(all.map(r=>r.terminal)),F.terminal)+'</select>'+
+    '<select onchange="setF(\'samsara\',this.value)"><option value="">Samsara: any</option><option value="yes"'+sel("yes")+'>Has a Samsara unit</option><option value="no"'+sel("no")+'>No Samsara unit</option><option value="cam"'+sel("cam")+'>Has a camera</option><option value="nocam"'+sel("nocam")+'>Samsara but no camera</option></select>'+
+    '<select onchange="setF(\'idle\',this.value)"><option value="">Days idle: any</option>'+[15,30,45,60,90].map(n=>'<option value="'+n+'"'+(String(n)===F.idle?" selected":"")+'>Idle '+n+'+ days</option>').join("")+'</select>'+
+    '<label><input type="checkbox"'+(F.multi?" checked":"")+' onchange="setF(\'multi\',this.checked)"> More than one driver</label>'+
+    '<label><input type="checkbox"'+(F.only?" checked":"")+' onchange="setF(\'only\',this.checked)"> Only checked units</label>'+
+    '<button class="clr" onclick="clearF()">✕ Clear filters</button>';
+}
 let SECTIONS=[];   // built per load: {id, group, title, hint, rows, kind, color}
 function buildSections(){
   const W=data.windowDays;
@@ -170,6 +232,7 @@ async function load(){
     if(r.status===401){location.href="login.html";return;}
     if(!r.ok)throw new Error("HTTP "+r.status);
     data=await r.json();
+    buildFilters();
     render();
   }catch(e){
     document.getElementById("out").innerHTML=`<div class="err">Could not load: ${esc(e.message)}. Check the connection and refresh.</div>`;
@@ -186,16 +249,16 @@ function render(){
     <b>CKJ independent contractors:</b> <b class="g">${S("ic-active").rows.length} active</b> · <b class="r">${S("ic-inactive").rows.length} inactive, action needed</b> · <b class="a">${S("ic-removed").rows.length} removed in the last 90 days</b>.<br>
     <b>Cactus Express fleet:</b> <b class="g">${S("ca-active").rows.length} active</b> · <b class="r">${S("ca-inactive").rows.length} inactive, action needed</b> · <b class="a">${S("ca-removed").rows.length} removed in the last 90 days</b>.<br>
     <b>KT company trucks:</b> <b class="b">${S("kt-rotation").rows.length} in service</b> · ${ktRot} had more than one driver or a driver change.<br>
-    <span class="small">"Active" means the unit hauled at least one load since ${mdy(data.cutoff)} (${data.windowDays} days). Loads and drivers come from NewMile; Samsara status from the Samsara account. Insurance status is not tracked here; use the checkboxes.</span></div>`;
+    ${filtersOn()?'<b class="a">Filtered view: '+esc(filtersTxt())+'</b><br>':''}<span class="small">"Active" means the unit hauled at least one load since ${mdy(data.cutoff)} (${data.windowDays} days). Loads and drivers come from NewMile; Samsara status from the Samsara account. Insurance status is not tracked here; use the checkboxes.</span></div>`;
   for(const [g,label] of GROUPS){
     const secs=SECTIONS.filter(s=>s.group===g);
-    const total=secs.reduce((n,s)=>n+s.rows.length,0);
+    const total=secs.reduce((n,s)=>n+vis(s).length,0);
     h+=`<details class="grp" data-grp="${g}"${SHUT.has("g:"+g)?"":" open"}>
       <summary><span class="caret">▶</span><input type="checkbox" class="pick gpick" data-grp="${g}" onclick="event.stopPropagation()" onchange="pickGroup('${g}',this.checked)"> ${esc(label)}<span class="cnt">${total} unit${total===1?"":"s"}</span></summary>
       <div class="grpbody">`+
       secs.map(s=>`<details class="sec" data-sec="${s.id}"${SHUT.has(s.id)?"":" open"}>
-        <summary><span class="caret">▶</span><input type="checkbox" class="pick spick" data-sec="${s.id}" onclick="event.stopPropagation()" onchange="pickSec('${s.id}',this.checked)"> ${esc(s.title)}<span class="n ${s.color}">${s.rows.length}</span></summary>
-        <div class="secbody"><p class="hint">${esc(s.hint)}</p>${s.rows.length?T[s.kind](s.rows):'<p class="empty">Nothing in this list.</p>'}</div></details>`).join("")+
+        <summary><span class="caret">▶</span><input type="checkbox" class="pick spick" data-sec="${s.id}" onclick="event.stopPropagation()" onchange="pickSec('${s.id}',this.checked)"> ${esc(s.title)}<span class="n ${s.color}">${vis(s).length}${vis(s).length!==s.rows.length?'<small> of '+s.rows.length+'</small>':''}</span></summary>
+        <div class="secbody"><p class="hint">${esc(s.hint)}</p>${vis(s).length?T[s.kind](vis(s)):'<p class="empty">'+(s.rows.length?'No units match the filters.':'Nothing in this list.')+'</p>'}</div></details>`).join("")+
       `</div></details>`;
   }
   document.getElementById("out").innerHTML=h;
@@ -215,7 +278,7 @@ function syncPicks(){
   }
   LSs("mg_off",[...OFF].join("|"));
   const picked=SECTIONS.filter(s=>!OFF.has(s.id));
-  document.getElementById("selbar").innerHTML=`Printing / exporting <b>${picked.length} of ${SECTIONS.length}</b> sections · <b>${picked.reduce((n,s)=>n+s.rows.length,0)}</b> units. Uncheck a section to leave it out; click a title to expand or collapse it.`;
+  document.getElementById("selbar").innerHTML=`Printing / exporting <b>${picked.length} of ${SECTIONS.length}</b> sections · <b>${picked.reduce((n,s)=>n+vis(s).length,0)}</b> units${filtersOn()?'<span class="fnote"> · filtered: '+esc(filtersTxt())+'</span>':''}${PICK.size?' · <b>'+PICK.size+'</b> checked':''}. Uncheck a section to leave it out; click a title to expand or collapse it.`;
 }
 function pickSec(id,on){if(on)OFF.delete(id);else OFF.add(id);syncPicks();}
 function pickGroup(g,on){SECTIONS.filter(s=>s.group===g).forEach(s=>{if(on)OFF.delete(s.id);else OFF.add(s.id);});syncPicks();}
@@ -239,7 +302,7 @@ function downloadCSV(){
   const cols=["Group","Section","Unit","Company / owner","Terminal","Driver","Phone","Status","Active","Last load","Days idle","Loads (window)","Days worked","Drivers who ran it","Driver changes","Removed from board","Samsara unit","Last GPS","VIN","Year","Make","Model","Plate","Gateway serial","Camera serial","Trailer (Samsara)","Trailer plate","Trailer type (NewMile)"];
   const q=v=>'"'+String(v==null?"":v).replace(/"/g,'""')+'"';
   const lines=[cols.map(q).join(",")];
-  for(const s of picked)for(const r of s.rows)lines.push([GL[s.group],s.title,r.unit,r.company,r.terminal,en(r.driver),r.phone,stat(r)||"OK",r.active?"Yes":"No",r.lastLoad,r.daysIdle==null?"":r.daysIdle,r.loads,r.daysWorked,r.driversSeen.join("; "),r.driverChanges.map(c=>c.at+": "+(c.from||"none")+" > "+(c.to||"none")).join("; "),r.removedOn,r.samsara?"Yes":"No",r.lastGps?String(r.lastGps).slice(0,10):"",sm(r).vin,sm(r).year,sm(r).make,sm(r).model,sm(r).plate,sm(r).gateway,sm(r).camera,(sm(r).trailer||{}).name,(sm(r).trailer||{}).plate,r.trailer].map(q).join(","));
+  for(const s of picked)for(const r of vis(s))lines.push([GL[s.group],s.title,r.unit,r.company,r.terminal,en(r.driver),r.phone,stat(r)||"OK",r.active?"Yes":"No",r.lastLoad,r.daysIdle==null?"":r.daysIdle,r.loads,r.daysWorked,r.driversSeen.join("; "),r.driverChanges.map(c=>c.at+": "+(c.from||"none")+" > "+(c.to||"none")).join("; "),r.removedOn,r.samsara?"Yes":"No",r.lastGps?String(r.lastGps).slice(0,10):"",sm(r).vin,sm(r).year,sm(r).make,sm(r).model,sm(r).plate,sm(r).gateway,sm(r).camera,(sm(r).trailer||{}).name,(sm(r).trailer||{}).plate,r.trailer].map(q).join(","));
   const blob=new Blob(["﻿"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`Fleet-safety-audit-${data.today}.csv`;document.body.appendChild(a);a.click();a.remove();
 }
