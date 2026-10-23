@@ -48,7 +48,7 @@ function createRouter({ config, newmile, log }) {
   }
   const crypto = require('crypto');
   const pinCookie = PIN ? crypto.createHash('sha256').update('cactus|' + PIN).digest('hex').slice(0, 40) : '';
-  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/samsara-login-fleet-key', '/api/samsara-probe-key', '/api/sync/dvirs-key', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/board-truck', '/api/sync-assignments', '/api/sync-roster', '/api/subs-census', '/api/sync/parking-key', '/api/places-key', '/api/places/rebuild-key', '/api/places/learn-key', '/api/zones/parking-audit-key', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
+  const OPEN_PATHS = ['/api/login', '/api/health', '/api/states', '/api/samsara-login-fleet-key', '/api/samsara-probe-key', '/api/sync/dvirs-key', '/api/report/ic-audit-key', '/api/board-status', '/api/board-note', '/api/board-calls', '/api/board-truck', '/api/sync-assignments', '/api/sync-roster', '/api/subs-census', '/api/sync/parking-key', '/api/places-key', '/api/places/rebuild-key', '/api/places/learn-key', '/api/zones/parking-audit-key', '/api/recruit/import', '/api/recruit/pending', '/api/recruit/pending/ack', '/login.html', '/manifest.webmanifest', '/icon-180.png', '/icon-192.png', '/icon-512.png'];
   if (PIN) {
     router.use((req, res, next) => {
       if (OPEN_PATHS.includes(req.path)) return next();
@@ -495,7 +495,7 @@ function createRouter({ config, newmile, log }) {
   // so inactive ones come off the insurance and get their Samsara camera pulled — and, SEPARATELY, the
   // KT company trucks (never de-leased, but drivers rotate constantly). Archived units are included.
   // English-only report. Read-only. Behind the tracker PIN like every other page API.
-  router.get('/api/report/ic-audit', (req, res) => {
+  const icAudit = (req, res) => {
     const days = Math.max(7, Math.min(120, parseInt(req.query.days, 10) || 30));
     const today = todayCT();
     const back = (n) => new Date(Date.parse(today + 'T12:00:00Z') - n * 864e5).toISOString().slice(0, 10);
@@ -547,6 +547,12 @@ function createRouter({ config, newmile, log }) {
     res.setHeader('Cache-Control', 'no-store');
     res.json({ ok: true, today, windowDays: days, cutoff,
       ics: rows.filter(r => r.group === 'IC'), kt: rows.filter(r => r.group === 'KT'), cactus: rows.filter(r => r.group === 'CACTUS') });
+  };
+  router.get('/api/report/ic-audit', icAudit);
+  // same data through the machine channel (states key) — for fleet lists built from the laptop
+  router.get('/api/report/ic-audit-key', (req, res) => {
+    if (String((req.query || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    return icAudit(req, res);
   });
 
   router.get('/api/states', (req, res) => {
