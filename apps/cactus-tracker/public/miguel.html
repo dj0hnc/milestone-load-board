@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CKJ IC Audit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* MIGUEL's report: monthly CKJ independent-contractor audit for the Texas safety manager.
+   English only. Same Milestone look as Faron's report; built to be saved as a PDF or exported. */
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{--road:#4A4F55;--sand:#B89A4E;--stone:#7A7D80;--line:#E5E2DB;--green:#4E8C63;--red:#B0442F;--amber:#8a5a10;--blue:#2456a6;}
+body{font-family:'Poppins','Segoe UI',system-ui,-apple-system,Roboto,sans-serif;color:var(--road);background:#fff;padding:18px 16px 40px;max-width:1060px;margin:0 auto;font-size:14px;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.rephead{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-bottom:3px solid var(--sand);padding-bottom:10px;}
+.rephead img{height:46px;width:auto;}
+.rephead .rtitle{margin-left:auto;text-align:right;}
+.rephead .rtitle b{display:block;font-size:16px;font-weight:700;letter-spacing:1px;text-transform:uppercase;}
+.rephead .rtitle span{font-size:13px;color:var(--stone);font-weight:600;}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 16px;align-items:center;}
+.toolbar button,.toolbar a,.toolbar select{border:none;border-radius:10px;padding:12px 16px;font-family:inherit;font-weight:700;font-size:14px;cursor:pointer;text-decoration:none;display:inline-block;}
+.toolbar select{background:#eef0f5;color:var(--road);}
+.b-pdf{background:var(--road);color:#fff;}
+.b-csv{background:var(--sand);color:#2B2D30;}
+.b-back{background:#eef0f5;color:var(--road);}
+.bigsum{font-size:15.5px;line-height:1.7;background:#FBFAF7;border:1.5px solid var(--line);border-radius:14px;padding:14px 18px;margin-bottom:6px;}
+.bigsum b.g{color:var(--green);} .bigsum b.r{color:var(--red);} .bigsum b.a{color:var(--amber);} .bigsum b.b{color:var(--blue);}
+h2{font-size:15px;text-transform:uppercase;letter-spacing:.6px;border-bottom:2px solid var(--sand);padding-bottom:4px;margin:22px 0 4px;}
+.hint{font-size:12.5px;color:var(--stone);margin:2px 0 8px;line-height:1.5;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--stone);padding:4px 10px 4px 0;border-bottom:1px solid var(--line);}
+td{padding:6px 10px 6px 0;border-bottom:1px solid #F1EFE9;vertical-align:top;}
+tr{page-break-inside:avoid;}
+td.num{font-weight:700;white-space:nowrap;}
+.idle{color:var(--red);font-weight:700;white-space:nowrap;}
+.ok{color:var(--green);font-weight:600;}
+.no{color:var(--red);font-weight:600;}
+.mut{color:var(--stone);}
+.box{display:inline-block;width:13px;height:13px;border:1.5px solid var(--road);border-radius:3px;vertical-align:-2px;margin-right:4px;}
+.small{font-size:11.5px;color:var(--stone);}
+.empty{color:var(--stone);padding:6px 0;}
+footer{margin-top:24px;border-top:1.5px solid var(--line);padding-top:8px;color:var(--stone);font-size:11px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+footer b{color:var(--sand);}
+.err{background:#F7EAE6;border:1.5px solid var(--red);color:var(--red);border-radius:12px;padding:12px;}
+@page{size:letter landscape;margin:10mm;}
+@media print{
+  .toolbar{display:none;}
+  body{padding:0;font-size:11px;max-width:none;}
+  .rephead img{height:34px;}
+  .bigsum{font-size:12px;padding:8px 12px;}
+  h2{font-size:12px;margin:12px 0 3px;}
+  .hint{font-size:10px;}
+  table{font-size:10px;}
+  th{font-size:8.5px;} td{padding:3px 7px 3px 0;}
+  footer{font-size:9px;}
+}
+</style>
+</head>
+<body>
+<div class="rephead">
+  <img src="milestone-supply.png" alt="Milestone Supply">
+  <div class="rtitle"><b>CKJ Independent Contractor Audit</b><span id="sub">Loading…</span></div>
+</div>
+<div class="toolbar">
+  <button class="b-pdf" onclick="window.print()">🖨 Save as PDF to send to Miguel</button>
+  <button class="b-csv" onclick="downloadCSV()">⬇ Excel (CSV)</button>
+  <select id="win" onchange="setWin(this.value)" title="Activity window">
+    <option value="30">Active = hauled in the last 30 days</option>
+    <option value="45">Active = hauled in the last 45 days</option>
+    <option value="60">Active = hauled in the last 60 days</option>
+  </select>
+  <a class="b-back" href="report.html">← Reports</a>
+  <a class="b-back" href="./">← Tracker</a>
+</div>
+<div id="out"><p class="empty">Loading…</p></div>
+<footer id="foot"></footer>
+<script>
+const qs=new URLSearchParams(location.search);
+let days=[30,45,60].includes(Number(qs.get("days")))?Number(qs.get("days")):30;
+document.getElementById("win").value=String(days);
+let data=null;
+const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const mdy=iso=>{if(!iso)return "";const p=String(iso).slice(0,10).split("-");return p.length===3?`${Number(p[1])}/${Number(p[2])}/${p[0].slice(2)}`:iso;};
+const en=s=>String(s||"").replace(/SIN DRIVER/ig,"NO DRIVER").replace(/SIN CHOFER/ig,"NO DRIVER").replace(/\(SIN YARD\)/ig,"").trim();
+const STATUS={ok:"",shop:"In the shop",down:"Down",no_driver:"No driver",vacation:"Vacation",deleased:"De-leased"};
+const byUnit=(a,b)=>String(a.unit).localeCompare(String(b.unit),undefined,{numeric:true});
+const idleTxt=r=>r.lastLoad?`${mdy(r.lastLoad)} <span class="idle">· ${r.daysIdle} days idle</span>`:`<span class="idle">no load on record</span>`;
+const sams=r=>r.samsara?`<span class="ok">Yes</span>${r.lastGps?`<div class="small">last GPS ${esc(mdy(r.lastGps))}</div>`:""}`:`<span class="no">No unit</span>`;
+const stat=r=>[STATUS[r.status]!=null?STATUS[r.status]:r.status,en(r.statusNote)].filter(Boolean).join(" · ");
+function setWin(v){days=Number(v)||30;history.replaceState(null,"","?days="+days);load();}
+
+async function load(){
+  document.getElementById("out").innerHTML=`<p class="empty">Loading…</p>`;
+  try{
+    const r=await fetch(`./api/report/ic-audit?days=${days}`);
+    if(r.status===401){location.href="login.html";return;}
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    data=await r.json();
+    render();
+  }catch(e){
+    document.getElementById("out").innerHTML=`<div class="err">Could not load: ${esc(e.message)}. Check the connection and refresh.</div>`;
+  }
+}
+function render(){
+  const ics=data.ics||[], kt=data.kt||[];
+  const active=ics.filter(r=>r.active).sort(byUnit);
+  const inactive=ics.filter(r=>!r.active&&!r.archived).sort((a,b)=>(b.daysIdle==null?9999:b.daysIdle)-(a.daysIdle==null?9999:a.daysIdle)||byUnit(a,b));
+  const removed=ics.filter(r=>r.archived&&r.recentlyRemoved).sort((a,b)=>String(b.removedOn||b.lastLoad).localeCompare(String(a.removedOn||a.lastLoad)));
+  const ktLive=kt.filter(r=>!r.archived).sort(byUnit);
+  const ktRot=ktLive.filter(r=>r.driversSeen.length>1||r.driverChanges.length);
+  const month=new Date(data.today+"T12:00:00Z").toLocaleDateString("en-US",{month:"long",year:"numeric",timeZone:"UTC"});
+  document.getElementById("sub").textContent=`${month} · prepared ${mdy(data.today)} for Miguel Campos, Texas Safety`;
+  document.title=`CKJ IC Audit ${data.today}`;
+
+  let h=`<div class="bigsum"><b>CKJ independent contractors:</b>
+    <b class="g">${active.length} active</b> ·
+    <b class="r">${inactive.length} inactive, action needed</b> ·
+    <b class="a">${removed.length} removed from the board in the last 90 days</b>.<br>
+    <b>KT company trucks:</b> <b class="b">${ktLive.length} in service</b> · ${ktRot.length} had more than one driver or a driver change in the last ${data.windowDays} days.<br>
+    <span class="small">"Active" means the unit hauled at least one load since ${mdy(data.cutoff)} (${data.windowDays} days). Load history comes from NewMile; Samsara status from the Samsara account.</span></div>`;
+
+  h+=`<h2>1 · Inactive ICs: remove from insurance and pull the Samsara camera · ${inactive.length}</h2>
+    <p class="hint">Still listed on the board but no load in the last ${data.windowDays} days. Confirm with the owner, then take the unit off the insurance policy and pull its Samsara camera / gateway.</p>`;
+  h+=inactive.length?`<table><tr><th>Unit</th><th>Company</th><th>Last driver</th><th>Last load</th><th>Samsara</th><th>Notes</th><th>Insurance off</th><th>Camera pulled</th></tr>`+
+    inactive.map(r=>`<tr><td class="num">${esc(r.unit)}</td><td>${esc(r.company||"·")}</td><td>${esc(en(r.driver)||"·")}</td>
+      <td>${idleTxt(r)}</td><td>${sams(r)}</td><td class="small">${esc(stat(r))}</td><td><span class="box"></span></td><td><span class="box"></span></td></tr>`).join("")+`</table>`
+    :`<p class="empty">No inactive ICs: every contractor on the board hauled this period.</p>`;
+
+  h+=`<h2>2 · Removed from the board (last 90 days): confirm insurance and camera · ${removed.length}</h2>
+    <p class="hint">Already taken off the dispatch board. Make sure each one is also off the insurance and has no Samsara camera assigned.</p>`;
+  h+=removed.length?`<table><tr><th>Unit</th><th>Company</th><th>Last driver</th><th>Last load</th><th>Removed</th><th>Samsara</th><th>Insurance off</th><th>Camera pulled</th></tr>`+
+    removed.map(r=>`<tr><td class="num">${esc(r.unit)}</td><td>${esc(r.company||"·")}</td><td>${esc(en(r.driver)||"·")}</td>
+      <td>${r.lastLoad?esc(mdy(r.lastLoad)):'<span class="mut">none</span>'}</td><td>${r.removedOn?esc(mdy(r.removedOn)):'<span class="mut">·</span>'}<div class="small">${r.removedBy==="manual"?"by dispatch":r.removedBy==="auto"?"inactive rule":""}</div></td>
+      <td>${sams(r)}</td><td><span class="box"></span></td><td><span class="box"></span></td></tr>`).join("")+`</table>`
+    :`<p class="empty">No ICs removed in the last 90 days.</p>`;
+
+  h+=`<h2>3 · Active ICs: keep on insurance · ${active.length}</h2>
+    <p class="hint">Hauled in the last ${data.windowDays} days. Check that the driver listed matches the driver on the insurance and in Samsara.</p>`;
+  h+=active.length?`<table><tr><th>Unit</th><th>Company</th><th>Driver</th><th>Phone</th><th>Loads</th><th>Days worked</th><th>Last load</th><th>Drivers who ran it</th><th>Samsara</th></tr>`+
+    active.map(r=>`<tr><td class="num">${esc(r.unit)}</td><td>${esc(r.company||"·")}</td><td>${esc(en(r.driver)||"·")}</td><td class="small">${esc(r.phone||"")}</td>
+      <td>${r.loads}</td><td>${r.daysWorked}</td><td>${esc(mdy(r.lastLoad))}</td>
+      <td class="small">${r.driversSeen.length>1?`<b class="no">${r.driversSeen.length} drivers:</b> `:""}${esc(r.driversSeen.join(", ")||"·")}</td><td>${sams(r)}</td></tr>`).join("")+`</table>`
+    :`<p class="empty">No active ICs this period.</p>`;
+
+  h+=`<h2>4 · KT company trucks: driver rotation · ${ktLive.length}</h2>
+    <p class="hint">KT units stay on the insurance (they are not de-leased), but drivers change often. Use this list to keep the insurance driver roster and Samsara driver assignments current.</p>`;
+  h+=ktLive.length?`<table><tr><th>Unit</th><th>Terminal</th><th>Current driver</th><th>Drivers who ran it (${data.windowDays} d)</th><th>Driver changes logged</th><th>Loads</th><th>Last load</th><th>Samsara</th></tr>`+
+    ktLive.map(r=>`<tr><td class="num">${esc(r.unit)}</td><td>${esc(r.terminal||"·")}</td><td>${esc(en(r.driver)||"·")}${STATUS[r.status]?`<div class="small">${esc(STATUS[r.status])}</div>`:""}</td>
+      <td class="small">${r.driversSeen.length>1?`<b class="no">${r.driversSeen.length}:</b> `:""}${esc(r.driversSeen.join(", ")||"·")}</td>
+      <td class="small">${r.driverChanges.length?r.driverChanges.map(c=>`${esc(mdy(c.at))}: ${esc(en(c.from)||"none")} → ${esc(en(c.to)||"none")}`).join("<br>"):'<span class="mut">none</span>'}</td>
+      <td>${r.loads}</td><td>${r.lastLoad?esc(mdy(r.lastLoad)):'<span class="mut">none</span>'}</td><td>${sams(r)}</td></tr>`).join("")+`</table>`
+    :`<p class="empty">No KT trucks in service.</p>`;
+
+  document.getElementById("out").innerHTML=h;
+  document.getElementById("foot").innerHTML=`<span><b>MILESTONE SUPPLY</b> · CKJ Transport · monthly safety audit</span>
+    <span>Prepared ${esc(new Date().toLocaleString("en-US",{month:"numeric",day:"numeric",year:"2-digit",hour:"numeric",minute:"2-digit"}))}</span>`;
+}
+function downloadCSV(){
+  if(!data)return;
+  const cols=["Section","Unit","Type","Company","Terminal","Driver","Phone","Status","Active","Last load","Days idle","Loads (window)","Days worked","Drivers who ran it","Driver changes","Removed from board","Samsara unit","Last GPS"];
+  const sec=r=>r.kind==="KT"?"KT company truck":r.active?"Active IC":r.archived?(r.recentlyRemoved?"Removed IC (90 d)":"Removed IC (older)"):"Inactive IC";
+  const q=v=>'"'+String(v==null?"":v).replace(/"/g,'""')+'"';
+  const lines=[cols.map(q).join(",")].concat([...data.ics,...data.kt].sort(byUnit).map(r=>[sec(r),r.unit,r.kind,r.company,r.terminal,en(r.driver),r.phone,stat(r)||"OK",r.active?"Yes":"No",r.lastLoad,r.daysIdle==null?"":r.daysIdle,r.loads,r.daysWorked,r.driversSeen.join("; "),r.driverChanges.map(c=>c.at+": "+(c.from||"none")+" > "+(c.to||"none")).join("; "),r.removedOn,r.samsara?"Yes":"No",r.lastGps?String(r.lastGps).slice(0,10):""].map(q).join(",")));
+  const blob=new Blob(["﻿"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`CKJ-IC-audit-${data.today}.csv`;document.body.appendChild(a);a.click();a.remove();
+}
+load();
+</script>
+</body>
+</html>

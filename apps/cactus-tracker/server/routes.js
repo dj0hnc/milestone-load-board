@@ -482,6 +482,57 @@ function createRouter({ config, newmile, log }) {
     metaSet('removed_src_backfill', '1');
   }
 
+  // 🛡 MIGUEL REPORT (2026-10-23, Juan): monthly safety audit for Miguel Campos, Texas safety manager.
+  // Every CKJ independent contractor (KT org: ICS tab, Arango and any non-KT unit) — active vs inactive,
+  // so inactive ones come off the insurance and get their Samsara camera pulled — and, SEPARATELY, the
+  // KT company trucks (never de-leased, but drivers rotate constantly). Archived units are included.
+  // English-only report. Read-only. Behind the tracker PIN like every other page API.
+  router.get('/api/report/ic-audit', (req, res) => {
+    const days = Math.max(7, Math.min(120, parseInt(req.query.days, 10) || 30));
+    const today = todayCT();
+    const back = (n) => new Date(Date.parse(today + 'T12:00:00Z') - n * 864e5).toISOString().slice(0, 10);
+    const cutoff = back(days), recentCut = back(90);
+    const trucks = all(`SELECT org_id, number, display_number, division, area, driver, phone, owner_name, trailer_type, status, status_note,
+                               archived, removed_src, last_load_date, samsara_id, samsara_name, samsara_seen_at, samsara_username
+                        FROM trucks WHERE org_id = 'KT'`);
+    const act = new Map();
+    for (const a of all('SELECT number, load_date, driver, loads FROM activity_log WHERE org_id = ? AND load_date >= ? ORDER BY load_date DESC', 'KT', cutoff)) {
+      const e = act.get(a.number) || { loads: 0, days: 0, drivers: [] };
+      e.loads += a.loads || 0; e.days++;
+      const d = String(a.driver || '').trim(); if (d && !e.drivers.includes(d)) e.drivers.push(d);
+      act.set(a.number, e);
+    }
+    const dlog = new Map();
+    for (const l of all('SELECT number, ts, old_value, new_value FROM truck_log WHERE org_id = ? AND field = ? AND ts >= ? ORDER BY ts DESC', 'KT', 'driver', cutoff)) {
+      const arr = dlog.get(l.number) || [];
+      if (arr.length < 6) arr.push({ at: String(l.ts).slice(0, 10), from: l.old_value || '', to: l.new_value || '' });
+      dlog.set(l.number, arr);
+    }
+    const removedAt = new Map(all('SELECT number, MAX(ts) AS ts FROM truck_log WHERE org_id = ? AND field = ? GROUP BY number', 'KT', 'removed').map(r => [r.number, String(r.ts || '').slice(0, 10)]));
+    const daysSince = (iso) => iso ? Math.max(0, Math.round((Date.parse(today + 'T12:00:00Z') - Date.parse(String(iso).slice(0, 10) + 'T12:00:00Z')) / 864e5)) : null;
+    const rows = trucks.map(t => {
+      const a = act.get(t.number) || { loads: 0, days: 0, drivers: [] };
+      const removedOn = t.archived ? (removedAt.get(t.number) || '') : '';
+      return {
+        unit: t.display_number || t.number, kind: /^KT/i.test(String(t.display_number || '')) ? 'KT' : 'IC',
+        company: t.owner_name || '', terminal: t.division || '', yard: t.area || '',
+        driver: t.driver || '', phone: t.phone || '', trailer: t.trailer_type || '',
+        status: t.status || 'ok', statusNote: t.status_note || '',
+        archived: t.archived ? 1 : 0, removedOn, removedBy: t.removed_src || '',
+        recentlyRemoved: (t.archived && ((removedOn && removedOn >= recentCut) || (!removedOn && t.last_load_date && t.last_load_date >= back(120)))) ? 1 : 0,
+        lastLoad: t.last_load_date || '', daysIdle: daysSince(t.last_load_date),
+        loads: a.loads, daysWorked: a.days, driversSeen: a.drivers, driverChanges: dlog.get(t.number) || [],
+        samsara: t.samsara_id ? 1 : 0, samsaraName: t.samsara_name || '', lastGps: t.samsara_seen_at || '', samsaraUser: t.samsara_username || '',
+        active: (!t.archived && t.status !== 'deleased' && t.last_load_date && t.last_load_date >= cutoff) ? 1 : 0
+      };
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    // ICs = the CKJ ICS tab (internal number CKJ###). Arango / DUMP-ER and other subs that NewMile files under the
+    // CKJ fleet live in the SUBS tab, not here. KT = the Kennemer company units (KT-####).
+    const isIC = new Set(trucks.filter(t => /^CKJ/i.test(String(t.number || ''))).map(t => t.display_number || t.number));
+    res.json({ ok: true, today, windowDays: days, cutoff, ics: rows.filter(r => r.kind === 'IC' && isIC.has(r.unit)), kt: rows.filter(r => r.kind === 'KT') });
+  });
+
   router.get('/api/states', (req, res) => {
     if (String(req.query.key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
     const today = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date || '')) ? String(req.query.date) : todayCT(); // ?date= → that day's states / time-off (tomorrow's OFF list)
