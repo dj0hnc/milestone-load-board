@@ -1542,7 +1542,7 @@ function subRowHtml(t){
     :off?`<span class="smut">${esc(STATUS_LBL[t.status]||t.status)}</span>`:'<span class="smut">—</span>';
   const inv=Number(t.invalid_tickets)||0;
   const note=[t.note,t.last_call?"📞 "+t.last_call.text:""].filter(Boolean).join(" · ");
-  return `<div class="srow ${cls}" id="chip-${cssId(t.org_id+"-"+t.number)}" onclick="openCalls('${t.org_id}','${esc(t.number)}')">
+  return `<div class="srow ${cls}" id="chip-${cssId(t.org_id+"-"+t.number)}" onclick="tapChip('${t.org_id}','${esc(t.number)}')" title="Tap to mark assigned / unassigned (⚡ once it is in NewMile) · 📞 opens the truck panel">
     <span class="stk"><button class="star-btn ${t.star?"on":""}" onclick="event.stopPropagation();toggleStar(event,'${t.org_id}','${esc(t.number)}')">${t.star?"★":"☆"}</button><span class="stknum">${esc(dnum(t))}</span>${t.is_new?'<span class="newflag" title="NEW — came in from NewMile, not reviewed yet">⚑ NEW</span>':""}</span>
     <span class="sdrv">${esc(t.driver)||'<span style="color:var(--red)">⚠ no driver</span>'}${t.phone?` <a href="tel:${esc(t.phone)}" onclick="event.stopPropagation()" class="smut" style="text-decoration:none;">${esc(t.phone)}</a>`:""}</span>
     <span>${today}</span>
