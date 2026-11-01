@@ -524,6 +524,15 @@ body.dark .theme-btn{border-color:var(--gold);}
 .ml-think i{display:inline-block;animation:mlb 1s infinite;}
 .ml-think i:nth-child(2){animation-delay:.18s}.ml-think i:nth-child(3){animation-delay:.36s}
 @keyframes mlb{0%,100%{opacity:.25}50%{opacity:1}}
+/* 🎙 MILEY VOICE — push-to-talk + respuestas habladas. TODO en el navegador (cero
+   servicios nuevos, cero llaves); el micrófono SOLO está abierto mientras el botón está
+   rojo — nada de escucha permanente. */
+.ml-in .mlMic{background:#eef0f5;color:#1C2333;border:1.5px solid #cdd3df;border-radius:12px;width:46px;font-size:18px;padding:0;}
+.ml-in .mlMic.on{background:#C0392B;color:#fff;border-color:#C0392B;animation:micPulse 1.1s infinite;}
+@keyframes micPulse{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,.45)}50%{box-shadow:0 0 0 8px rgba(192,57,43,0)}}
+.ml-head .mlSpk.on{background:var(--gold,#C8991F);color:#1C2333;border-color:var(--gold,#C8991F);}
+body.dark .ml-in .mlMic{background:#1d2537;border-color:#33507a;color:#e8ecf3;}
+body.dark .ml-in .mlMic.on{background:#C0392B;color:#fff;}
 @media (max-width:640px){
   #mileyPanel{right:0;bottom:0;left:0;width:100%;max-width:100%;height:100dvh;border-radius:0;border:none;}
   .ml-head{padding-top:calc(10px + env(safe-area-inset-top,0px));}
@@ -635,6 +644,9 @@ body.dark .dsp-juan{background:#5a95f9;color:#0f1420;} body.dark .dsp-mary{backg
   <div class="ml-head">
     <b>👷‍♀️ MILEY</b><small>FLEET &amp; PEOPLE</small>
     <span style="flex:1"></span>
+    <button onclick="mlMorning()" title="Good morning — Miley reads you the day out loud">☀️</button>
+    <button id="mlHandsBtn" class="mlSpk" onclick="mlHandsToggle()" title="Hands-free: TWO CLAPS wake Miley. Clap detection runs 100% locally in the browser; speech recognition only opens after the claps. Turns itself off when the tab is hidden.">🎧</button>
+    <button id="mlSpkBtn" class="mlSpk" onclick="mlVoiceToggle()" title="Spoken replies on/off">🔇</button>
     <button onclick="mlNewChat()" title="Start a fresh conversation">＋ New</button>
     <button onclick="mlHistory()" title="Your saved conversations (server — never lost)">🕘</button>
     <button onclick="closeMiley()">✕</button>
@@ -642,6 +654,8 @@ body.dark .dsp-juan{background:#5a95f9;color:#0f1420;} body.dark .dsp-mary{backg
   <div id="mlFeed"></div>
   <div class="ml-in">
     <textarea id="mlText" placeholder="Talk to Miley… (‘anótale al 720 que…’, ‘who’s free in Powderly?’)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();mlSend();}"></textarea>
+    <button id="mlLangBtn" class="mlMic" style="width:40px;font-size:11.5px;font-weight:800;font-family:'Barlow Condensed';" onclick="mlLangToggle()" title="Mic language — tap to switch Spanish / English">ES</button>
+    <button id="mlMicBtn" class="mlMic" onclick="mlMic()" title="Talk to Miley — push to talk; the mic is ONLY open while this is red">🎙</button>
     <button id="mlSendBtn" onclick="mlSend()">SEND</button>
   </div>
 </div>
@@ -2864,6 +2878,7 @@ async function mlSend(){
   mlBubble("me",mlEsc(q));
   mlBusy=true;$("mlSendBtn").disabled=true;
   const think=mlBubble("ml-think ml-b sys","👷‍♀️ <i>●</i><i>●</i><i>●</i>");
+  let mlSay=""; // 🎙 el ÚLTIMO texto de Miley se habla (los intermedios de tools, no)
   try{
     for(let round=0;round<6;round++){
       const r=await fetch(`${API}/api/ai/chat`,{method:"POST",headers:{"Content-Type":"application/json"},
@@ -2872,7 +2887,7 @@ async function mlSend(){
       if(j.error){mlBubble("ai","⚠️ "+esc(j.error));break;}
       mlMsgs.push({role:"assistant",content:j.content});
       const uses=(j.content||[]).filter(c=>c.type==="tool_use");
-      for(const b of (j.content||[]))if(b.type==="text"&&b.text.trim())mlBubble("ai",mlEsc(b.text.trim()));
+      for(const b of (j.content||[]))if(b.type==="text"&&b.text.trim()){mlBubble("ai",mlEsc(b.text.trim()));mlSay=b.text.trim();}
       if(j.stop_reason!=="tool_use"||!uses.length)break;
       const results=[];
       for(const u of uses){
@@ -2883,9 +2898,153 @@ async function mlSend(){
       mlMsgs.push({role:"user",content:results});
     }
   }catch(e){mlBubble("ai","⚠️ "+esc(e.message||String(e)));}
-  finally{think.remove();mlBusy=false;$("mlSendBtn").disabled=false;mlSave();inp.focus();}
+  finally{think.remove();mlBusy=false;$("mlSendBtn").disabled=false;mlSave();if(mlSay)mlSpeak(mlSay);inp.focus();}
 }
-function openMiley(){ensureWho();$("mileyPanel").classList.add("open");mlRenderAll();setTimeout(()=>{const i=$("mlText");if(i&&window.innerWidth>640)i.focus();},50);}
+
+// ---------- 🎙 MILEY VOICE (2026-11-01, "quiero un JARVIS para la oficina") ----------
+// Seguridad primero: PUSH-TO-TALK (el micrófono SOLO está abierto mientras el botón está
+// rojo — cero escucha permanente), misma página detrás del PIN, y las escrituras de Miley
+// siguen pidiendo confirmación. Voz = SpeechRecognition/speechSynthesis del NAVEGADOR:
+// cero servicios nuestros nuevos y cero llaves (ElevenLabs puede entrar después como
+// upgrade de voz, con la key guardada server-side en la office, jamás en el repo público).
+let mlRec=null,mlListening=false,mlVoiceOn=localStorage.getItem("ml_voice")==="1";
+try{if("speechSynthesis" in window){speechSynthesis.onvoiceschanged=()=>{};speechSynthesis.getVoices();}}catch(e){} // precalienta la lista de voces
+function mlVoiceToggle(force){
+  mlVoiceOn=force!=null?!!force:!mlVoiceOn;
+  localStorage.setItem("ml_voice",mlVoiceOn?"1":"0");
+  const b=$("mlSpkBtn");if(b){b.classList.toggle("on",mlVoiceOn);b.textContent=mlVoiceOn?"🔊":"🔇";}
+  if(!mlVoiceOn)try{speechSynthesis.cancel();}catch(e){}
+}
+// 🌎 BILINGÜE ("ke kien sea ke le hable le responda bien"): el mic dicta en ES o EN
+// (selector; SpeechRecognition no auto-detecta idioma) y la VOZ de salida detecta sola
+// en qué idioma contestó Miley para usar la voz correcta.
+let mlLang=localStorage.getItem("ml_lang")||"es";
+function mlLangToggle(){
+  mlLang=mlLang==="es"?"en":"es";
+  localStorage.setItem("ml_lang",mlLang);
+  const b=$("mlLangBtn");if(b)b.textContent=mlLang.toUpperCase();
+}
+function mlDetectLang(text){ // heurística barata: marcas de español vs palabras inglesas
+  const t=" "+String(text||"").toLowerCase()+" ";
+  let es=(t.match(/[áéíóúñ¿¡]/g)||[]).length;
+  for(const w of [" el "," la "," los "," las "," que "," está "," con "," para "," hoy "," sin "," pero "," ya "," nada "," carga "," cargas "]) if(t.includes(w))es+=2;
+  let en=0;
+  for(const w of [" the "," is "," are "," and "," with "," today "," no "," loads "," truck "," down "," week "," has "," needs "]) if(t.includes(w))en+=2;
+  return es>=en?"es":"en";
+}
+function mlVoicePick(lang){ // mejor voz disponible del idioma pedido
+  try{
+    const vs=speechSynthesis.getVoices()||[];
+    if(lang==="en")return vs.find(v=>/^en[-_]US/i.test(v.lang))||vs.find(v=>/^en/i.test(v.lang))||null;
+    return vs.find(v=>/^es[-_](MX|US)/i.test(v.lang))||vs.find(v=>/^es/i.test(v.lang))||null;
+  }catch(e){return null;}
+}
+function mlSpeak(text){
+  if(!mlVoiceOn||!("speechSynthesis" in window))return;
+  const clean=String(text||"").replace(/\*\*?/g,"").replace(/[#`_>|]/g,"").replace(/https?:\S+/g,"")
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{FE0F}]/gu,"").trim();
+  if(!clean)return;
+  try{
+    speechSynthesis.cancel();
+    const lang=mlDetectLang(clean);
+    const u=new SpeechSynthesisUtterance(clean.slice(0,1200));
+    const v=mlVoicePick(lang);if(v){u.voice=v;u.lang=v.lang;}else u.lang=lang==="en"?"en-US":"es-MX";
+    u.rate=1.06;u.pitch=1;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+function mlMic(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){mlBubble("sys","🎙 Voice input isn't supported in this browser — use Chrome/Edge (or Safari on a recent iPhone).");return;}
+  if(mlListening){try{mlRec.stop();}catch(e){}return;} // segundo tap = corta
+  try{speechSynthesis.cancel();}catch(e){} // que no se escuche a sí misma
+  const rec=new SR();mlRec=rec;
+  rec.lang=mlLang==="en"?"en-US":"es-MX";rec.interimResults=true;rec.continuous=false;rec.maxAlternatives=1;
+  const inp=$("mlText"),btn=$("mlMicBtn");
+  let finalTxt="";
+  rec.onstart=()=>{mlListening=true;btn.classList.add("on");inp.placeholder="🎙 Listening… speak now";};
+  rec.onresult=(ev)=>{
+    let interim="";
+    for(let i=ev.resultIndex;i<ev.results.length;i++){
+      const t=ev.results[i][0].transcript;
+      if(ev.results[i].isFinal)finalTxt+=t;else interim+=t;
+    }
+    inp.value=(finalTxt+interim).trim();
+  };
+  rec.onerror=(ev)=>{if(ev.error!=="aborted"&&ev.error!=="no-speech")mlBubble("sys","🎙 "+esc(ev.error==="not-allowed"?"Microphone blocked — allow it for this site in the browser.":String(ev.error)));};
+  rec.onend=()=>{
+    mlListening=false;btn.classList.remove("on");
+    inp.placeholder="Talk to Miley… (‘anótale al 720 que…’, ‘who’s free in Powderly?’)";
+    if((inp.value||"").trim()){mlVoiceToggle(true);mlSend();} // preguntaste con voz → te contesta con voz
+  };
+  try{rec.start();}catch(e){mlListening=false;btn.classList.remove("on");}
+}
+// ---------- 🎧 MANOS LIBRES: DOS PALMADAS despiertan a Miley (reel #2, 2026-11-01) ----------
+// La opción MÁS segura de "wake": el audio se analiza LOCAL con WebAudio (puro nivel de
+// volumen — nada se transcribe ni sale de la máquina mientras espera); solo DESPUÉS de
+// las dos palmadas se abre el reconocimiento de voz, igual que si tocaras el 🎙. El modo
+// se apaga solo al esconder la pestaña, y el indicador del mic del navegador queda visible.
+let mlHands=false,mlHandsStream=null,mlHandsCtx=null,mlHandsRAF=0;
+async function mlHandsToggle(){
+  if(mlHands){mlHandsStop();mlBubble("sys","🎧 Hands-free OFF — mic closed.");return;}
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    mlHandsStream=stream;
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    mlHandsCtx=ctx;try{ctx.resume();}catch(e){}
+    const src=ctx.createMediaStreamSource(stream);
+    const an=ctx.createAnalyser();an.fftSize=512;src.connect(an);
+    const buf=new Uint8Array(an.fftSize);
+    let base=0.02,last=0,peaks=[];
+    mlHands=true;
+    const b=$("mlHandsBtn");if(b){b.classList.add("on");b.textContent="🎧 ON";}
+    mlBubble("sys","🎧 Hands-free ARMED — <b>two claps</b> wake Miley. Clap detection is local; tap 🎧 again to turn it off.");
+    const tick=()=>{
+      if(!mlHands)return;
+      an.getByteTimeDomainData(buf);
+      let sum=0;for(let i=0;i<buf.length;i++){const d=(buf[i]-128)/128;sum+=d*d;}
+      const rms=Math.sqrt(sum/buf.length);
+      base=base*0.995+rms*0.005; // piso de ruido rodante del cuarto
+      const now=performance.now();
+      if(rms>Math.max(0.09,base*4)&&now-last>120){ // pico seco y fuerte = palmada
+        peaks.push(now);last=now;
+        peaks=peaks.filter(p=>now-p<900);
+        if(peaks.length>=2){peaks=[];mlHandsWake();}
+      }
+      mlHandsRAF=requestAnimationFrame(tick);
+    };
+    tick();
+    document.addEventListener("visibilitychange",mlHandsVis);
+  }catch(e){mlBubble("sys","🎧 "+esc(e.name==="NotAllowedError"?"Microphone blocked — allow it for this site in the browser.":String(e.message||e)));}
+}
+function mlHandsVis(){if(document.hidden&&mlHands)mlHandsStop();} // pestaña escondida = mic CERRADO
+function mlHandsStop(){
+  mlHands=false;cancelAnimationFrame(mlHandsRAF);
+  try{((mlHandsStream&&mlHandsStream.getTracks())||[]).forEach(t=>t.stop());}catch(e){}
+  try{if(mlHandsCtx)mlHandsCtx.close();}catch(e){}
+  mlHandsStream=null;mlHandsCtx=null;
+  document.removeEventListener("visibilitychange",mlHandsVis);
+  const b=$("mlHandsBtn");if(b){b.classList.remove("on");b.textContent="🎧";}
+}
+function mlHandsWake(){
+  if(mlListening||mlBusy)return; // ya está escuchando o pensando — no re-disparar
+  openMiley();
+  try{ // "ding" de confirmación (local, WebAudio)
+    const c=mlHandsCtx,o=c.createOscillator(),g=c.createGain();
+    o.frequency.value=880;g.gain.value=0.12;o.connect(g);g.connect(c.destination);
+    o.start();o.stop(c.currentTime+0.15);
+  }catch(e){}
+  mlVoiceToggle(true);
+  setTimeout(()=>{if(!mlListening&&!mlBusy)mlMic();},300); // tras el ding, te escucha
+}
+function mlMorning(){ // ☀️ el "buenos días" de JARVIS: Miley te LEE el día
+  ensureWho();
+  $("mileyPanel").classList.add("open");mlRenderAll();
+  mlVoiceToggle(true);
+  $("mlText").value="Good morning briefing — léeme el día en español, compacto y listo para leerse en voz alta: trucks working vs missing por flota, quién está DOWN u OFF hoy y por qué, HOS bajos, y cómo va el freight. Cierra con lo más urgente de hoy.";
+  mlSend();
+}
+function openMiley(){ensureWho();$("mileyPanel").classList.add("open");mlRenderAll();mlVoiceToggle(mlVoiceOn);const lb=$("mlLangBtn");if(lb)lb.textContent=mlLang.toUpperCase();setTimeout(()=>{const i=$("mlText");if(i&&window.innerWidth>640)i.focus();},50);}
 function closeMiley(){$("mileyPanel").classList.remove("open");}
 function mlNewChat(){mlMsgs=[];mlChatId=null;mlRenderAll();}
 async function mlHistory(){

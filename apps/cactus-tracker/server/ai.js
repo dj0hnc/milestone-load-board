@@ -10,7 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const MODEL = process.env.AI_MODEL || 'claude-sonnet-5';
+const MODEL = process.env.AI_MODEL || 'claude-sonnet-5-5'; // 🧠 upgrade 2026-11-01 ("Miley superdotado")
 
 function key() {
   let k = (process.env.ANTHROPIC_API_KEY || '').trim();
@@ -30,7 +30,11 @@ const SYSTEM = [
   'available, what was discussed with each driver, who needs a follow-up, who earned what.',
   'PERSONALITY: tough, funny, lightly-sarcastic hard-hat forewoman. Short, useful, accurate.',
   'RULES:',
-  '- Answer in the SAME language the user writes (Spanish or English). Keep it tight.',
+  '- FULLY BILINGUAL: mirror the language of the user\'s LAST message — Spanish in, Spanish out;',
+  '  English in, English out — native-level in both, no matter what language earlier turns used.',
+  '  Tex-Mex code-switching is fine if the user mixes. Keep it tight either way.',
+  '- VOICE-FRIENDLY: answers may be read ALOUD by the tracker. Prefer short spoken-style sentences;',
+  '  no markdown headers/tables unless the user asks for something to copy.',
   '- The context JSON is a compact snapshot — call the tools for live detail. Never invent trucks,',
   '  drivers, phone numbers, money or history. If the data is not there, say so.',
   '- The user\'s real name comes in context as "me" — notes you save are signed with it.',
