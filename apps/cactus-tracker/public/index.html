@@ -806,6 +806,9 @@ async function flushQueue(){
       try{
         const r=await fetch(API+req.path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(req.body)});
         if(!r.ok && r.status>=500)throw new Error("server");
+        // sesión vencida: NO tirar el tap (antes un 401 se daba por "guardado" y la marca se perdía) —
+        // queda en la cola y se manda solo al volver a entrar
+        if(r.status===401||r.status===403){ try{ if(!sessionStorage.getItem("ct-relogin")){ sessionStorage.setItem("ct-relogin","1"); alert("Your session expired. Sign in again: your marks are saved and will be sent."); } }catch(e){} location.href=API+"/login.html"; break; }
       }catch(e){
         // red caída o 5xx: reintenta después — pero un error PERMANENTE (como fue el CHECK
         // de NW) no puede atascar la cola para siempre: tras 8 intentos se suelta esa
@@ -831,12 +834,16 @@ function truckOf(org,num){return (board.trucks||[]).find(t=>t.org_id===org&&t.nu
 // trae el estado de ANTES de tus taps y los pisaba (el NW "no se quedaba guardado").
 // Cada marca manual se recuerda 90 s y se RE-APLICA sobre cualquier board que llegue —
 // para entonces el server ya la tiene y los fetches siguientes la traen solos.
-const recentMarks={};
+// (2026-11-04, Jimmy) las marcas sobreviven un recargo de la página (auto-update) y NO caducan
+// mientras su guardado siga en la cola — antes, a los 90 s, un tap no enviado desaparecía.
+const recentMarks=(()=>{try{return JSON.parse(sessionStorage.getItem("ct-recent-marks")||"{}")||{};}catch(e){return {};}})();
+function saveRecentMarks(){try{sessionStorage.setItem("ct-recent-marks",JSON.stringify(recentMarks));}catch(e){}}
+function pendingKeys(){const s=new Set();try{for(const q of JSON.parse(localStorage.getItem(QUEUE_KEY)||"[]")){const b=q&&q.body;if(q&&q.path==="/api/state"&&b)s.add(b.org+"|"+b.number+"|"+b.date);}}catch(e){}return s;}
 function applyRecentMarks(){
-  const now=Date.now();
+  const now=Date.now(); const pend=pendingKeys();
   for(const k in recentMarks){
     const m=recentMarks[k];
-    if(now-m.ts>90000){delete recentMarks[k];continue;}
+    if(now-m.ts>90000&&!pend.has(k+"|"+m.date)){delete recentMarks[k];continue;}
     if(m.date!==date)continue;
     const sep=k.indexOf("|");
     const t=(board.trucks||[]).find(x=>x.org_id===k.slice(0,sep)&&x.number===k.slice(sep+1));
@@ -846,7 +853,7 @@ function applyRecentMarks(){
 function setSt(t,s){
   ensureWho();
   t.state=s; t.state_source="manual"; t.state_by=WHO;
-  recentMarks[t.org_id+"|"+t.number]={state:s,ts:Date.now(),date:date};
+  recentMarks[t.org_id+"|"+t.number]={state:s,ts:Date.now(),date:date}; saveRecentMarks();
   queuePush({path:"/api/state",body:{date,org:t.org_id,number:t.number,state:s,by:WHO}});
   render();
 }

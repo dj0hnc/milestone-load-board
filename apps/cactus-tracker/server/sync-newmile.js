@@ -635,6 +635,7 @@ async function coverAssignmentsFor(client, dateISO, label, summary, cactus, toda
       const matched = new Set(); // org|num de los que SÍ están en NewMile ese día
       const destByNum = new Map(); // num normalizado -> [{n,c,m,d}] (destinos del día)
       const metaByNum = new Map(); // num -> {fleet, owner, driver} (para crear el ⚑ NUEVO bien)
+      const newestAssignAt = new Map(); // num -> ms of the NEWEST active assignment (inserted_at) — respects manual unmarks
       const gaps = [];             // órdenes a las que les faltan trucks
       let assignCount = 0;
       for (const { order: o, assignments } of rows) {
@@ -652,6 +653,7 @@ async function coverAssignmentsFor(client, dateISO, label, summary, cactus, toda
           if (!raw) continue;
           const key = normNum(raw).replace(/\s+/g, '');
           nums.add(key);
+          { const ms = Date.parse(a.inserted_at || a.updated_at || '') || 0; if (ms > (newestAssignAt.get(key) || 0)) newestAssignAt.set(key, ms); }
           (destByNum.get(key) || destByNum.set(key, []).get(key)).push(info);
           if (!metaByNum.has(key)) {
             const tk = a.truck || {};
@@ -765,7 +767,11 @@ async function coverAssignmentsFor(client, dateISO, label, summary, cactus, toda
             dateISO, hit.org_id, hit.number, nowISO(), dest, lst);
           summary[label + 'Covered'] = (summary[label + 'Covered'] || 0) + 1;
           changed++;
-        } else if (st.state !== 'a' && (st.source !== 'manual' || st.state === 'p')) {
+        } else if (st.state !== 'a' && (st.source !== 'manual' || (st.state === 'p' &&
+                   // (2026-11-04, Jimmy) a manual 'p' is the dispatcher UN-TAPPING the truck while planning.
+                   // It only yields to a NewMile assignment created AFTER that tap — otherwise every sync
+                   // (5 min + after each board push) turned his unmarked trucks green again.
+                   (newestAssignAt.get(n) || 0) > (Date.parse(st.marked_at || '') || 0)))) {
           // (2026-09-28, caso 1280) una marca MANUAL 'p' (abierto/disponible) es el estado neutro, no
           // un down/NW a propósito: si NewMile lo tiene asignado, sube a ASIGNADO. Down/NW manuales
           // siguen intocables.
