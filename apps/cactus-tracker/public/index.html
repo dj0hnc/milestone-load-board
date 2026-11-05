@@ -670,7 +670,8 @@ const TRAILER_TYPES = ["AL-ED","AL-ED/L","ED","ST-ED","RB-ED","SD Steel","SD Dem
 let board=null;          // last good server payload
 let ORG="CACTUS";        // org del tab activo (CACTUS | KT | ...)
 let division="NORTH";
-let date=null;           // ISO date being viewed
+// el día que estabas viendo sobrevive un recargo (auto-update): antes regresaba a HOY y parecía que se borró tu planeación
+let date=(()=>{try{const s=sessionStorage.getItem("ct-date")||"";const t=new Date().toLocaleDateString("en-CA",{timeZone:"America/Chicago"});return /^d{4}-d{2}-d{2}$/.test(s)&&s>=t?s:null;}catch(e){return null;}})();           // ISO date being viewed
 let typeFilter=""; let statusFilter=""; let showFaltan=false; let dispFilter=""; // 🗺 owner filter (juan|mary|jimmy|none)
 let offline=false;
 // agrupar por ZONA (área/ciudad) o por DUEÑO (organización/truck owner). El dueño mantiene
@@ -751,7 +752,7 @@ async function fetchBoard(){
     try{
       const ctrl=new AbortController();
       const to=setTimeout(()=>ctrl.abort(),15000);
-      const r=await fetch(`${API}/api/board?org=${ORG}${d}`,{signal:ctrl.signal});
+      const r=await fetch(`${API}/api/board?org=${ORG}${d}&_=${Date.now()}`,{signal:ctrl.signal,cache:"no-store"});
       clearTimeout(to);
       if(r.status===401){location.href=API+"/login.html";return;}
       if(!r.ok)throw new Error("HTTP "+r.status);
@@ -759,6 +760,7 @@ async function fetchBoard(){
       if(myseq!==_fetchSeq)return; // ya salió una navegación más nueva: descarta esta
       board=j; try{ Object.assign(SAMSARA_LOGIN_FLEET, j.samsaraLoginFleet||{}); }catch(e){}
       if(!date)date=board.date;
+      try{sessionStorage.setItem("ct-date",date);}catch(e){}
       applyRecentMarks(); // un fetch que venía EN VUELO trae el estado de ANTES de tus taps
       // AUTO-UPDATE: si el server ya trae versión nueva (auto-pull en el laptop),
       // la página se recarga sola una vez — sin F5 manual, sin PowerShell.
@@ -3095,7 +3097,7 @@ let __lastRev="", __lastFull=Date.now();
 async function pollRev(){
   if(document.hidden) return;
   try{
-    const r=await fetch(API+"/api/rev").then(x=>x.json());
+    const r=await fetch(API+"/api/rev?_="+Date.now(),{cache:"no-store"}).then(x=>x.json());
     if(r&&r.rev&&r.rev!==__lastRev){ const first=(__lastRev===""); __lastRev=r.rev; if(!first){ __lastFull=Date.now(); fetchBoard(); return; } }
   }catch(e){}
   if(Date.now()-__lastFull>60*1000){ __lastFull=Date.now(); fetchBoard(); }

@@ -21,6 +21,9 @@ const EDITABLE = ['note', 'status', 'status_note', 'return_date', 'rest_days', '
 
 function createRouter({ config, newmile, log }) {
   const router = express.Router();
+  // (2026-11-05, Jimmy) live data must never be served from a cache (browser or the corporate web
+  // proxy in front of ngrok): a cached board brought old marks back over the dispatcher's taps
+  router.use('/api', (req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
   router.use(express.json({ limit: '2mb' })); // Miley: conversaciones con tool_results crecen >100kb
   const say = log || (() => {});
 
