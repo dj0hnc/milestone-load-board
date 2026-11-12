@@ -89,15 +89,20 @@ video{width:100%;display:block;max-height:60vh;background:#000;}
 .vbig .st{font-size:30px;font-weight:800;}
 .vbig.okv .st{color:var(--ok);} .vbig.badv .st{color:var(--bad);}
 .doclink{display:block;text-align:center;margin-top:14px;padding:12px;border:2px solid var(--line);border-radius:12px;color:var(--dirt);font-weight:700;font-size:13.5px;text-decoration:none;}
-/* 🏅 sello oficial del programa (JPEG circular — el radio esconde las esquinas) */
-.seal{width:150px;height:150px;border-radius:50%;object-fit:cover;display:block;margin:0 auto 14px;box-shadow:0 8px 26px rgba(74,79,85,.3);}
-.seal.sm{width:92px;height:92px;margin-bottom:10px;box-shadow:0 5px 16px rgba(74,79,85,.25);}
-.hdr .bird{height:32px;border-radius:8px;display:block;}
+/* 🏅 identidad del programa: ROADRUNNER + MILESTONE powered by newmile (sin círculo) */
+.logoblk{display:flex;flex-direction:column;align-items:center;gap:10px;margin:0 auto 16px;}
+.logoblk img{display:none;height:auto;}
+.logoblk .lg-rr{width:min(62vw,240px);}
+.logoblk .lg-ms{width:min(50vw,195px);}
+.logoblk.sm .lg-rr{width:150px;}
+.logoblk.sm .lg-ms{width:125px;}
+.hdr .bird{height:34px;width:auto;border-radius:8px;display:block;background:#fff;padding:2px 7px;}
 /* 🎬 SPLASH de inicio — sello grande sobre fondo Road con barra dorada */
 #splash{position:fixed;inset:0;z-index:300;background:radial-gradient(ellipse at 50% 35%, #3d434b 0%, #23272c 72%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:13px;transition:opacity .5s;}
 #splash.bye{opacity:0;pointer-events:none;}
-#spSeal{width:min(58vw,230px);height:min(58vw,230px);border-radius:50%;object-fit:cover;box-shadow:0 10px 50px rgba(0,0,0,.55);display:none;animation:spIn .8s cubic-bezier(.2,.9,.3,1.15);}
-#spLogo{height:30px;margin-top:4px;}
+#spPanel{background:#fff;border-radius:20px;padding:24px 28px 20px;display:flex;flex-direction:column;align-items:center;gap:12px;box-shadow:0 12px 55px rgba(0,0,0,.55);animation:spIn .8s cubic-bezier(.2,.9,.3,1.15);max-width:84vw;}
+#spPanel .lg-rr{width:min(58vw,245px);height:auto;display:none;}
+#spPanel .lg-ms{width:min(46vw,195px);height:auto;display:none;}
 .sp-t1{color:#fff;font-weight:800;font-size:17px;letter-spacing:3px;text-align:center;}
 .sp-t2{color:var(--sand);font-weight:600;font-size:11px;letter-spacing:2.5px;text-align:center;}
 .sp-bar{width:min(60vw,240px);height:3px;background:rgba(255,255,255,.15);border-radius:2px;overflow:hidden;margin-top:8px;}
@@ -105,7 +110,7 @@ video{width:100%;display:block;max-height:60vh;background:#000;}
 @keyframes spIn{from{transform:scale(.72);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes spBar{to{width:100%}}
 /* sello como MARCA DE AGUA detras de todo el flujo */
-#wmSeal{position:fixed;left:50%;top:52%;transform:translate(-50%,-50%);width:min(92vw,520px);height:min(92vw,520px);object-fit:cover;opacity:0;pointer-events:none;z-index:0;filter:grayscale(.55);border-radius:50%;transition:opacity .8s;}
+#wmSeal{position:fixed;left:50%;top:52%;transform:translate(-50%,-50%);width:min(92vw,560px);opacity:0;pointer-events:none;z-index:0;filter:grayscale(.55);transition:opacity .8s;}
 #wmSeal.on{opacity:.05;}
 .wrap{position:relative;z-index:1;}
 /* 🐦 el correcaminos CORRE sobre la barra de avance del video */
@@ -117,8 +122,10 @@ footer{max-width:560px;margin:26px auto 0;padding:0 18px 30px;text-align:center;
 </head>
 <body>
 <div id="splash">
-  <img id="spSeal" src="" alt="">
-  <img id="spLogo" src="img/milestone-supply-light.png" alt="Milestone Supply">
+  <div id="spPanel">
+    <img class="lg-rr" data-art="rrlogo" src="" alt="Project Roadrunner">
+    <img class="lg-ms" data-art="mslogo" src="" alt="Milestone powered by NewMile">
+  </div>
   <div class="sp-t1">SAFE DUMPING PROGRAM</div>
   <div class="sp-t2">PROJECT ROADRUNNER · CHILDRESS, TEXAS</div>
   <div class="sp-bar"><i></i></div>
@@ -127,7 +134,7 @@ footer{max-width:560px;margin:26px auto 0;padding:0 18px 30px;text-align:center;
 <div class="hdr">
   <img src="img/milestone-supply-light.png" alt="Milestone Supply">
   <div class="proj"><b>PROJECT ROADRUNNER</b><span>Childress, Texas · Safe Dumping</span></div>
-  <img class="bird" src="" alt="" id="hdrBird" style="display:none;">
+  <img class="bird" data-art="rrlogo" src="" alt="" id="hdrBird" style="display:none;">
 </div>
 <div class="langbar" id="langbar">
   <button id="lbEs" onclick="setLang('es')">ESPAÑOL</button>
@@ -138,7 +145,7 @@ footer{max-width:560px;margin:26px auto 0;padding:0 18px 30px;text-align:center;
 
   <!-- PASO 1: registro -->
   <div class="card" id="pReg">
-    <img class="seal" id="regSeal" src="" alt="" style="display:none;">
+    <div class="logoblk"><img class="lg-rr" data-art="rrlogo" src="" alt=""><img class="lg-ms" data-art="mslogo" src="" alt=""></div>
     <h1 data-i="t_welcome" style="text-align:center;"></h1>
     <p class="sub" data-i="t_welcome_sub"></p>
     <div class="banner" data-i="t_sticker_rule"></div>
@@ -211,7 +218,7 @@ footer{max-width:560px;margin:26px auto 0;padding:0 18px 30px;text-align:center;
     <div class="cert">
       <div class="ctop"><img src="img/milestone-supply-light.png" alt="Milestone Supply"><span>PROOF OF TRAINING</span></div>
       <div class="cbody">
-        <img class="seal" id="certSeal" src="" alt="" style="display:none;">
+        <div class="logoblk sm"><img class="lg-rr" data-art="rrlogo" src="" alt=""><img class="lg-ms" data-art="mslogo" src="" alt=""></div>
         <div class="okband" data-i="c_band"></div>
         <h3 id="cName"></h3>
         <div class="meta" id="cMeta"></div>
@@ -227,7 +234,7 @@ footer{max-width:560px;margin:26px auto 0;padding:0 18px 30px;text-align:center;
 
   <!-- EN REVISIÓN (liga con aprobación manual de Milestone) -->
   <div class="card hide" id="pPending" style="text-align:center;">
-    <img class="seal sm" id="pendSeal" src="" alt="" style="display:none;filter:grayscale(.5);opacity:.85;">
+    <div class="logoblk sm"><img class="lg-rr" data-art="rrlogo" src="" alt=""></div>
     <div style="font-size:40px;margin-bottom:6px;">⏳</div>
     <h2 data-i="t_pending"></h2>
     <p class="sub" data-i="t_pending_sub"></p>
@@ -238,7 +245,7 @@ footer{max-width:560px;margin:26px auto 0;padding:0 18px 30px;text-align:center;
   <!-- VERIFICACIÓN PÚBLICA (QR) -->
   <div class="card hide" id="pVerify">
     <div class="vbig" id="vBox">
-      <img class="seal sm" id="verSeal" src="" alt="" style="display:none;">
+      <div class="logoblk sm"><img class="lg-rr" data-art="rrlogo" src="" alt=""><img class="lg-ms" data-art="mslogo" src="" alt=""></div>
       <div class="st" id="vSt">…</div>
       <h3 id="vName" style="margin-top:10px;font-size:20px;color:var(--road);"></h3>
       <div class="meta" id="vMeta" style="color:var(--stone);font-size:14px;margin-top:6px;line-height:1.6;"></div>
@@ -604,13 +611,13 @@ async function fieldCall(body){
 $("btnFieldApprove").onclick = async () => { if (await fieldCall({ action: "approve" })) $("btnFieldApprove").classList.add("hide"); };
 $("btnFieldSticker").onclick = () => fieldCall({ sticker: $("fldSticker").value.trim() });
 
-// ---------- arte del programa (sello + correcaminos; solo se muestran si ya están subidos) ----------
-for (const [id, name] of [["regSeal","seal"],["certSeal","seal"],["pendSeal","seal"],["verSeal","seal"],["spSeal","seal"],["hdrBird","bird"],["wBird","bird"]]) {
-  const el = $(id);
-  el.onload = () => { el.style.display = ""; if (id === "spSeal") el.style.display = "block"; };
-  el.src = API + "/api/safety/img?name=" + name;
-}
-const wm = $("wmSeal"); wm.onload = () => wm.classList.add("on"); wm.src = API + "/api/safety/img?name=seal";
+// ---------- arte del programa: cada [data-art] se enciende solo si su imagen existe ----------
+document.querySelectorAll("[data-art]").forEach((el) => {
+  el.onload = () => { el.style.display = "block"; };
+  el.src = API + "/api/safety/img?name=" + el.getAttribute("data-art");
+});
+const wBirdEl = $("wBird"); wBirdEl.onload = () => { wBirdEl.style.display = "block"; }; wBirdEl.src = API + "/api/safety/img?name=bird";
+const wm = $("wmSeal"); wm.onload = () => wm.classList.add("on"); wm.src = API + "/api/safety/img?name=rrlogo";
 
 // ---------- documentos (SOP / info sheet) ----------
 (async () => {

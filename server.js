@@ -139,8 +139,9 @@ const QUIZ = [
     o: { en: ['Bed can stay up if you go slow', 'Bed all the way down, tailgate closed, lock pins seated', 'Just honk twice'],
          es: ['La caja puede ir arriba si vas despacio', 'Caja completamente abajo, tailgate cerrada y pernos asentados', 'Solo pitas dos veces'] }, a: 1 }
 ];
-const DOCS = { sop: 'Safe_Dumping_Practices_SOP.pdf', infosheet: 'Safe_Dumping_Driver_Info_Sheet.pdf', plan: 'Safe_Dumping_Program_Plan.pdf' };
-const IMGS = { seal: 'img_seal.jpg', bird: 'img_bird.jpg' };
+const DOCS = { sop: 'Safe_Dumping_Practices_SOP.pdf', infosheet: 'Safe_Dumping_Driver_Info_Sheet.pdf', plan: 'Safe_Dumping_Program_Plan.pdf', guide: 'Safe_Dumping_Platform_Guide.pdf' };
+const IMGS = { seal: 'img_seal.jpg', bird: 'img_bird.jpg', rrlogo: 'img_rrlogo.png', mslogo: 'img_mslogo.webp' };
+const IMG_CT = { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
 const filePath = (name) => DOCS[name] ? path.join(DATA, 'doc_' + name + '.pdf')
   : IMGS[name] ? path.join(DATA, IMGS[name])
   : (name === 'video_en' || name === 'video_es') ? path.join(DATA, name + '.mp4') : null;
@@ -373,7 +374,8 @@ const server = http.createServer(async (req, res) => {
     if (M === 'GET' && p === '/api/safety/img') {
       const f = IMGS[q.name] ? filePath(q.name) : null;
       if (!f || !fs.existsSync(f)) return send(res, 404, { error: 'img not uploaded' });
-      return serveFile(res, f, 'image/jpeg', { 'Cache-Control': 'public, max-age=86400' });
+      const ct = IMG_CT[(IMGS[q.name].split('.').pop() || 'jpg')] || 'image/jpeg';
+      return serveFile(res, f, ct, { 'Cache-Control': 'public, max-age=86400' });
     }
     // canal de máquinas (uploadKey): cambiar el admin code sin tocar la office
     if (M === 'POST' && p === '/api/safety/set-admin-code') {
