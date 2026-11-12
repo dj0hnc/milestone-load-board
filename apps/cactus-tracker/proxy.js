@@ -16,7 +16,11 @@ const net = require('net');
 const LISTEN = Number(process.env.PROXY_PORT || 8000);
 const TRACKER = { host: '127.0.0.1', port: Number(process.env.TRACKER_PORT || 8791) };
 const OTHER = { host: '127.0.0.1', port: Number(process.env.OTHER_PORT || 8090) };
-const pick = (url) => (url && url.startsWith('/cactus-tracker')) ? TRACKER : OTHER;
+// 🦺 Safe Dumping (Project Roadrunner): app independiente en :8792 — /safety/* pasa
+// TAL CUAL (ella misma pela el prefijo). Ver rama safety-roadrunner.
+const SAFETY = { host: '127.0.0.1', port: Number(process.env.SAFETY_PORT || 8792) };
+const pick = (url) => (url && url.startsWith('/cactus-tracker')) ? TRACKER
+  : (url && (url === '/safety' || url.startsWith('/safety/') || url.startsWith('/safety?'))) ? SAFETY : OTHER;
 
 const server = http.createServer((req, res) => {
   const t = pick(req.url);
