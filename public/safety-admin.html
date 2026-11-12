@@ -274,9 +274,14 @@ async function saveManual(){
 }
 // ▶ demo: abre el flujo del chofer ya con el video visto (reglas → firma → aprobado)
 async function runDemo(){
-  const j = await api("admin/demo", {});
-  if (j.error) { toast("⚠ " + j.error); return; }
-  window.open(DRV + "?t=" + j.token, "_blank");
+  // la pestaña se abre DENTRO del click (antes del await): si se abre después, el
+  // navegador lo trata como popup y lo bloquea
+  const w = window.open("", "_blank");
+  let j = null;
+  try { j = await api("admin/demo", {}); } catch (e) {}
+  if (!j || j.error) { if (w) w.close(); toast("⚠ " + ((j && j.error) || "preview failed")); return; }
+  const url = DRV + "?t=" + j.token;
+  if (w) w.location.href = url; else location.href = url;
 }
 function upVid(lang){
   const f = (lang === "en" ? $("vidEn") : $("vidEs")).files[0];
