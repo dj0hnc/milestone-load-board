@@ -93,11 +93,37 @@ video{width:100%;display:block;max-height:60vh;background:#000;}
 .seal{width:150px;height:150px;border-radius:50%;object-fit:cover;display:block;margin:0 auto 14px;box-shadow:0 8px 26px rgba(74,79,85,.3);}
 .seal.sm{width:92px;height:92px;margin-bottom:10px;box-shadow:0 5px 16px rgba(74,79,85,.25);}
 .hdr .bird{height:32px;border-radius:8px;display:block;}
+/* 🎬 SPLASH de inicio — sello grande sobre fondo Road con barra dorada */
+#splash{position:fixed;inset:0;z-index:300;background:radial-gradient(ellipse at 50% 35%, #3d434b 0%, #23272c 72%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:13px;transition:opacity .5s;}
+#splash.bye{opacity:0;pointer-events:none;}
+#spSeal{width:min(58vw,230px);height:min(58vw,230px);border-radius:50%;object-fit:cover;box-shadow:0 10px 50px rgba(0,0,0,.55);display:none;animation:spIn .8s cubic-bezier(.2,.9,.3,1.15);}
+#spLogo{height:30px;margin-top:4px;}
+.sp-t1{color:#fff;font-weight:800;font-size:17px;letter-spacing:3px;text-align:center;}
+.sp-t2{color:var(--sand);font-weight:600;font-size:11px;letter-spacing:2.5px;text-align:center;}
+.sp-bar{width:min(60vw,240px);height:3px;background:rgba(255,255,255,.15);border-radius:2px;overflow:hidden;margin-top:8px;}
+.sp-bar i{display:block;height:100%;background:var(--sand);width:0;animation:spBar 2.3s linear forwards;}
+@keyframes spIn{from{transform:scale(.72);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes spBar{to{width:100%}}
+/* sello como MARCA DE AGUA detras de todo el flujo */
+#wmSeal{position:fixed;left:50%;top:52%;transform:translate(-50%,-50%);width:min(92vw,520px);height:min(92vw,520px);object-fit:cover;opacity:0;pointer-events:none;z-index:0;filter:grayscale(.55);border-radius:50%;transition:opacity .8s;}
+#wmSeal.on{opacity:.05;}
+.wrap{position:relative;z-index:1;}
+/* 🐦 el correcaminos CORRE sobre la barra de avance del video */
+.wbar{position:relative;overflow:visible;}
+#wBird{position:absolute;top:-16px;left:0;height:26px;border-radius:6px;display:none;transition:left .4s;transform:translateX(-50%);}
 footer{max-width:560px;margin:26px auto 0;padding:0 18px 30px;text-align:center;color:var(--stone);font-size:11px;line-height:1.6;}
 .hide{display:none !important;}
 </style>
 </head>
 <body>
+<div id="splash">
+  <img id="spSeal" src="" alt="">
+  <img id="spLogo" src="img/milestone-supply-light.png" alt="Milestone Supply">
+  <div class="sp-t1">SAFE DUMPING PROGRAM</div>
+  <div class="sp-t2">PROJECT ROADRUNNER · CHILDRESS, TEXAS</div>
+  <div class="sp-bar"><i></i></div>
+</div>
+<img id="wmSeal" src="" alt="">
 <div class="hdr">
   <img src="img/milestone-supply-light.png" alt="Milestone Supply">
   <div class="proj"><b>PROJECT ROADRUNNER</b><span>Childress, Texas · Safe Dumping</span></div>
@@ -147,7 +173,7 @@ footer{max-width:560px;margin:26px auto 0;padding:0 18px 30px;text-align:center;
       </div>
     </div>
     <div class="vlock" data-i="t_noskip"></div>
-    <div class="wprog"><span class="t" data-i="t_watched"></span><div class="wbar"><i id="wFill"></i></div><span class="t" id="wPct">0%</span></div>
+    <div class="wprog"><span class="t" data-i="t_watched"></span><div class="wbar"><i id="wFill"></i><img id="wBird" src="" alt=""></div><span class="t" id="wPct">0%</span></div>
     <div class="err" id="vidErr"></div>
     <button class="btn" id="btnVideoNext" disabled data-i="b_continue"></button>
   </div>
@@ -412,6 +438,7 @@ async function sendBeat(final){
     const j = await api("beat", { dur: v.duration, delta });
     const pct = j.need ? Math.min(100, Math.round((j.watched / j.need) * 100)) : 0;
     $("wFill").style.width = pct + "%"; $("wPct").textContent = pct + "%";
+    $("wBird").style.left = Math.min(pct, 97) + "%"; // 🐦 el correcaminos corre con tu avance
     if (j.done && !serverDone) { serverDone = true; $("btnVideoNext").disabled = false; }
   } catch (e) {}
 }
@@ -578,11 +605,12 @@ $("btnFieldApprove").onclick = async () => { if (await fieldCall({ action: "appr
 $("btnFieldSticker").onclick = () => fieldCall({ sticker: $("fldSticker").value.trim() });
 
 // ---------- arte del programa (sello + correcaminos; solo se muestran si ya están subidos) ----------
-for (const [id, name] of [["regSeal","seal"],["certSeal","seal"],["pendSeal","seal"],["verSeal","seal"],["hdrBird","bird"]]) {
+for (const [id, name] of [["regSeal","seal"],["certSeal","seal"],["pendSeal","seal"],["verSeal","seal"],["spSeal","seal"],["hdrBird","bird"],["wBird","bird"]]) {
   const el = $(id);
-  el.onload = () => { el.style.display = ""; };
+  el.onload = () => { el.style.display = ""; if (id === "spSeal") el.style.display = "block"; };
   el.src = API + "/api/safety/img?name=" + name;
 }
+const wm = $("wmSeal"); wm.onload = () => wm.classList.add("on"); wm.src = API + "/api/safety/img?name=seal";
 
 // ---------- documentos (SOP / info sheet) ----------
 (async () => {
@@ -598,6 +626,14 @@ for (const [id, name] of [["regSeal","seal"],["certSeal","seal"],["pendSeal","se
 paint();
 let INVITE = "";
 const qCode = new URLSearchParams(location.search).get("code");
+// 🎬 splash: 2.3 s o un tap — en modo verificación (QR) ni aparece
+const splashEl = $("splash");
+if (qCode) splashEl.style.display = "none";
+else {
+  const killSp = () => { splashEl.classList.add("bye"); setTimeout(() => { splashEl.style.display = "none"; }, 550); };
+  setTimeout(killSp, 2600);
+  splashEl.addEventListener("pointerdown", killSp);
+}
 const qInv = new URLSearchParams(location.search).get("i");
 async function bootInvite(){
   // liga personalizada de Juan: pre-llenado + ¿CDL? (las reglas de aprobación las aplica el server)
