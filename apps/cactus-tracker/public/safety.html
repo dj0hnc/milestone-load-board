@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Safe Dumping Training — Milestone</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* 🦺 SAFE DUMPING TRAINING — Project Roadrunner. Identidad Milestone:
+   Poppins · Road #4A4F55 · Sand #B89A4E · Stone #7A7D80 · Dirt #8B7355 */
+:root{
+  --road:#4A4F55; --sand:#B89A4E; --stone:#7A7D80; --dirt:#8B7355;
+  --bg:#F6F4EF; --card:#FFFFFF; --line:#E5E1D8; --ink:#2E3238;
+  --ok:#3E7A4E; --ok-bg:#EAF3EC; --bad:#A33B2E; --bad-bg:#F8ECEA;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{overflow-x:hidden;overflow-x:clip;}
+body{font-family:'Poppins',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;min-height:100vh;}
+.hdr{background:var(--road);padding:14px 18px calc(14px + env(safe-area-inset-top) * 0);display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:50;box-shadow:0 2px 10px rgba(0,0,0,.18);}
+.hdr img{height:34px;display:block;}
+.hdr .proj{margin-left:auto;text-align:right;color:#fff;line-height:1.15;}
+.hdr .proj b{font-size:12.5px;letter-spacing:.6px;display:block;}
+.hdr .proj span{font-size:10.5px;color:#cfd2d6;}
+.langbar{display:flex;gap:8px;justify-content:center;padding:10px 16px 0;}
+.langbar button{border:2px solid var(--line);background:var(--card);color:var(--stone);border-radius:22px;padding:7px 18px;font-family:'Poppins';font-weight:700;font-size:13px;cursor:pointer;}
+.langbar button.on{border-color:var(--sand);background:var(--sand);color:#fff;}
+.wrap{max-width:560px;margin:0 auto;padding:14px 16px 60px;}
+.steps{display:flex;gap:5px;margin:10px 0 16px;}
+.steps i{flex:1;height:5px;border-radius:3px;background:var(--line);}
+.steps i.on{background:var(--sand);}
+.steps i.done{background:var(--road);}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px 20px;box-shadow:0 3px 14px rgba(74,79,85,.08);}
+h1{font-weight:800;font-size:22px;line-height:1.2;color:var(--road);}
+h2{font-weight:700;font-size:17px;color:var(--road);margin-bottom:4px;}
+.sub{color:var(--stone);font-size:13.5px;margin:6px 0 16px;line-height:1.45;}
+label{display:block;font-weight:600;font-size:12.5px;letter-spacing:.4px;text-transform:uppercase;color:var(--stone);margin:14px 0 5px;}
+input[type=text],input[type=tel]{width:100%;padding:13px 14px;border:2px solid var(--line);border-radius:12px;font-family:'Poppins';font-size:16px;color:var(--ink);background:#fff;}
+input:focus{outline:none;border-color:var(--sand);}
+.hint{font-size:11.5px;color:var(--stone);margin-top:4px;}
+.btn{display:block;width:100%;border:none;border-radius:12px;padding:15px;font-family:'Poppins';font-weight:700;font-size:16px;cursor:pointer;margin-top:20px;background:var(--sand);color:#fff;letter-spacing:.3px;}
+.btn:disabled{background:#d8d2c4;color:#fff;cursor:default;}
+.btn.sec{background:var(--card);color:var(--road);border:2px solid var(--line);}
+.err{background:var(--bad-bg);color:var(--bad);border-radius:10px;padding:10px 12px;font-size:13px;margin-top:12px;display:none;font-weight:600;}
+.banner{background:#FBF6E8;border:1.5px solid var(--sand);border-radius:12px;padding:11px 13px;font-size:13px;margin-bottom:14px;line-height:1.45;}
+/* video */
+.vwrap{position:relative;border-radius:14px;overflow:hidden;background:#000;margin:14px 0;}
+video{width:100%;display:block;max-height:60vh;background:#000;}
+.vctl{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--road);}
+.vctl button{border:none;background:rgba(255,255,255,.14);color:#fff;border-radius:10px;padding:9px 14px;font-family:'Poppins';font-weight:700;font-size:14px;cursor:pointer;}
+.vbar{flex:1;height:7px;border-radius:4px;background:rgba(255,255,255,.2);overflow:hidden;}
+.vbar i{display:block;height:100%;background:var(--sand);width:0%;}
+.vtime{color:#fff;font-size:12px;font-weight:600;min-width:84px;text-align:right;}
+.vlock{font-size:11.5px;color:var(--stone);text-align:center;margin-top:8px;}
+.wprog{display:flex;align-items:center;gap:10px;margin-top:12px;}
+.wprog .t{font-size:13px;font-weight:600;color:var(--road);}
+.wbar{flex:1;height:9px;border-radius:5px;background:var(--line);overflow:hidden;}
+.wbar i{display:block;height:100%;background:var(--ok);width:0%;transition:width .4s;}
+/* reglas */
+.rule{display:flex;gap:12px;align-items:flex-start;border:2px solid var(--line);border-radius:12px;padding:13px;margin-top:10px;cursor:pointer;}
+.rule.on{border-color:var(--ok);background:var(--ok-bg);}
+.rule input{width:22px;height:22px;accent-color:var(--ok);flex:0 0 auto;margin-top:1px;}
+.rule b{font-size:14px;color:var(--road);display:block;line-height:1.35;}
+.rule span{font-size:12.5px;color:var(--stone);line-height:1.4;}
+/* quiz */
+.q{margin-top:18px;}
+.q .qq{font-weight:700;font-size:15.5px;color:var(--road);line-height:1.35;}
+.opt{display:block;border:2px solid var(--line);border-radius:12px;padding:13px;margin-top:9px;font-size:14.5px;cursor:pointer;line-height:1.35;}
+.opt.sel{border-color:var(--sand);background:#FBF6E8;font-weight:600;}
+.score{font-size:40px;font-weight:800;text-align:center;margin:10px 0 2px;}
+/* firma */
+#sig{width:100%;height:170px;border:2px dashed var(--stone);border-radius:12px;background:#fff;touch-action:none;}
+/* constancia */
+.cert{border:2.5px solid var(--sand);border-radius:18px;overflow:hidden;margin-top:6px;background:#fff;}
+.cert .ctop{background:var(--road);padding:16px;display:flex;align-items:center;gap:10px;}
+.cert .ctop img{height:30px;}
+.cert .ctop span{margin-left:auto;color:#fff;font-size:11px;font-weight:700;letter-spacing:1.2px;}
+.cert .cbody{padding:18px;text-align:center;}
+.cert .okband{display:inline-block;background:var(--ok-bg);color:var(--ok);font-weight:800;font-size:13px;letter-spacing:.8px;border-radius:20px;padding:6px 16px;margin-bottom:10px;}
+.cert h3{font-size:21px;font-weight:800;color:var(--road);}
+.cert .meta{color:var(--stone);font-size:13.5px;margin:4px 0 12px;line-height:1.5;}
+.cert .code{font-size:26px;font-weight:800;letter-spacing:3px;color:var(--sand);margin:8px 0;}
+.cert .qr{display:flex;justify-content:center;margin:10px 0;}
+.cert .qr > div{padding:10px;border:1px solid var(--line);border-radius:12px;background:#fff;}
+.cert .valid{font-size:13px;color:var(--road);font-weight:600;}
+.cert .cfoot{border-top:1px solid var(--line);padding:12px 16px;font-size:12px;color:var(--stone);line-height:1.5;background:#FBFAF7;}
+/* verify */
+.vbig{text-align:center;padding:26px 18px;}
+.vbig .st{font-size:30px;font-weight:800;}
+.vbig.okv .st{color:var(--ok);} .vbig.badv .st{color:var(--bad);}
+footer{max-width:560px;margin:26px auto 0;padding:0 18px 30px;text-align:center;color:var(--stone);font-size:11px;line-height:1.6;}
+.hide{display:none !important;}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <img src="img/milestone-supply-light.png" alt="Milestone Supply">
+  <div class="proj"><b>PROJECT ROADRUNNER</b><span>Childress, Texas · Safe Dumping</span></div>
+</div>
+<div class="langbar" id="langbar">
+  <button id="lbEs" onclick="setLang('es')">ESPAÑOL</button>
+  <button id="lbEn" onclick="setLang('en')">ENGLISH</button>
+</div>
+<div class="wrap">
+  <div class="steps" id="steps"></div>
+
+  <!-- PASO 1: registro -->
+  <div class="card" id="pReg">
+    <h1 data-i="t_welcome"></h1>
+    <p class="sub" data-i="t_welcome_sub"></p>
+    <div class="banner" data-i="t_sticker_rule"></div>
+    <label data-i="f_name"></label>
+    <input type="text" id="fName" autocomplete="name" maxlength="60">
+    <label data-i="f_truck"></label>
+    <input type="text" id="fTruck" autocapitalize="characters" maxlength="20">
+    <label data-i="f_company"></label>
+    <input type="text" id="fCompany" maxlength="60">
+    <div class="hint" data-i="f_company_hint"></div>
+    <label data-i="f_phone"></label>
+    <input type="tel" id="fPhone" autocomplete="tel" maxlength="20">
+    <div class="err" id="regErr"></div>
+    <button class="btn" id="btnReg" data-i="b_start"></button>
+  </div>
+
+  <!-- PASO 2: video -->
+  <div class="card hide" id="pVideo">
+    <h2 data-i="t_video"></h2>
+    <p class="sub" data-i="t_video_sub"></p>
+    <div class="vwrap">
+      <video id="vid" playsinline preload="metadata"></video>
+      <div class="vctl">
+        <button id="vPlay">▶</button>
+        <button id="vBack">↺ 10s</button>
+        <div class="vbar"><i id="vFill"></i></div>
+        <div class="vtime" id="vTime">0:00 / 0:00</div>
+      </div>
+    </div>
+    <div class="vlock" data-i="t_noskip"></div>
+    <div class="wprog"><span class="t" data-i="t_watched"></span><div class="wbar"><i id="wFill"></i></div><span class="t" id="wPct">0%</span></div>
+    <div class="err" id="vidErr"></div>
+    <button class="btn" id="btnVideoNext" disabled data-i="b_continue"></button>
+  </div>
+
+  <!-- PASO 3: reglas -->
+  <div class="card hide" id="pRules">
+    <h2 data-i="t_rules"></h2>
+    <p class="sub" data-i="t_rules_sub"></p>
+    <div id="rulesList"></div>
+    <button class="btn" id="btnRulesNext" disabled data-i="b_continue"></button>
+  </div>
+
+  <!-- PASO 4: quiz -->
+  <div class="card hide" id="pQuiz">
+    <h2 data-i="t_quiz"></h2>
+    <p class="sub" id="quizSub"></p>
+    <div id="quizList"></div>
+    <div class="err" id="quizErr"></div>
+    <button class="btn" id="btnQuiz" data-i="b_grade"></button>
+  </div>
+
+  <!-- PASO 5: firma -->
+  <div class="card hide" id="pSign">
+    <h2 data-i="t_sign"></h2>
+    <p class="sub" data-i="t_sign_sub"></p>
+    <canvas id="sig"></canvas>
+    <button class="btn sec" id="btnSigClear" data-i="b_clear"></button>
+    <div class="err" id="sigErr"></div>
+    <button class="btn" id="btnSign" data-i="b_certify"></button>
+  </div>
+
+  <!-- PASO 6: constancia -->
+  <div class="card hide" id="pCert" style="padding:14px;">
+    <div class="cert">
+      <div class="ctop"><img src="img/milestone-supply-light.png" alt="Milestone Supply"><span>PROOF OF TRAINING</span></div>
+      <div class="cbody">
+        <div class="okband" data-i="c_band"></div>
+        <h3 id="cName"></h3>
+        <div class="meta" id="cMeta"></div>
+        <div class="code" id="cCode"></div>
+        <div class="qr"><div id="cQr"></div></div>
+        <div class="valid" id="cValid"></div>
+      </div>
+      <div class="cfoot" data-i="c_foot"></div>
+    </div>
+    <button class="btn sec" id="btnShot" data-i="b_screenshot"></button>
+  </div>
+
+  <!-- VERIFICACIÓN PÚBLICA (QR) -->
+  <div class="card hide" id="pVerify">
+    <div class="vbig" id="vBox">
+      <div class="st" id="vSt">…</div>
+      <h3 id="vName" style="margin-top:10px;font-size:20px;color:var(--road);"></h3>
+      <div class="meta" id="vMeta" style="color:var(--stone);font-size:14px;margin-top:6px;line-height:1.6;"></div>
+    </div>
+  </div>
+</div>
+<footer>Milestone Supply · Project Roadrunner, Childress TX<br>Dispatch: <a href="tel:9728087660" style="color:var(--dirt);font-weight:600;">972-808-7660</a></footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+"use strict";
+const API = location.pathname.replace(/\/safety(\.html)?\/?$/, "");
+// localStorage puede fallar (modo privado) — nunca truena la página
+const LS = { get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }, set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }, del(k){ try{ localStorage.removeItem(k); }catch(e){} } };
+
+// ---------- i18n ----------
+const I = {
+  t_welcome:  { es: "Entrenamiento Safe Dumping", en: "Safe Dumping Training" },
+  t_welcome_sub: { es: "Antes de tu primera carga en Project Roadrunner necesitas este entrenamiento: un video corto, las reglas del sitio y un quiz rápido. Tarda unos 15 minutos.",
+                   en: "Before your first load at Project Roadrunner you need this training: a short video, the site rules and a quick quiz. It takes about 15 minutes." },
+  t_sticker_rule: { es: "🪧 Al terminar, Milestone te entrega tu sticker de Proof of Training. Sin sticker visible en la ventana, no dumpeas en este sitio.",
+                    en: "🪧 When you finish, Milestone issues your Proof of Training sticker. No visible sticker on your window, no dumping on this site." },
+  f_name:    { es: "Nombre completo", en: "Full name" },
+  f_truck:   { es: "Número de truck", en: "Truck number" },
+  f_company: { es: "Nombre de la compañía EN el truck", en: "Company name ON the truck" },
+  f_company_hint: { es: "El nombre que trae pintado o rotulado tu troque", en: "The name painted or lettered on your truck" },
+  f_phone:   { es: "Celular (opcional)", en: "Cell phone (optional)" },
+  b_start:   { es: "EMPEZAR ENTRENAMIENTO", en: "START TRAINING" },
+  t_video:   { es: "1 · Mira el video completo", en: "1 · Watch the full video" },
+  t_video_sub: { es: "Dura unos 8 minutos. Puedes regresarle, pero no adelantarle. Tu avance queda registrado.",
+                 en: "About 8 minutes. You can rewind, but you can't skip forward. Your progress is recorded." },
+  t_noskip:  { es: "⏪ Regresar: sí · ⏩ Adelantar: no", en: "⏪ Rewind: yes · ⏩ Skip forward: no" },
+  t_watched: { es: "Visto", en: "Watched" },
+  b_continue:{ es: "CONTINUAR", en: "CONTINUE" },
+  t_rules:   { es: "2 · Las reglas del sitio", en: "2 · The site rules" },
+  t_rules_sub: { es: "Marca cada regla para confirmar que la entiendes y la vas a seguir.",
+                 en: "Check each rule to confirm you understand it and will follow it." },
+  t_quiz:    { es: "3 · Quiz rápido", en: "3 · Quick quiz" },
+  quiz_sub:  { es: "Necesitas {need} de {total} correctas. Si no pasas, puedes intentar otra vez.",
+               en: "You need {need} of {total} correct. If you don't pass, you can try again." },
+  b_grade:   { es: "CALIFICAR", en: "GRADE IT" },
+  quiz_pass: { es: "¡Pasaste! {s} de {t} correctas.", en: "You passed! {s} of {t} correct." },
+  quiz_fail: { es: "Te faltó: {s} de {t}. Revisa tus respuestas y vuelve a intentar.", en: "Not yet: {s} of {t}. Review your answers and try again." },
+  quiz_missing: { es: "Contesta todas las preguntas.", en: "Answer every question." },
+  t_sign:    { es: "4 · Tu firma", en: "4 · Your signature" },
+  t_sign_sub: { es: "Firma con tu dedo. Al firmar confirmas que viste el video, entiendes el SOP y vas a dumpear seguro en este sitio.",
+                en: "Sign with your finger. By signing you confirm you watched the video, understand the SOP and will dump safely on this site." },
+  b_clear:   { es: "Borrar firma", en: "Clear signature" },
+  b_certify: { es: "FIRMAR Y CERTIFICARME", en: "SIGN AND GET CERTIFIED" },
+  sig_need:  { es: "Fírmale primero.", en: "Sign first." },
+  c_band:    { es: "✓ CERTIFICADO — SAFE DUMPING", en: "✓ CERTIFIED — SAFE DUMPING" },
+  c_foot:    { es: "Pásale a Milestone Dispatch (972-808-7660) por tu sticker de Proof of Training y pégalo en la ventana, visible desde afuera. Guarda esta constancia en tu teléfono.",
+               en: "See Milestone Dispatch (972-808-7660) for your Proof of Training sticker and place it on your window, visible from outside. Save this certificate on your phone." },
+  b_screenshot: { es: "📸 Tómale captura a tu constancia", en: "📸 Take a screenshot of your certificate" },
+  valid_until: { es: "Válido hasta", en: "Valid until" },
+  err_net:   { es: "Sin conexión — intenta otra vez.", en: "No connection — try again." },
+  err_fields:{ es: "Llena nombre, truck y compañía.", en: "Fill in name, truck and company." },
+  already:   { es: "Ya tienes una certificación vigente. Tu código: ", en: "You already have a valid certification. Your code: " },
+  vid_missing: { es: "El video aún no está cargado — avísale a dispatch.", en: "The video isn't uploaded yet — tell dispatch." },
+  v_valid:   { es: "✓ VÁLIDO / VALID", en: "✓ VALID / VÁLIDO" },
+  v_expired: { es: "✕ VENCIDO / EXPIRED", en: "✕ EXPIRED / VENCIDO" },
+  v_revoked: { es: "✕ REVOCADO / REVOKED", en: "✕ REVOKED / REVOCADO" },
+  v_notfound:{ es: "✕ NO ENCONTRADO / NOT FOUND", en: "✕ NOT FOUND / NO ENCONTRADO" },
+  v_pending: { es: "… EN ENTRENAMIENTO / IN TRAINING", en: "… IN TRAINING / EN ENTRENAMIENTO" }
+};
+const RULES = [
+  { b: { es: "El spotter me asigna el punto — y yo lo reviso", en: "The spotter assigns my spot — and I still check it" },
+    s: { es: "Piso parejo y firme, zona libre alrededor, nada arriba (líneas, torres de luz, grúas).", en: "Level firm ground, clear zone all around, nothing overhead (lines, light masts, cranes)." } },
+  { b: { es: "Caja arriba solo detenido, con freno puesto y ojos en la caja", en: "Bed up only when stopped, brake set, eyes on the bed" },
+    s: { es: "Dentro de la cabina con el cinturón puesto todo el dump.", en: "In the cab with my seat belt on for the whole dump." } },
+  { b: { es: "Si la caja se ladea o la carga se cuelga: LA BAJO DE INMEDIATO", en: "If the bed leans or the load hangs up: LOWER IT RIGHT AWAY" },
+    s: { es: "Nunca sacudo ni jalo el troque para soltarla.", en: "Never rock or jerk the truck to shake it loose." } },
+  { b: { es: "Si el troque se empieza a voltear: me quedo en la cabina", en: "If the truck starts to tip: I stay in the cab" },
+    s: { es: "Cinturón puesto, me sujeto. NUNCA salto de un troque volteándose.", en: "Belt on, brace. NEVER jump from a tipping truck." } },
+  { b: { es: "Límite de viento: 25 mph sostenido / 35 mph rachas", en: "Wind limit: 25 mph sustained / 35 mph gusts" },
+    s: { es: "Arriba de eso, ninguna caja sube. En viento cruzado fuerte, dumpeo de frente al viento.", en: "At or above that, no beds go up. In strong crosswind, dump facing into the wind." } },
+  { b: { es: "Caja completamente abajo antes de moverme", en: "Bed all the way down before I move" },
+    s: { es: "Tailgate cerrada, pernos asentados, limpio la piedra atorada.", en: "Tailgate closed, lock pins seated, stuck rock cleaned off." } },
+  { b: { es: "Sin teléfono en el sitio · PPE completo fuera de la cabina", en: "No phone on site · full PPE outside the cab" },
+    s: { es: "Casco, lentes, chaleco, manga larga, guantes y botas con casquillo.", en: "Hard hat, glasses, vest, long sleeves, gloves and safety-toe boots." } },
+  { b: { es: "Puedo PARAR cualquier dump inseguro — sin castigo", en: "I can STOP any unsafe dump — no discipline" },
+    s: { es: "Reporto soft spots, ladeadas y near misses a dispatch el mismo día: 972-808-7660.", en: "I report soft spots, leans and near misses to dispatch the same day: 972-808-7660." } }
+];
+
+let lang = LS.get("sd_lang") || ((navigator.language || "es").startsWith("en") ? "en" : "es");
+let token = LS.get("sd_token") || "";
+let myCode = LS.get("sd_code") || "";
+let quizData = null;
+const $ = (id) => document.getElementById(id);
+function t(k){ const e = I[k]; return e ? (e[lang] || e.es) : k; }
+function paint(){
+  document.querySelectorAll("[data-i]").forEach(el => { el.textContent = t(el.getAttribute("data-i")); });
+  $("lbEs").classList.toggle("on", lang === "es");
+  $("lbEn").classList.toggle("on", lang === "en");
+  document.documentElement.lang = lang;
+}
+function setLang(l){ lang = l; LS.set("sd_lang", l); paint(); if (quizData) renderQuizShell(); renderRules(); }
+
+// ---------- steps ----------
+const STEPS = ["pReg","pVideo","pRules","pQuiz","pSign","pCert"];
+function show(step){
+  STEPS.concat(["pVerify"]).forEach(id => $(id).classList.add("hide"));
+  $(step).classList.remove("hide");
+  const idx = STEPS.indexOf(step);
+  $("steps").innerHTML = STEPS.map((s,i) => `<i class="${i < idx ? "done" : i === idx ? "on" : ""}"></i>`).join("");
+  window.scrollTo({ top: 0 });
+  if (step === "pVideo") initVideo();
+  if (step === "pRules") renderRules();
+  if (step === "pQuiz") loadQuiz();
+  if (step === "pSign") initSig();
+  if (step === "pCert") renderCert();
+}
+async function api(p, body){
+  const r = await fetch(API + "/api/safety/" + p, body !== undefined
+    ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.assign({ token }, body)) }
+    : undefined);
+  const j = await r.json().catch(() => null);
+  if (!j) throw new Error(t("err_net"));
+  return j;
+}
+
+// ---------- registro ----------
+$("btnReg").onclick = async () => {
+  const name = $("fName").value.trim(), truck = $("fTruck").value.trim(), company = $("fCompany").value.trim();
+  const errEl = $("regErr"); errEl.style.display = "none";
+  if (name.length < 3 || !truck || company.length < 2) { errEl.textContent = t("err_fields"); errEl.style.display = "block"; return; }
+  $("btnReg").disabled = true;
+  try {
+    const j = await api("register", { name, truck, company, phone: $("fPhone").value.trim(), lang });
+    if (j.error) throw new Error(j.error);
+    if (j.already) { myCode = j.code; LS.set("sd_code", j.code); errEl.textContent = t("already") + j.code; errEl.style.display = "block"; errEl.style.background = "var(--ok-bg)"; errEl.style.color = "var(--ok)"; $("btnReg").disabled = false; return; }
+    token = j.token; myCode = j.code;
+    LS.set("sd_token", token); LS.set("sd_code", myCode);
+    show("pVideo");
+  } catch (e) { errEl.textContent = String(e.message || e); errEl.style.display = "block"; }
+  $("btnReg").disabled = false;
+};
+
+// ---------- video (no skip forward, sí rewind; latidos al server) ----------
+let vInit = false, maxPlayed = 0, lastBeatT = 0, beatTimer = null, serverDone = false;
+function fmt(s){ s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
+async function initVideo(){
+  if (vInit) return; vInit = true;
+  const v = $("vid");
+  const st = await api("video-status").catch(() => null);
+  if (st && st.videos && !st.videos[lang] && !st.videos[lang === "en" ? "es" : "en"]) {
+    $("vidErr").textContent = t("vid_missing"); $("vidErr").style.display = "block"; return;
+  }
+  v.src = API + "/api/safety/video?lang=" + lang + "&token=" + token;
+  v.addEventListener("timeupdate", () => {
+    if (v.currentTime > maxPlayed) maxPlayed = v.currentTime;
+    $("vFill").style.width = (v.duration ? (v.currentTime / v.duration) * 100 : 0) + "%";
+    $("vTime").textContent = fmt(v.currentTime) + " / " + fmt(v.duration || 0);
+  });
+  // candado anti-adelantar: si brinca más allá de lo ya visto, lo regresamos
+  v.addEventListener("seeking", () => { if (v.currentTime > maxPlayed + 1.5) v.currentTime = maxPlayed; });
+  v.addEventListener("ratechange", () => { if (v.playbackRate !== 1) v.playbackRate = 1; });
+  $("vPlay").onclick = () => { v.paused ? v.play() : v.pause(); };
+  v.addEventListener("play", () => { $("vPlay").textContent = "⏸"; startBeats(); });
+  v.addEventListener("pause", () => { $("vPlay").textContent = "▶"; });
+  $("vBack").onclick = () => { v.currentTime = Math.max(0, v.currentTime - 10); };
+  v.addEventListener("ended", () => sendBeat(true));
+}
+function startBeats(){
+  if (beatTimer) return;
+  lastBeatT = $("vid").currentTime;
+  beatTimer = setInterval(() => sendBeat(false), 10000);
+}
+async function sendBeat(final){
+  const v = $("vid");
+  if (!v.duration) return;
+  const nowT = v.currentTime;
+  const delta = v.paused && !final ? 0 : Math.max(0, Math.min(nowT - lastBeatT, 16));
+  lastBeatT = nowT;
+  if (delta <= 0 && !final) return;
+  try {
+    const j = await api("beat", { dur: v.duration, delta });
+    const pct = j.need ? Math.min(100, Math.round((j.watched / j.need) * 100)) : 0;
+    $("wFill").style.width = pct + "%"; $("wPct").textContent = pct + "%";
+    if (j.done && !serverDone) { serverDone = true; $("btnVideoNext").disabled = false; }
+  } catch (e) {}
+}
+$("btnVideoNext").onclick = () => show("pRules");
+
+// ---------- reglas ----------
+function renderRules(){
+  const box = $("rulesList");
+  const prev = [...box.querySelectorAll("input")].map(i => i.checked);
+  box.innerHTML = RULES.map((r, i) => `
+    <label class="rule ${prev[i] ? "on" : ""}">
+      <input type="checkbox" ${prev[i] ? "checked" : ""} onchange="ruleTick(this)">
+      <span><b>${r.b[lang]}</b><span>${r.s[lang]}</span></span>
+    </label>`).join("");
+  checkRules();
+}
+function ruleTick(cb){ cb.closest(".rule").classList.toggle("on", cb.checked); checkRules(); }
+function checkRules(){
+  const all = [...$("rulesList").querySelectorAll("input")];
+  $("btnRulesNext").disabled = !(all.length && all.every(c => c.checked));
+}
+$("btnRulesNext").onclick = () => show("pQuiz");
+
+// ---------- quiz ----------
+async function loadQuiz(){
+  try { const j = await api("quiz?token=" + token); if (j.error) throw new Error(j.error); quizData = j; renderQuizShell(); }
+  catch (e) { $("quizErr").textContent = String(e.message || e); $("quizErr").style.display = "block"; }
+}
+function renderQuizShell(){
+  if (!quizData) return;
+  $("quizSub").textContent = t("quiz_sub").replace("{need}", quizData.need).replace("{total}", quizData.questions.length);
+  $("quizList").innerHTML = quizData.questions.map((q, qi) => `
+    <div class="q" data-qid="${q.id}">
+      <div class="qq">${qi + 1}. ${q.q}</div>
+      ${q.o.map((o, oi) => `<label class="opt"><input type="radio" name="q_${q.id}" value="${oi}" style="margin-right:8px;accent-color:var(--sand);" onchange="optSel(this)">${o}</label>`).join("")}
+    </div>`).join("");
+}
+function optSel(r){
+  r.closest(".q").querySelectorAll(".opt").forEach(o => o.classList.remove("sel"));
+  r.closest(".opt").classList.add("sel");
+}
+$("btnQuiz").onclick = async () => {
+  const errEl = $("quizErr"); errEl.style.display = "none"; errEl.style.background = ""; errEl.style.color = "";
+  const answers = {};
+  let missing = false;
+  for (const q of quizData.questions) {
+    const sel = document.querySelector(`input[name="q_${q.id}"]:checked`);
+    if (!sel) { missing = true; break; }
+    answers[q.id] = Number(sel.value);
+  }
+  if (missing) { errEl.textContent = t("quiz_missing"); errEl.style.display = "block"; return; }
+  $("btnQuiz").disabled = true;
+  try {
+    const j = await api("quiz", { answers });
+    if (j.passed) show("pSign");
+    else {
+      errEl.textContent = t("quiz_fail").replace("{s}", j.score).replace("{t}", j.total);
+      errEl.style.display = "block";
+      // marcar las equivocadas para repasar
+      for (const id of j.wrong) { const el = document.querySelector(`.q[data-qid="${id}"] .qq`); if (el) el.style.color = "var(--bad)"; }
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  } catch (e) { errEl.textContent = String(e.message || e); errEl.style.display = "block"; }
+  $("btnQuiz").disabled = false;
+};
+
+// ---------- firma ----------
+let sigInit = false, sigDrawn = false, sctx = null;
+function initSig(){
+  if (sigInit) return; sigInit = true;
+  const c = $("sig");
+  const scale = window.devicePixelRatio || 1;
+  c.width = c.offsetWidth * scale; c.height = 170 * scale;
+  sctx = c.getContext("2d"); sctx.scale(scale, scale);
+  sctx.lineWidth = 2.4; sctx.lineCap = "round"; sctx.strokeStyle = "#2E3238";
+  let draw = false, lx = 0, ly = 0;
+  const pos = (e) => { const r = c.getBoundingClientRect(); const p = e.touches ? e.touches[0] : e; return [p.clientX - r.left, p.clientY - r.top]; };
+  const down = (e) => { draw = true; [lx, ly] = pos(e); e.preventDefault(); };
+  const move = (e) => { if (!draw) return; const [x, y] = pos(e); sctx.beginPath(); sctx.moveTo(lx, ly); sctx.lineTo(x, y); sctx.stroke(); lx = x; ly = y; sigDrawn = true; e.preventDefault(); };
+  const up = () => { draw = false; };
+  c.addEventListener("pointerdown", down); c.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+}
+$("btnSigClear").onclick = () => { const c = $("sig"); sctx.clearRect(0, 0, c.width, c.height); sigDrawn = false; };
+$("btnSign").onclick = async () => {
+  const errEl = $("sigErr"); errEl.style.display = "none";
+  if (!sigDrawn) { errEl.textContent = t("sig_need"); errEl.style.display = "block"; return; }
+  $("btnSign").disabled = true;
+  try {
+    const j = await api("sign", { signature: $("sig").toDataURL("image/png") });
+    if (j.error) throw new Error(j.error);
+    myCode = j.code; LS.set("sd_code", j.code);
+    show("pCert");
+  } catch (e) { errEl.textContent = String(e.message || e); errEl.style.display = "block"; }
+  $("btnSign").disabled = false;
+};
+
+// ---------- constancia ----------
+async function renderCert(){
+  let me = null;
+  try { me = await api("me?token=" + token); } catch (e) {}
+  const c = (me && me.cert) || {};
+  $("cName").textContent = c.name || "";
+  $("cMeta").innerHTML = (lang === "es" ? "Truck " : "Truck ") + "<b>" + (c.truck || "") + "</b> · " + (c.company || "") + "<br>Project Roadrunner · Childress, TX";
+  $("cCode").textContent = c.code || myCode;
+  $("cValid").textContent = t("valid_until") + ": " + (c.expires_at || "");
+  $("cQr").innerHTML = "";
+  const verifyUrl = location.origin + API + "/safety?code=" + encodeURIComponent(c.code || myCode);
+  try { new QRCode($("cQr"), { text: verifyUrl, width: 140, height: 140, colorDark: "#4A4F55" }); } catch (e) {}
+  $("btnShot").onclick = () => alert(lang === "es" ? "iPhone: botón lateral + subir volumen.\nAndroid: encendido + bajar volumen." : "iPhone: side button + volume up.\nAndroid: power + volume down.");
+}
+
+// ---------- verificación pública ----------
+async function runVerify(code){
+  $("langbar").classList.add("hide");
+  STEPS.forEach(id => $(id).classList.add("hide"));
+  $("steps").innerHTML = "";
+  $("pVerify").classList.remove("hide");
+  const box = $("vBox");
+  try {
+    const r = await fetch(API + "/api/safety/verify?code=" + encodeURIComponent(code));
+    const j = await r.json();
+    if (!j.found) { $("vSt").textContent = t("v_notfound"); box.className = "vbig badv"; return; }
+    $("vName").textContent = j.name + " · " + j.truck;
+    $("vMeta").innerHTML = j.company + "<br>" + (j.certified_at ? "Certified " + j.certified_at + " · " : "") +
+      (j.expires_at ? (t("valid_until") + " <b>" + j.expires_at + "</b>") : "") + (j.sticker ? "<br>Sticker #" + j.sticker : "");
+    if (j.valid) { $("vSt").textContent = t("v_valid"); box.className = "vbig okv"; }
+    else if (j.status === "expired") { $("vSt").textContent = t("v_expired"); box.className = "vbig badv"; }
+    else if (j.status === "revoked") { $("vSt").textContent = t("v_revoked"); box.className = "vbig badv"; }
+    else { $("vSt").textContent = t("v_pending"); box.className = "vbig"; }
+  } catch (e) { $("vSt").textContent = t("err_net"); }
+}
+
+// ---------- arranque ----------
+paint();
+const qCode = new URLSearchParams(location.search).get("code");
+if (qCode) { runVerify(qCode.toUpperCase()); }
+else if (token) {
+  // retomar donde se quedó
+  api("me?token=" + token).then(j => {
+    if (!j || !j.ok) { LS.del("sd_token"); show("pReg"); return; }
+    const st = j.cert.status;
+    if (st === "certified") show("pCert");
+    else if (st === "passed") show("pSign");
+    else if (st === "video_done") show("pRules");
+    else show("pVideo");
+  }).catch(() => show("pReg"));
+} else show("pReg");
+</script>
+</body>
+</html>
