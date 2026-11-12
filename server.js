@@ -86,6 +86,21 @@ const metaGet = (k, d) => { const r = get('SELECT value FROM meta WHERE key = ?'
 const metaSet = (k, v) => run('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', k, String(v));
 const nowISO = () => new Date().toISOString();
 if (!metaGet('safety_staff_code', '')) metaSet('safety_staff_code', CFG.staffCode || randCode(6));
+// columna nueva sobre tabla ya creada (migración aditiva)
+try { db.exec(`ALTER TABLE safety_certs ADD COLUMN ip TEXT DEFAULT ''`); } catch (e) {}
+
+// 📍 ¿de dónde se conectó el chofer? Guardamos la IP real (la pasa ngrok en
+// x-forwarded-for) y el dispositivo (user-agent) — TODO queda en nuestra base,
+// nada se manda a servicios externos.
+function clientIp(req) {
+  const xf = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return (xf || req.socket.remoteAddress || '').replace(/^::ffff:/, '').slice(0, 45);
+}
+function deviceOf(ua) {
+  ua = String(ua || '');
+  const os = /iPhone|iPad/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac/.test(ua) ? 'Mac' : 'other';
+  return os;
+}
 
 // ---------- helpers ----------
 function log(m) { console.log(new Date().toISOString().slice(11, 19) + ' ' + m); }
@@ -255,19 +270,16 @@ const server = http.createServer(async (req, res) => {
       if (dup) return send(res, 200, { ok: true, already: true, code: dup.code, expires_at: dup.expires_at });
       const token = crypto.randomBytes(16).toString('hex');
       const code = newCode();
-      const r = run(`INSERT INTO safety_certs (code, token, name, truck, company, phone, cdl, lang, status, approve_mode, invite_key, ua, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,'started',?,?,?,?,?)`,
+      const r = run(`INSERT INTO safety_certs (code, token, name, truck, company, phone, cdl, lang, status, approve_mode, invite_key, ua, ip, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,'started',?,?,?,?,?,?)`,
         code, token, name, truck, company, String(b.phone || '').trim().slice(0, 20), cdl, b.lang === 'en' ? 'en' : 'es',
         inv && !inv.auto_approve ? 'manual' : 'auto', inv ? inv.key : '',
-        String(req.headers['user-agent'] || '').slice(0, 160), nowISO(), nowISO());
+        String(req.headers['user-agent'] || '').slice(0, 160), clientIp(req), nowISO(), nowISO());
       if (inv) run('UPDATE safety_invites SET used_cert_id = ? WHERE id = ?', r.lastInsertRowid, inv.id);
       ev(r.lastInsertRowid, 'register', name + ' · ' + truck + ' · ' + company + (inv ? ' · via link ' + inv.key : ''));
       return send(res, 200, { ok: true, token, code });
     }
-    if (M === 'GET' && p === '/api/safety/video') {
-      const row = byToken(q);
-      if (!row) return send(res, 401, { error: 'bad token' });
-      const lang = q.lang === 'en' ? 'en' : 'es';
+    const serveVideo = (lang) => {
       let file = filePath('video_' + lang);
       if (!fs.existsSync(file)) file = filePath('video_' + (lang === 'en' ? 'es' : 'en'));
       if (!fs.existsSync(file)) return send(res, 404, { error: 'video not uploaded yet' });
@@ -284,6 +296,11 @@ const server = http.createServer(async (req, res) => {
       }
       res.writeHead(200, { 'Content-Length': stat.size, 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store' });
       return fs.createReadStream(file).pipe(res);
+    };
+    if (M === 'GET' && p === '/api/safety/video') {
+      const row = byToken(q);
+      if (!row) return send(res, 401, { error: 'bad token' });
+      return serveVideo(q.lang === 'en' ? 'en' : 'es');
     }
     if (M === 'GET' && p === '/api/safety/video-status') {
       const videos = {};
@@ -424,6 +441,7 @@ const server = http.createServer(async (req, res) => {
         const today = new Date().toISOString().slice(0, 10);
         return send(res, 200, { ok: true, rows: rows.map(r => ({
           ...pubRow(r), phone: r.phone, cdl: r.cdl || '', mode: r.approve_mode || 'auto',
+          ip: r.ip || '', device: deviceOf(r.ua),
           quiz: r.quiz_score + '/' + r.quiz_total, quiz_tries: r.quiz_tries,
           watched: Math.round(r.video_seconds || 0), dur: Math.round(r.video_dur || 0),
           source: r.source, added_by: r.added_by, notes: r.notes, created_at: r.created_at,
@@ -474,6 +492,14 @@ const server = http.createServer(async (req, res) => {
           run(`UPDATE safety_certs SET status = 'started', video_seconds = 0, quiz_score = 0, quiz_tries = 0, signature = '', updated_at = ? WHERE id = ?`, nowISO(), row.id);
           ev(row.id, 'retrain', 'reset by ' + by);
         }
+        if (b.action === 'delete') {
+          // borrar la fila COMPLETA (Juan: para que el chofer pueda volver a registrarse
+          // desde cero). Se va también su historial — esto no es archivado, es borrado.
+          run('DELETE FROM safety_events WHERE cert_id = ?', row.id);
+          run('DELETE FROM safety_certs WHERE id = ?', row.id);
+          log('DELETED ' + row.code + ' (' + row.name + ' · ' + row.truck + ') by ' + by);
+          return send(res, 200, { ok: true, deleted: true });
+        }
         return send(res, 200, { ok: true, row: pubRow(get('SELECT * FROM safety_certs WHERE id = ?', row.id)) });
       }
       if (M === 'POST' && p === '/api/safety/admin/invite') {
@@ -498,9 +524,9 @@ const server = http.createServer(async (req, res) => {
       if (M === 'GET' && p === '/api/safety/admin/export.csv') {
         const rows = all('SELECT * FROM safety_certs ORDER BY id DESC');
         const esc = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-        const head = ['Code', 'Name', 'Truck', 'Company', 'Phone', 'CDL', 'Status', 'Mode', 'Certified', 'Expires', 'Sticker', 'Quiz', 'Tries', 'VideoWatchedSec', 'Source', 'AddedBy', 'Notes', 'Created'];
+        const head = ['Code', 'Name', 'Truck', 'Company', 'Phone', 'CDL', 'Status', 'Mode', 'Certified', 'Expires', 'Sticker', 'Quiz', 'Tries', 'VideoWatchedSec', 'Source', 'AddedBy', 'Notes', 'Created', 'IP', 'Device'];
         const lines = rows.map(r => [r.code, r.name, r.truck, r.company, r.phone, r.cdl || '', effStatus(r), r.approve_mode || 'auto', (r.certified_at || '').slice(0, 10), r.expires_at, r.sticker,
-          r.quiz_score + '/' + r.quiz_total, r.quiz_tries, Math.round(r.video_seconds || 0), r.source, r.added_by, r.notes, (r.created_at || '').slice(0, 10)].map(esc).join(','));
+          r.quiz_score + '/' + r.quiz_total, r.quiz_tries, Math.round(r.video_seconds || 0), r.source, r.added_by, r.notes, (r.created_at || '').slice(0, 10), r.ip || '', deviceOf(r.ua)].map(esc).join(','));
         res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="roadrunner_safe_dumping_roster.csv"' });
         return res.end('﻿' + head.join(',') + '\n' + lines.join('\n'));
       }
@@ -515,6 +541,7 @@ const server = http.createServer(async (req, res) => {
         metaSet('safety_staff_code', c);
         return send(res, 200, { ok: true });
       }
+      if (M === 'GET' && p === '/api/safety/admin/video') return serveVideo(q.lang === 'en' ? 'en' : 'es'); // preview en el panel
       if (M === 'PUT' && p === '/api/safety/admin/video') {
         const lang = q.lang === 'en' ? 'en' : 'es';
         return streamUpload(req, res, filePath('video_' + lang), 900, (bytes) => {

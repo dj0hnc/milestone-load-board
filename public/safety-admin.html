@@ -85,8 +85,10 @@ body{font-family:'Poppins',system-ui,sans-serif;background:var(--bg);color:var(-
   <div class="panel">
     <h3>🎬 Training videos</h3>
     <div class="grid2">
-      <div><label>English video (MP4)</label><input type="file" id="vidEn" accept="video/mp4"><button class="btn" onclick="upVid('en')">Upload EN</button> <span class="muted" id="stEn"></span></div>
-      <div><label>Spanish video (MP4)</label><input type="file" id="vidEs" accept="video/mp4"><button class="btn" onclick="upVid('es')">Upload ES</button> <span class="muted" id="stEs"></span></div>
+      <div><label>English video (MP4)</label><input type="file" id="vidEn" accept="video/mp4"><button class="btn" onclick="upVid('en')">Upload EN</button> <span class="muted" id="stEn"></span>
+        <video id="pvEn" controls preload="metadata" style="width:100%;margin-top:8px;border-radius:10px;background:#000;display:none;"></video></div>
+      <div><label>Spanish video (MP4)</label><input type="file" id="vidEs" accept="video/mp4"><button class="btn" onclick="upVid('es')">Upload ES</button> <span class="muted" id="stEs"></span>
+        <video id="pvEs" controls preload="metadata" style="width:100%;margin-top:8px;border-radius:10px;background:#000;display:none;"></video></div>
     </div>
     <p class="muted" style="margin-top:8px;">Videos live only on the office server (data/safety/), never in the repo. Drivers must watch 90% — progress is measured server side, skipping forward is blocked.</p>
   </div>
@@ -144,6 +146,12 @@ async function load(){
   if (vs && vs.videos) {
     $("stEn").textContent = vs.videos.en ? ("✓ " + vs.videos.en + " MB") : "— not uploaded";
     $("stEs").textContent = vs.videos.es ? ("✓ " + vs.videos.es + " MB") : "— not uploaded";
+    // 🎬 preview de cada video ahí mismo (bump en la URL para refrescar tras subir uno nuevo)
+    for (const l of ["en", "es"]) {
+      const pv = $(l === "en" ? "pvEn" : "pvEs");
+      if (vs.videos[l]) { pv.src = API + "/api/safety/admin/video?lang=" + l + "&v=" + Date.now(); pv.style.display = "block"; }
+      else pv.style.display = "none";
+    }
   }
   render();
 }
@@ -185,7 +193,7 @@ function render(){
   $("tbl").innerHTML = `<div class="row hd"><span>Code</span><span>Driver</span><span>Truck</span><span>Company</span><span>Status</span><span>Certified</span><span>Expires</span><span>Quiz</span><span>Sticker</span><span></span></div>` +
     (rows.length ? rows.map(r => `<div class="row">
       <b class="code">${esc(r.code)}</b>
-      <span><b>${esc(r.name)}</b>${r.mode === "manual" ? ' <span class="muted" title="Juan approves this one">🔒</span>' : ""}${r.cdl ? `<br><span class="muted">CDL ${esc(r.cdl)}</span>` : ""}${r.phone ? `<br><a class="muted" href="tel:${esc(r.phone)}">${esc(r.phone)}</a>` : ""}</span>
+      <span><b>${esc(r.name)}</b>${r.mode === "manual" ? ' <span class="muted" title="Juan approves this one">🔒</span>' : ""}${r.cdl ? `<br><span class="muted">CDL ${esc(r.cdl)}</span>` : ""}${r.phone ? `<br><a class="muted" href="tel:${esc(r.phone)}">${esc(r.phone)}</a>` : ""}${r.ip ? `<br><span class="muted" title="connection when registering">📶 ${esc(r.device)} · ${esc(r.ip)}</span>` : ""}</span>
       <b>${esc(r.truck)}</b>
       <span>${esc(r.company)}${r.source === "manual" ? ' <span class="muted">(manual)</span>' : ""}</span>
       <span>${chip(r)}</span>
@@ -200,11 +208,12 @@ function render(){
         <button title="History" onclick="openEvents(${r.id}, '${esc(r.code)}')">🕘</button>
         <button title="Retrain (resets video + quiz)" onclick="act(${r.id}, 'renew')">↺</button>
         <button title="Revoke" onclick="if(confirm('Revoke ${esc(r.code)}?'))act(${r.id}, 'revoke')">⛔</button>
+        <button title="DELETE the row — the driver can register again from zero" onclick="if(confirm('DELETE ${esc(r.code)} (${esc(r.name)}) completely? This cannot be undone.'))act(${r.id}, 'delete')">🗑</button>
       </span>
     </div>`).join("") : `<div class="row"><span class="muted" style="grid-column:1/-1;">No drivers yet. Share the driver link to get started.</span></div>`);
 }
 async function setSticker(id, v){ await api("admin/update", { id, sticker: v.trim(), by: WHO }); toast("Sticker saved"); load(); }
-async function act(id, action){ await api("admin/update", { id, action, by: WHO }); toast(action === "renew" ? "Reset for retraining" : action === "approve" ? "Approved — certified ✓" : "Revoked"); load(); }
+async function act(id, action){ await api("admin/update", { id, action, by: WHO }); toast(action === "renew" ? "Reset for retraining" : action === "approve" ? "Approved — certified ✓" : action === "delete" ? "Deleted — they can register again" : "Revoked"); load(); }
 function openSig(id, name){ openModal(`<h3 style="margin-bottom:10px;">✍ ${esc(name)}</h3><img src="${API}/api/safety/admin/signature?id=${id}" style="width:100%;border:1px solid var(--line);border-radius:10px;background:#fff;"><button class="btn" onclick="closeModal()" style="width:100%;">Close</button>`); }
 async function openEvents(id, code){
   const j = await api("admin/events?id=" + id);
@@ -235,7 +244,7 @@ function upVid(lang){
   xhr.open("PUT", API + "/api/safety/admin/video?lang=" + lang);
   xhr.setRequestHeader("Content-Type", "video/mp4");
   xhr.upload.onprogress = (e) => { st.textContent = "⬆ " + Math.round((e.loaded / e.total) * 100) + "%"; };
-  xhr.onload = () => { try { const j = JSON.parse(xhr.responseText); st.textContent = j.ok ? ("✓ " + j.mb + " MB") : ("⚠ " + j.error); if (j.ok) toast("Video " + lang.toUpperCase() + " uploaded"); } catch (e) { st.textContent = "⚠ upload failed"; } };
+  xhr.onload = () => { try { const j = JSON.parse(xhr.responseText); st.textContent = j.ok ? ("✓ " + j.mb + " MB") : ("⚠ " + j.error); if (j.ok) { toast("Video " + lang.toUpperCase() + " uploaded"); load(); } } catch (e) { st.textContent = "⚠ upload failed"; } };
   xhr.onerror = () => { st.textContent = "⚠ upload failed"; };
   xhr.send(f);
 }
