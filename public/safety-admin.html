@@ -205,6 +205,7 @@ function render(){
         ${r.status === "pending" ? `<button title="APPROVE — certify this driver" style="background:var(--ok);color:#fff;border-color:var(--ok);font-weight:800;" onclick="act(${r.id}, 'approve')">✓</button>` : ""}
         ${r.signed ? `<button title="View signature" onclick="openSig(${r.id}, '${esc(r.name)}')">✍</button>` : ""}
         <button title="Verify page (QR target)" onclick="window.open(DRV+'?code=${esc(r.code)}','_blank')">🔍</button>
+        <button title="Certificate QR — view / download to send to the driver" onclick="openQr('${esc(r.code)}', '${esc(r.name)}', '${esc(r.truck)}', '${esc(r.expires_at)}')">🔳</button>
         <button title="History" onclick="openEvents(${r.id}, '${esc(r.code)}')">🕘</button>
         <button title="Retrain (resets video + quiz)" onclick="act(${r.id}, 'renew')">↺</button>
         <button title="Revoke" onclick="if(confirm('Revoke ${esc(r.code)}?'))act(${r.id}, 'revoke')">⛔</button>
@@ -214,6 +215,40 @@ function render(){
 }
 async function setSticker(id, v){ await api("admin/update", { id, sticker: v.trim(), by: WHO }); toast("Sticker saved"); load(); }
 async function act(id, action){ await api("admin/update", { id, action, by: WHO }); toast(action === "renew" ? "Reset for retraining" : action === "approve" ? "Approved — certified ✓" : action === "delete" ? "Deleted — they can register again" : "Revoked"); load(); }
+// 🔳 QR del certificado: verlo y DESCARGARLO como tarjeta (QR + datos) para mandárselo
+// al chofer que no guardó el suyo.
+function openQr(code, name, truck, expires){
+  openModal(`<h3 style="margin-bottom:4px;">🔳 ${esc(code)}</h3>
+    <p class="muted" style="margin-bottom:10px;">${esc(name)} · ${esc(truck)}${expires ? " · valid until " + esc(expires) : ""}</p>
+    <div id="qrBox" style="display:flex;justify-content:center;padding:10px;background:#fff;border:1px solid var(--line);border-radius:12px;"></div>
+    <button class="btn" style="width:100%;" onclick="dlQr('${esc(code)}', '${esc(name)}', '${esc(truck)}', '${esc(expires)}')">⬇ DOWNLOAD CARD (PNG)</button>
+    <button class="btn" style="width:100%;background:var(--road);" onclick="closeModal()">Close</button>`);
+  try { new QRCode($("qrBox"), { text: DRV + "?code=" + code, width: 190, height: 190, colorDark: "#4A4F55" }); } catch (e) {}
+}
+function dlQr(code, name, truck, expires){
+  const src = $("qrBox").querySelector("canvas") || $("qrBox").querySelector("img");
+  if (!src) { toast("QR not ready"); return; }
+  const c = document.createElement("canvas"); c.width = 520; c.height = 700;
+  const x = c.getContext("2d");
+  x.fillStyle = "#FFFFFF"; x.fillRect(0, 0, 520, 700);
+  x.fillStyle = "#4A4F55"; x.fillRect(0, 0, 520, 86);
+  x.fillStyle = "#FFFFFF"; x.font = "800 26px Poppins, Arial"; x.textAlign = "center";
+  x.fillText("SAFE DUMPING — PROOF OF TRAINING", 260, 38);
+  x.fillStyle = "#B89A4E"; x.font = "700 16px Poppins, Arial";
+  x.fillText("PROJECT ROADRUNNER · MILESTONE SUPPLY", 260, 64);
+  x.drawImage(src, 110, 120, 300, 300);
+  x.fillStyle = "#B89A4E"; x.font = "800 40px Poppins, Arial";
+  x.fillText(code, 260, 490);
+  x.fillStyle = "#2E3238"; x.font = "700 26px Poppins, Arial";
+  x.fillText(name.toUpperCase(), 260, 535);
+  x.fillStyle = "#7A7D80"; x.font = "600 22px Poppins, Arial";
+  x.fillText("Truck " + truck + (expires ? "  ·  Valid until " + expires : ""), 260, 570);
+  x.fillText("Scan to verify · Dispatch 972-808-7660", 260, 640);
+  const a = document.createElement("a");
+  a.download = code + "_proof_of_training.png";
+  a.href = c.toDataURL("image/png");
+  a.click();
+}
 function openSig(id, name){ openModal(`<h3 style="margin-bottom:10px;">✍ ${esc(name)}</h3><img src="${API}/api/safety/admin/signature?id=${id}" style="width:100%;border:1px solid var(--line);border-radius:10px;background:#fff;"><button class="btn" onclick="closeModal()" style="width:100%;">Close</button>`); }
 async function openEvents(id, code){
   const j = await api("admin/events?id=" + id);
