@@ -55,11 +55,6 @@ function createRouter({ config, newmile, log }) {
   if (PIN) {
     router.use((req, res, next) => {
       if (OPEN_PATHS.includes(req.path)) return next();
-      // 🦺 SAFE DUMPING (Roadrunner): el flujo del CHOFER es público (entra desde su cel,
-      // sin PIN) — página, API y logos. Lo admin (/api/safety/admin/*) sigue con PIN.
-      if (req.path === '/safety' || req.path === '/safety.html'
-        || (req.path.startsWith('/api/safety/') && !req.path.startsWith('/api/safety/admin'))
-        || req.path === '/img/milestone-supply.png' || req.path === '/img/milestone-supply-light.png') return next();
       const cookie = (req.headers.cookie || '').split(/;\s*/).find(c => c.startsWith('ct_auth='));
       if (cookie && cookie.slice(8) === pinCookie) return next();
       if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'PIN required' });
@@ -2071,9 +2066,6 @@ function createRouter({ config, newmile, log }) {
 
   // ---------- static frontend ----------
   // el HTML nunca se cachea (cada deploy llega al instante al cel); los iconos sí
-  // 🦺 Safe Dumping Training (Project Roadrunner) — módulo aparte, ver server/safety.js
-  require('./safety').attach(router, { config, log, statesKey });
-
   router.use(express.static(path.join(__dirname, '..', 'public'), {
     setHeaders: (res, filePath) => {
       if (filePath.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
