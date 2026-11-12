@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Safe Dumping Admin — Milestone</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{ --road:#4A4F55; --sand:#B89A4E; --stone:#7A7D80; --dirt:#8B7355;
+  --bg:#F6F4EF; --card:#FFFFFF; --line:#E5E1D8; --ink:#2E3238;
+  --ok:#3E7A4E; --ok-bg:#EAF3EC; --bad:#A33B2E; --bad-bg:#F8ECEA; --warn:#8a5a10; --warn-bg:#FBF3D0; }
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Poppins',system-ui,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;}
+.hdr{background:var(--road);padding:13px 20px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:40;}
+.hdr img{height:30px;}
+.hdr b{color:#fff;font-size:14px;letter-spacing:.6px;}
+.hdr .right{margin-left:auto;display:flex;gap:8px;}
+.hdr button, .hdr a{border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.1);color:#fff;border-radius:9px;padding:8px 13px;font-family:'Poppins';font-weight:600;font-size:12.5px;cursor:pointer;text-decoration:none;}
+.wrap{max-width:1280px;margin:0 auto;padding:16px;}
+.hero{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+.shc{flex:1;min-width:130px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 16px;box-shadow:0 2px 8px rgba(74,79,85,.06);cursor:pointer;}
+.shc.on{border-color:var(--sand);box-shadow:0 0 0 2px var(--sand);}
+.shc b{display:block;font-size:26px;font-weight:800;line-height:1.1;}
+.shc span{font-size:10px;letter-spacing:.7px;color:var(--stone);text-transform:uppercase;font-weight:700;}
+.tools{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:14px;align-items:center;}
+.tools input[type=text]{flex:1;min-width:220px;padding:11px 14px;border:2px solid var(--line);border-radius:11px;font-family:'Poppins';font-size:14px;background:var(--card);}
+.tools button{border:2px solid var(--line);background:var(--card);color:var(--road);border-radius:11px;padding:10px 14px;font-family:'Poppins';font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;}
+.tools button.gold{background:var(--sand);border-color:var(--sand);color:#fff;}
+.tbl{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow-x:auto;}
+.row{display:grid;grid-template-columns:96px 1.4fr 92px 1.3fr 110px 96px 118px 70px 96px 170px;gap:8px;align-items:center;padding:9px 14px;border-top:1px solid var(--line);font-size:13px;min-width:1150px;}
+.row:first-child{border-top:none;}
+.row.hd{font-weight:700;font-size:11px;letter-spacing:.6px;color:var(--stone);text-transform:uppercase;}
+.row b.code{font-weight:800;color:var(--dirt);letter-spacing:.5px;}
+.chip{display:inline-block;border-radius:14px;padding:3px 10px;font-size:11px;font-weight:800;letter-spacing:.4px;}
+.c-certified{background:var(--ok-bg);color:var(--ok);} .c-expired,.c-revoked{background:var(--bad-bg);color:var(--bad);}
+.c-expiring{background:var(--warn-bg);color:var(--warn);}
+.c-started,.c-video_done,.c-passed{background:#EDEBe4;color:var(--stone);}
+.c-pending{background:#E8EEF5;color:#2C4A6E;}
+.togg{display:inline-flex;border:2px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:8px;}
+.togg button{border:none;background:#fff;color:var(--stone);padding:8px 12px;font-family:'Poppins';font-weight:700;font-size:12px;cursor:pointer;}
+.togg button.on{background:var(--sand);color:#fff;}
+.row .acts{display:flex;gap:5px;justify-content:flex-end;}
+.row .acts button{border:1.5px solid var(--line);background:#fff;border-radius:8px;min-width:28px;height:28px;cursor:pointer;font-size:12px;}
+.stk-in{width:84px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:'Poppins';font-size:12.5px;}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:14px;}
+.panel h3{font-size:15px;font-weight:700;color:var(--road);margin-bottom:10px;}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;}
+.panel label{display:block;font-size:11px;font-weight:700;letter-spacing:.4px;color:var(--stone);text-transform:uppercase;margin-bottom:4px;}
+.panel input{width:100%;padding:10px 12px;border:2px solid var(--line);border-radius:10px;font-family:'Poppins';font-size:14px;}
+.panel .btn{border:none;background:var(--sand);color:#fff;border-radius:10px;padding:11px 18px;font-family:'Poppins';font-weight:700;font-size:13.5px;cursor:pointer;margin-top:10px;}
+.muted{color:var(--stone);font-size:12px;}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--road);color:#fff;border-radius:12px;padding:12px 20px;font-size:13.5px;font-weight:600;display:none;z-index:99;box-shadow:0 6px 20px rgba(0,0,0,.3);}
+.modalbg{position:fixed;inset:0;background:rgba(40,42,46,.55);display:none;align-items:center;justify-content:center;z-index:80;padding:16px;}
+.modalbg.show{display:flex;}
+.modal{background:#fff;border-radius:16px;max-width:460px;width:100%;padding:20px;max-height:85vh;overflow:auto;}
+@media print {
+  .hdr,.tools,.hero,.panel,.acts,.noprint{display:none !important;}
+  .tbl{border:none;} .row{min-width:0;grid-template-columns:90px 1.3fr 80px 1.2fr 100px 90px 100px 60px 80px;font-size:11px;}
+  body{background:#fff;}
+}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <img src="img/milestone-supply-light.png" alt="Milestone Supply">
+  <img src="api/safety/img?name=seal" alt="" style="height:38px;width:38px;border-radius:50%;object-fit:cover;display:none;" onload="this.style.display='block'">
+  <b>SAFE DUMPING · PROJECT ROADRUNNER — ADMIN</b>
+  <div class="right">
+    <button onclick="shareLink()">🔗 Training links</button>
+    <button onclick="staffCode()">🏷 Staff code</button>
+    <a href="api/safety/admin/export.csv">⬇ Excel</a>
+    <button onclick="window.print()">🖨 Print / PDF</button>
+  </div>
+</div>
+<div class="wrap">
+  <div class="hero" id="hero"></div>
+  <div class="tools">
+    <input type="text" id="q" placeholder="Search name / truck / company / code…" oninput="render()">
+    <button class="gold" onclick="openManual()">＋ Manual certification</button>
+    <button onclick="load()">⟳ Refresh</button>
+  </div>
+  <div class="tbl" id="tbl"></div>
+
+  <div class="panel">
+    <h3>🎬 Training videos</h3>
+    <div class="grid2">
+      <div><label>English video (MP4)</label><input type="file" id="vidEn" accept="video/mp4"><button class="btn" onclick="upVid('en')">Upload EN</button> <span class="muted" id="stEn"></span></div>
+      <div><label>Spanish video (MP4)</label><input type="file" id="vidEs" accept="video/mp4"><button class="btn" onclick="upVid('es')">Upload ES</button> <span class="muted" id="stEs"></span></div>
+    </div>
+    <p class="muted" style="margin-top:8px;">Videos live only on the office server (data/safety/), never in the repo. Drivers must watch 90% — progress is measured server side, skipping forward is blocked.</p>
+  </div>
+</div>
+
+<div class="modalbg" id="modalBg" onclick="if(event.target===this)closeModal()"><div class="modal" id="modalBody"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const API = ""; // app standalone
+const $ = (id) => document.getElementById(id);
+let ROWS = [], FILTER = "";
+const WHO = (() => { try { return localStorage.getItem("ct_author") || localStorage.getItem("cactus-who") || "admin"; } catch(e){ return "admin"; } })();
+function toast(m){ const t = $("toast"); t.textContent = m; t.style.display = "block"; setTimeout(() => t.style.display = "none", 2600); }
+function openModal(h){ $("modalBody").innerHTML = h; $("modalBg").classList.add("show"); }
+function closeModal(){ $("modalBg").classList.remove("show"); }
+function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+async function api(p, body){
+  const r = await fetch(API + "/api/safety/" + p, body !== undefined
+    ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : undefined);
+  const j = await r.json();
+  if (r.status === 401 && j && j.error === "login required") { showLogin(); throw new Error("login"); }
+  return j;
+}
+// login propio de la app (admin code) — nada que ver con el tracker
+function showLogin(){
+  if ($("loginBg")) return;
+  const d = document.createElement("div");
+  d.id = "loginBg";
+  d.style.cssText = "position:fixed;inset:0;background:rgba(40,42,46,.7);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px;";
+  d.innerHTML = `<div style="background:#fff;border-radius:16px;max-width:360px;width:100%;padding:24px;text-align:center;">
+    <img src="img/milestone-supply.png" style="height:34px;margin-bottom:12px;">
+    <h3 style="font-size:16px;color:var(--road);margin-bottom:4px;">Safe Dumping Admin</h3>
+    <p class="muted" style="margin-bottom:12px;">Enter the admin code</p>
+    <input id="admCode" type="password" style="width:100%;padding:12px;border:2px solid var(--line);border-radius:10px;font-family:Poppins;font-size:16px;text-align:center;letter-spacing:3px;" autofocus>
+    <div id="admErr" style="color:var(--bad);font-size:12.5px;font-weight:600;margin-top:8px;display:none;">Wrong code</div>
+    <button class="btn" style="width:100%;border:none;background:var(--sand);color:#fff;border-radius:10px;padding:12px;font-family:Poppins;font-weight:700;font-size:14px;cursor:pointer;margin-top:12px;" onclick="doLogin()">ENTER</button>
+  </div>`;
+  document.body.appendChild(d);
+  d.querySelector("#admCode").addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
+}
+async function doLogin(){
+  const r = await fetch(API + "/api/safety/admin-login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: $("admCode").value.trim() }) });
+  const j = await r.json().catch(() => null);
+  if (j && j.ok) { document.getElementById("loginBg").remove(); load(); }
+  else { $("admErr").style.display = "block"; }
+}
+async function load(){
+  const j = await api("admin/list");
+  ROWS = j.rows || [];
+  const vs = await api("video-status").catch(() => null);
+  if (vs && vs.videos) {
+    $("stEn").textContent = vs.videos.en ? ("✓ " + vs.videos.en + " MB") : "— not uploaded";
+    $("stEs").textContent = vs.videos.es ? ("✓ " + vs.videos.es + " MB") : "— not uploaded";
+  }
+  render();
+}
+function heroStats(){
+  const cert = ROWS.filter(r => r.status === "certified");
+  return {
+    certified: cert.length,
+    expiring: cert.filter(r => r.days_left != null && r.days_left <= 30).length,
+    expired: ROWS.filter(r => r.status === "expired").length,
+    progress: ROWS.filter(r => ["started", "video_done", "passed"].includes(r.status)).length,
+    pending: ROWS.filter(r => r.status === "pending").length,
+    nosticker: cert.filter(r => !r.sticker).length
+  };
+}
+let heroFilter = "";
+function setHF(f){ heroFilter = heroFilter === f ? "" : f; render(); }
+function render(){
+  const s = heroStats();
+  $("hero").innerHTML = `
+    <div class="shc ${heroFilter==="certified"?"on":""}" onclick="setHF('certified')"><b style="color:var(--ok)">${s.certified}</b><span>Certified</span></div>
+    <div class="shc ${heroFilter==="expiring"?"on":""}" onclick="setHF('expiring')"><b style="color:var(--warn)">${s.expiring}</b><span>Expiring ≤ 30d</span></div>
+    <div class="shc ${heroFilter==="expired"?"on":""}" onclick="setHF('expired')"><b style="color:var(--bad)">${s.expired}</b><span>Expired</span></div>
+    <div class="shc ${heroFilter==="pending"?"on":""}" onclick="setHF('pending')"><b style="color:#2C4A6E">${s.pending}</b><span>Awaiting approval</span></div>
+    <div class="shc ${heroFilter==="progress"?"on":""}" onclick="setHF('progress')"><b style="color:var(--stone)">${s.progress}</b><span>In training</span></div>
+    <div class="shc ${heroFilter==="nosticker"?"on":""}" onclick="setHF('nosticker')"><b style="color:var(--dirt)">${s.nosticker}</b><span>Sticker pending</span></div>`;
+  const q = $("q").value.trim().toLowerCase();
+  let rows = ROWS.filter(r => !q || [r.name, r.truck, r.company, r.code].some(v => String(v).toLowerCase().includes(q)));
+  if (heroFilter === "certified") rows = rows.filter(r => r.status === "certified");
+  if (heroFilter === "expiring") rows = rows.filter(r => r.status === "certified" && r.days_left != null && r.days_left <= 30);
+  if (heroFilter === "expired") rows = rows.filter(r => r.status === "expired");
+  if (heroFilter === "pending") rows = rows.filter(r => r.status === "pending");
+  if (heroFilter === "progress") rows = rows.filter(r => ["started", "video_done", "passed"].includes(r.status));
+  if (heroFilter === "nosticker") rows = rows.filter(r => r.status === "certified" && !r.sticker);
+  const chip = (r) => {
+    let cls = "c-" + r.status, lbl = r.status.toUpperCase().replace("_", " ");
+    if (r.status === "certified" && r.days_left != null && r.days_left <= 30) { cls = "c-expiring"; lbl = "EXPIRES " + r.days_left + "D"; }
+    return `<span class="chip ${cls}">${lbl}</span>`;
+  };
+  $("tbl").innerHTML = `<div class="row hd"><span>Code</span><span>Driver</span><span>Truck</span><span>Company</span><span>Status</span><span>Certified</span><span>Expires</span><span>Quiz</span><span>Sticker</span><span></span></div>` +
+    (rows.length ? rows.map(r => `<div class="row">
+      <b class="code">${esc(r.code)}</b>
+      <span><b>${esc(r.name)}</b>${r.mode === "manual" ? ' <span class="muted" title="Juan approves this one">🔒</span>' : ""}${r.cdl ? `<br><span class="muted">CDL ${esc(r.cdl)}</span>` : ""}${r.phone ? `<br><a class="muted" href="tel:${esc(r.phone)}">${esc(r.phone)}</a>` : ""}</span>
+      <b>${esc(r.truck)}</b>
+      <span>${esc(r.company)}${r.source === "manual" ? ' <span class="muted">(manual)</span>' : ""}</span>
+      <span>${chip(r)}</span>
+      <span>${esc((r.certified_at || "").slice(0, 10)) || "—"}</span>
+      <span>${esc(r.expires_at) || "—"}${r.days_left != null ? ` <span class="muted">(${r.days_left}d)</span>` : ""}</span>
+      <span>${r.quiz !== "0/0" ? esc(r.quiz) : "—"}</span>
+      <span><input class="stk-in" value="${esc(r.sticker)}" placeholder="#" onchange="setSticker(${r.id}, this.value)"></span>
+      <span class="acts noprint">
+        ${r.status === "pending" ? `<button title="APPROVE — certify this driver" style="background:var(--ok);color:#fff;border-color:var(--ok);font-weight:800;" onclick="act(${r.id}, 'approve')">✓</button>` : ""}
+        ${r.signed ? `<button title="View signature" onclick="openSig(${r.id}, '${esc(r.name)}')">✍</button>` : ""}
+        <button title="Verify page (QR target)" onclick="window.open('/?code=${esc(r.code)}','_blank')">🔍</button>
+        <button title="History" onclick="openEvents(${r.id}, '${esc(r.code)}')">🕘</button>
+        <button title="Retrain (resets video + quiz)" onclick="act(${r.id}, 'renew')">↺</button>
+        <button title="Revoke" onclick="if(confirm('Revoke ${esc(r.code)}?'))act(${r.id}, 'revoke')">⛔</button>
+      </span>
+    </div>`).join("") : `<div class="row"><span class="muted" style="grid-column:1/-1;">No drivers yet. Share the driver link to get started.</span></div>`);
+}
+async function setSticker(id, v){ await api("admin/update", { id, sticker: v.trim(), by: WHO }); toast("Sticker saved"); load(); }
+async function act(id, action){ await api("admin/update", { id, action, by: WHO }); toast(action === "renew" ? "Reset for retraining" : action === "approve" ? "Approved — certified ✓" : "Revoked"); load(); }
+function openSig(id, name){ openModal(`<h3 style="margin-bottom:10px;">✍ ${esc(name)}</h3><img src="${API}/api/safety/admin/signature?id=${id}" style="width:100%;border:1px solid var(--line);border-radius:10px;background:#fff;"><button class="btn" onclick="closeModal()" style="width:100%;">Close</button>`); }
+async function openEvents(id, code){
+  const j = await api("admin/events?id=" + id);
+  openModal(`<h3 style="margin-bottom:10px;">🕘 ${esc(code)}</h3>` +
+    (j.events || []).map(e => `<div style="padding:6px 0;border-top:1px solid var(--line);font-size:12.5px;"><b>${esc(e.kind)}</b> <span class="muted">${new Date(e.ts).toLocaleString("en-US")}</span><br><span class="muted">${esc(e.detail)}</span></div>`).join("") +
+    `<button class="btn" onclick="closeModal()" style="width:100%;">Close</button>`);
+}
+function openManual(){
+  openModal(`<h3 style="margin-bottom:10px;">＋ Manual certification</h3>
+    <p class="muted" style="margin-bottom:10px;">For a driver trained in person (tailgate session). Counts the same 180 days.</p>
+    <label class="muted">FULL NAME</label><input id="mName" style="width:100%;padding:10px;border:2px solid var(--line);border-radius:10px;margin-bottom:8px;font-family:'Poppins';">
+    <label class="muted">TRUCK #</label><input id="mTruck" style="width:100%;padding:10px;border:2px solid var(--line);border-radius:10px;margin-bottom:8px;font-family:'Poppins';">
+    <label class="muted">COMPANY ON TRUCK</label><input id="mCo" style="width:100%;padding:10px;border:2px solid var(--line);border-radius:10px;margin-bottom:8px;font-family:'Poppins';">
+    <label class="muted">TRAINED ON (date, optional)</label><input id="mDate" type="date" style="width:100%;padding:10px;border:2px solid var(--line);border-radius:10px;margin-bottom:8px;font-family:'Poppins';">
+    <label class="muted">STICKER # (optional)</label><input id="mStk" style="width:100%;padding:10px;border:2px solid var(--line);border-radius:10px;margin-bottom:8px;font-family:'Poppins';">
+    <button class="btn" style="width:100%;" onclick="saveManual()">CERTIFY</button>`);
+}
+async function saveManual(){
+  const j = await api("admin/manual", { name: $("mName").value, truck: $("mTruck").value, company: $("mCo").value, date: $("mDate").value, sticker: $("mStk").value, by: WHO });
+  if (j.error) { toast("⚠ " + j.error); return; }
+  closeModal(); toast("Certified " + j.code + " · expires " + j.expires_at); load();
+}
+function upVid(lang){
+  const f = (lang === "en" ? $("vidEn") : $("vidEs")).files[0];
+  if (!f) { toast("Pick the MP4 first"); return; }
+  const st = lang === "en" ? $("stEn") : $("stEs");
+  const xhr = new XMLHttpRequest();
+  xhr.open("PUT", API + "/api/safety/admin/video?lang=" + lang);
+  xhr.setRequestHeader("Content-Type", "video/mp4");
+  xhr.upload.onprogress = (e) => { st.textContent = "⬆ " + Math.round((e.loaded / e.total) * 100) + "%"; };
+  xhr.onload = () => { try { const j = JSON.parse(xhr.responseText); st.textContent = j.ok ? ("✓ " + j.mb + " MB") : ("⚠ " + j.error); if (j.ok) toast("Video " + lang.toUpperCase() + " uploaded"); } catch (e) { st.textContent = "⚠ upload failed"; } };
+  xhr.onerror = () => { st.textContent = "⚠ upload failed"; };
+  xhr.send(f);
+}
+// 🔗 LIGAS DE ENTRENAMIENTO: una por chofer, con las reglas que Juan decida (aprobación
+// automática al pasar o aprobación suya, y pedir CDL o no), opcionalmente pre-llenada.
+let linkAuto = true, linkCdl = false;
+function shareLink(){
+  openModal(`<h3 style="margin-bottom:6px;">🔗 New training link</h3>
+    <p class="muted" style="margin-bottom:10px;">Each link carries its own rules. Prefill is optional — the driver can finish typing.</p>
+    <label class="muted">CERTIFICATION</label><br>
+    <span class="togg"><button id="tgAuto" class="${linkAuto ? "on" : ""}" onclick="linkAuto=true;tgPaint()">Auto on pass</button><button id="tgMan" class="${linkAuto ? "" : "on"}" onclick="linkAuto=false;tgPaint()">I approve</button></span><br>
+    <label class="muted">ASK FOR CDL</label><br>
+    <span class="togg"><button id="tgNoCdl" class="${linkCdl ? "" : "on"}" onclick="linkCdl=false;tgPaint()">No</button><button id="tgCdl" class="${linkCdl ? "on" : ""}" onclick="linkCdl=true;tgPaint()">Yes, required</button></span>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+      <input id="lkName" placeholder="Driver name (optional)" style="padding:10px;border:2px solid var(--line);border-radius:10px;font-family:'Poppins';grid-column:1/-1;">
+      <input id="lkTruck" placeholder="Truck # (optional)" style="padding:10px;border:2px solid var(--line);border-radius:10px;font-family:'Poppins';">
+      <input id="lkCo" placeholder="Company (optional)" style="padding:10px;border:2px solid var(--line);border-radius:10px;font-family:'Poppins';">
+    </div>
+    <button class="btn" style="width:100%;" onclick="makeLink()">CREATE LINK</button>
+    <div id="lkOut"></div>
+    <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:10px;">
+      <span class="muted">Generic link (auto-certify, no CDL):</span>
+      <input id="shUrl" value="${location.origin + "/"}" readonly style="width:100%;padding:9px;border:2px solid var(--line);border-radius:10px;margin-top:6px;font-family:'Poppins';font-size:12.5px;" onclick="this.select()">
+      <button class="btn" style="width:100%;background:var(--road);" onclick="navigator.clipboard.writeText($('shUrl').value).then(()=>toast('Copied'))">COPY GENERIC LINK</button>
+    </div>
+    <div id="lkRecent" style="margin-top:12px;"></div>`);
+  loadInvites();
+}
+// 🏷 código de staff (Miguel): verlo y cambiarlo
+async function staffCode(){
+  const j = await api("admin/staff-code");
+  openModal(`<h3 style="margin-bottom:8px;">🏷 Field staff code</h3>
+    <p class="muted">Give this code to the safety manager (Miguel). When he scans a driver QR, this code unlocks APPROVE and STICKER right on his phone. Change it anytime to cut access.</p>
+    <div style="font-size:34px;font-weight:800;letter-spacing:6px;color:var(--sand);text-align:center;margin:14px 0;">${esc(j.code)}</div>
+    <input id="newStaff" placeholder="New code (min 4 chars)" style="width:100%;padding:10px;border:2px solid var(--line);border-radius:10px;font-family:Poppins;">
+    <button class="btn" style="width:100%;" onclick="saveStaff()">CHANGE CODE</button>`);
+}
+async function saveStaff(){
+  const j = await api("admin/staff-code", { code: $("newStaff").value });
+  if (j.error) { toast("⚠ " + j.error); return; }
+  toast("Staff code changed"); closeModal();
+}
+function tgPaint(){
+  $("tgAuto").classList.toggle("on", linkAuto); $("tgMan").classList.toggle("on", !linkAuto);
+  $("tgNoCdl").classList.toggle("on", !linkCdl); $("tgCdl").classList.toggle("on", linkCdl);
+}
+async function makeLink(){
+  const j = await api("admin/invite", { auto: linkAuto, cdl: linkCdl, name: $("lkName").value, truck: $("lkTruck").value, company: $("lkCo").value, by: WHO });
+  if (j.error) { toast("⚠ " + j.error); return; }
+  const url = location.origin + "/?i=" + j.key;
+  $("lkOut").innerHTML = `<input id="lkUrl" value="${url}" readonly style="width:100%;padding:10px;border:2px solid var(--sand);border-radius:10px;margin:10px 0 6px;font-family:'Poppins';font-size:12.5px;" onclick="this.select()">
+    <button class="btn" style="width:100%;" onclick="navigator.clipboard.writeText($('lkUrl').value).then(()=>toast('Link copied — send it to the driver'))">COPY DRIVER LINK</button>
+    <div id="lkQr" style="display:flex;justify-content:center;margin-top:10px;"></div>`;
+  try { new QRCode($("lkQr"), { text: url, width: 130, height: 130, colorDark: "#4A4F55" }); } catch (e) {}
+  loadInvites();
+}
+async function loadInvites(){
+  const j = await api("admin/invites").catch(() => null);
+  if (!j || !j.invites || !j.invites.length || !$("lkRecent")) return;
+  $("lkRecent").innerHTML = `<span class="muted">Recent links:</span>` + j.invites.slice(0, 8).map(i => `
+    <div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:12px;">
+      <b style="color:var(--dirt);">${esc(i.key)}</b>
+      <span style="flex:1;" class="muted">${esc(i.name || i.truck || i.company || "blank")} · ${i.auto ? "auto" : "I approve"}${i.cdl ? " · CDL" : ""}${i.used ? " · ✓ used (" + esc(i.cert_status) + ")" : ""}</span>
+      <button style="border:1.5px solid var(--line);background:#fff;border-radius:8px;padding:4px 8px;cursor:pointer;font-size:11px;" onclick="navigator.clipboard.writeText(location.origin + '/?i=' + '${esc(i.key)}').then(()=>toast('Copied'))">copy</button>
+    </div>`).join("");
+}
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>load();</script>
+</body>
+</html>
