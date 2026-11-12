@@ -171,7 +171,24 @@ function streamUpload(req, res, dest, capMB, done) {
   let bytes = 0, dead = false;
   req.on('data', (c) => { bytes += c.length; if (bytes > capMB * 1048576 && !dead) { dead = true; ws.destroy(); try { fs.unlinkSync(tmp); } catch (e) {}; send(res, 413, { error: 'too big (max ' + capMB + ' MB)' }); req.destroy(); } });
   req.pipe(ws);
-  ws.on('finish', () => { if (dead) return; try { fs.renameSync(tmp, dest); } catch (e) { return send(res, 500, { error: String(e.message || e) }); } done(bytes); });
+  ws.on('finish', () => {
+    if (dead) return;
+    // Windows niega el rename si el archivo viejo está ABIERTO (p. ej. un chofer viendo el
+    // video en ese momento) → EPERM. Reintentamos unos segundos (los streams de video son
+    // cortos) y como último recurso copiamos encima.
+    const land = (tries) => {
+      try {
+        try { if (fs.existsSync(dest)) fs.unlinkSync(dest); } catch (e) {}
+        fs.renameSync(tmp, dest);
+        return done(bytes);
+      } catch (e) {
+        if (tries > 0) return setTimeout(() => land(tries - 1), 700);
+        try { fs.copyFileSync(tmp, dest); try { fs.unlinkSync(tmp); } catch (e2) {}; return done(bytes); }
+        catch (e3) { return send(res, 500, { error: 'file is busy — try again in a minute (' + String(e3.message || e3) + ')' }); }
+      }
+    };
+    land(8);
+  });
   ws.on('error', (e) => { if (!dead) send(res, 500, { error: String(e.message || e) }); });
 }
 function serveFile(res, file, ct, extraHead) {

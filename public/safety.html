@@ -45,7 +45,11 @@ input:focus{outline:none;border-color:var(--sand);}
 .banner{background:#FBF6E8;border:1.5px solid var(--sand);border-radius:12px;padding:11px 13px;font-size:13px;margin-bottom:14px;line-height:1.45;}
 /* video */
 .vwrap{position:relative;border-radius:14px;overflow:hidden;background:#000;margin:14px 0;}
-video{width:100%;display:block;max-height:60vh;background:#000;}
+video{width:100%;display:block;max-height:72vh;background:#000;}
+/* en DESKTOP el paso del video se sale del carril angosto y se hace GRANDE */
+@media(min-width:760px){
+  #pVideo{position:relative;width:min(92vw,960px);left:50%;transform:translateX(-50%);}
+}
 .vctl{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--road);}
 .vctl button{border:none;background:rgba(255,255,255,.14);color:#fff;border-radius:10px;padding:9px 14px;font-family:'Poppins';font-weight:700;font-size:14px;cursor:pointer;}
 .vbar{flex:1;height:7px;border-radius:4px;background:rgba(255,255,255,.2);overflow:hidden;}
@@ -175,6 +179,7 @@ footer{max-width:560px;margin:26px auto 0;padding:0 18px 30px;text-align:center;
       <div class="vctl">
         <button id="vPlay">▶</button>
         <button id="vBack">↺ 10s</button>
+        <button id="vFull" title="Full screen">⛶</button>
         <div class="vbar"><i id="vFill"></i></div>
         <div class="vtime" id="vTime">0:00 / 0:00</div>
       </div>
@@ -427,6 +432,14 @@ async function initVideo(){
   v.addEventListener("play", () => { $("vPlay").textContent = "⏸"; startBeats(); });
   v.addEventListener("pause", () => { $("vPlay").textContent = "▶"; });
   $("vBack").onclick = () => { v.currentTime = Math.max(0, v.currentTime - 10); };
+  // ⛶ pantalla completa: iPhone usa el fullscreen nativo del <video> (el candado
+  // anti-adelantar sigue vivo ahí — los eventos seeking disparan igual)
+  $("vFull").onclick = () => {
+    if (v.webkitEnterFullscreen) { try { v.webkitEnterFullscreen(); return; } catch (e) {} }
+    const w = $("vid");
+    if (w.requestFullscreen) w.requestFullscreen();
+    else if (w.webkitRequestFullscreen) w.webkitRequestFullscreen();
+  };
   v.addEventListener("ended", () => sendBeat(true));
 }
 function startBeats(){
