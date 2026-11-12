@@ -280,8 +280,8 @@ const LS = { get(k){ try{ return localStorage.getItem(k); }catch(e){ return null
 // ---------- i18n ----------
 const I = {
   t_welcome:  { es: "Entrenamiento Safe Dumping", en: "Safe Dumping Training" },
-  t_welcome_sub: { es: "Antes de tu primera carga en Project Roadrunner necesitas este entrenamiento: un video corto, las reglas del sitio y un quiz rápido. Tarda unos 15 minutos.",
-                   en: "Before your first load at Project Roadrunner you need this training: a short video, the site rules and a quick quiz. It takes about 15 minutes." },
+  t_welcome_sub: { es: "Antes de tu primera carga en Project Roadrunner necesitas este entrenamiento: un video corto y las reglas del sitio. Tarda unos 10 minutos.",
+                   en: "Before your first load at Project Roadrunner you need this training: a short video and the site rules. It takes about 10 minutes." },
   t_sticker_rule: { es: "🪧 Al terminar, Milestone te entrega tu sticker de Proof of Training. Sin sticker visible en la ventana, no dumpeas en este sitio.",
                     en: "🪧 When you finish, Milestone issues your Proof of Training sticker. No visible sticker on your window, no dumping on this site." },
   f_name:    { es: "Nombre completo", en: "Full name" },
@@ -312,8 +312,8 @@ const I = {
   quiz_pass: { es: "¡Pasaste! {s} de {t} correctas.", en: "You passed! {s} of {t} correct." },
   quiz_fail: { es: "Te faltó: {s} de {t}. Revisa tus respuestas y vuelve a intentar.", en: "Not yet: {s} of {t}. Review your answers and try again." },
   quiz_missing: { es: "Contesta todas las preguntas.", en: "Answer every question." },
-  t_sign:    { es: "4 · Tu firma", en: "4 · Your signature" },
-  t_sign_sub: { es: "Firma con tu dedo. Al firmar confirmas que viste el video, entiendes el SOP y vas a dumpear seguro en este sitio.",
+  t_sign:    { es: "3 · Tu firma", en: "3 · Your signature" },
+  t_sign_sub: { es: "Firma con tu dedo. Al firmar confirmas que viste el video completo, entiendes las reglas del sitio y vas a dumpear seguro.",
                 en: "Sign with your finger. By signing you confirm you watched the video, understand the SOP and will dump safely on this site." },
   b_clear:   { es: "Borrar firma", en: "Clear signature" },
   b_certify: { es: "FIRMAR Y CERTIFICARME", en: "SIGN AND GET CERTIFIED" },
@@ -369,7 +369,7 @@ function paint(){
 function setLang(l){ lang = l; LS.set("sd_lang", l); paint(); if (quizData) renderQuizShell(); renderRules(); }
 
 // ---------- steps ----------
-const STEPS = ["pReg","pVideo","pRules","pQuiz","pSign","pCert"];
+const STEPS = ["pReg","pVideo","pRules","pSign","pCert"]; // quiz REMOVED (John Anderson, 2026-11-12)
 function show(step){
   STEPS.concat(["pVerify","pPending"]).forEach(id => $(id).classList.add("hide"));
   $(step).classList.remove("hide");
@@ -378,7 +378,6 @@ function show(step){
   window.scrollTo({ top: 0 });
   if (step === "pVideo") initVideo();
   if (step === "pRules") renderRules();
-  if (step === "pQuiz") loadQuiz();
   if (step === "pSign") initSig();
   if (step === "pCert") renderCert();
 }
@@ -480,7 +479,7 @@ function checkRules(){
   const all = [...$("rulesList").querySelectorAll("input")];
   $("btnRulesNext").disabled = !(all.length && all.every(c => c.checked));
 }
-$("btnRulesNext").onclick = () => show("pQuiz");
+$("btnRulesNext").onclick = () => show("pSign");
 
 // ---------- quiz ----------
 async function loadQuiz(){
@@ -645,6 +644,9 @@ const wm = $("wmSeal"); wm.onload = () => wm.classList.add("on"); wm.src = API +
 // ---------- arranque ----------
 paint();
 let INVITE = "";
+// liga con sesión (?t=TOKEN): adopta la sesión en este teléfono (demo / cambio de equipo)
+const qTok = new URLSearchParams(location.search).get("t");
+if (qTok && /^[a-f0-9]{32}$/.test(qTok)) { token = qTok; LS.set("sd_token", qTok); try { history.replaceState(null, "", location.pathname); } catch (e) {} }
 const qCode = new URLSearchParams(location.search).get("code");
 // 🎬 splash: 2.3 s o un tap — en modo verificación (QR) ni aparece
 const splashEl = $("splash");

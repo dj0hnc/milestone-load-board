@@ -347,7 +347,8 @@ const server = http.createServer(async (req, res) => {
       const b = await readJson(req) || {};
       const row = byToken(q, b);
       if (!row) return send(res, 401, { error: 'bad token' });
-      if (!['passed', 'pending', 'certified'].includes(row.status)) return send(res, 409, { error: 'pass the quiz first' });
+      // quiz REMOVED (John Anderson 2026-11-12): se firma directo después del video + reglas
+      if (!['video_done', 'passed', 'pending', 'certified'].includes(row.status)) return send(res, 409, { error: 'finish the video first' });
       const sig = String(b.signature || '');
       if (!/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]{200,}$/.test(sig) || sig.length > 300000) return send(res, 400, { error: 'signature required' });
       if (row.approve_mode === 'manual') {
