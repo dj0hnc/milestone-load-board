@@ -151,9 +151,43 @@ function byToken(req) {
   return get('SELECT * FROM safety_certs WHERE token = ?', t) || null;
 }
 
-function attach(router, { config, log }) {
+function attach(router, { config, log, statesKey }) {
   migrate();
   const say = (m) => { try { log('safety: ' + m); } catch (e) {} };
+
+  // ---------- DOCUMENTOS (SOP / Driver Info Sheet / Program Plan) ----------
+  // Los PDFs reales del programa NO van al repo (es público): viven en data/safety/ y
+  // se suben por el canal de máquinas (states-key, igual que los feeds del board) o
+  // quedan ya subidos. Los choferes los descargan desde el flujo (/api/safety/doc).
+  const DOCS = { sop: 'Safe_Dumping_Practices_SOP.pdf', infosheet: 'Safe_Dumping_Driver_Info_Sheet.pdf', plan: 'Safe_Dumping_Program_Plan.pdf' };
+  const docPath = (name) => DOCS[name] ? path.join(VIDEO_DIR, 'doc_' + name + '.pdf') : null;
+  router.put('/api/safety/doc-upload', (req, res) => {
+    if (String((req.query || {}).key || '') !== statesKey) return res.status(401).json({ error: 'bad key' });
+    const name = String((req.query || {}).name || '');
+    const dest = docPath(name);
+    if (!dest) return res.status(400).json({ error: 'name must be sop | infosheet | plan' });
+    const tmp = dest + '.part';
+    const ws = fs.createWriteStream(tmp);
+    let bytes = 0, dead = false;
+    req.on('data', (c) => { bytes += c.length; if (bytes > 25 * 1048576 && !dead) { dead = true; ws.destroy(); try { fs.unlinkSync(tmp); } catch (e) {}; res.status(413).json({ error: 'too big' }); req.destroy(); } });
+    req.pipe(ws);
+    ws.on('finish', () => {
+      if (dead) return;
+      try { fs.renameSync(tmp, dest); } catch (e) { return res.status(500).json({ error: String(e.message || e) }); }
+      say('doc ' + name + ' uploaded: ' + Math.round(bytes / 1024) + ' KB');
+      res.json({ ok: true, name, kb: Math.round(bytes / 1024) });
+    });
+    ws.on('error', (e) => { if (!dead) res.status(500).json({ error: String(e.message || e) }); });
+  });
+  router.get('/api/safety/doc', (req, res) => {
+    const name = String(req.query.name || '');
+    const f = docPath(name);
+    if (!f || !fs.existsSync(f)) return res.status(404).json({ error: 'doc not uploaded' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="' + DOCS[name] + '"');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    fs.createReadStream(f).pipe(res);
+  });
 
   // ---------- CHOFER (abierto) ----------
   router.post('/api/safety/register', (req, res) => {
@@ -215,7 +249,9 @@ function attach(router, { config, log }) {
       const f = path.join(VIDEO_DIR, 'video_' + l + '.mp4');
       st[l] = fs.existsSync(f) ? Math.round(fs.statSync(f).size / 1048576) : 0; // MB
     }
-    res.json({ ok: true, videos: st });
+    const docs = {};
+    for (const n of Object.keys(DOCS)) docs[n] = fs.existsSync(docPath(n)) ? 1 : 0;
+    res.json({ ok: true, videos: st, docs });
   });
 
   // HEARTBEAT del video: el cliente reporta cada ~10 s; el server acumula con tope

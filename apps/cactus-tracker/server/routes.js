@@ -2072,7 +2072,7 @@ function createRouter({ config, newmile, log }) {
   // ---------- static frontend ----------
   // el HTML nunca se cachea (cada deploy llega al instante al cel); los iconos sí
   // 🦺 Safe Dumping Training (Project Roadrunner) — módulo aparte, ver server/safety.js
-  require('./safety').attach(router, { config, log });
+  require('./safety').attach(router, { config, log, statesKey });
 
   router.use(express.static(path.join(__dirname, '..', 'public'), {
     setHeaders: (res, filePath) => {

@@ -88,6 +88,7 @@ video{width:100%;display:block;max-height:60vh;background:#000;}
 .vbig{text-align:center;padding:26px 18px;}
 .vbig .st{font-size:30px;font-weight:800;}
 .vbig.okv .st{color:var(--ok);} .vbig.badv .st{color:var(--bad);}
+.doclink{display:block;text-align:center;margin-top:14px;padding:12px;border:2px solid var(--line);border-radius:12px;color:var(--dirt);font-weight:700;font-size:13.5px;text-decoration:none;}
 footer{max-width:560px;margin:26px auto 0;padding:0 18px 30px;text-align:center;color:var(--stone);font-size:11px;line-height:1.6;}
 .hide{display:none !important;}
 </style>
@@ -146,6 +147,7 @@ footer{max-width:560px;margin:26px auto 0;padding:0 18px 30px;text-align:center;
     <h2 data-i="t_rules"></h2>
     <p class="sub" data-i="t_rules_sub"></p>
     <div id="rulesList"></div>
+    <a class="doclink hide" id="lnkSop" target="_blank" data-i="d_sop"></a>
     <button class="btn" id="btnRulesNext" disabled data-i="b_continue"></button>
   </div>
 
@@ -183,6 +185,7 @@ footer{max-width:560px;margin:26px auto 0;padding:0 18px 30px;text-align:center;
       <div class="cfoot" data-i="c_foot"></div>
     </div>
     <button class="btn sec" id="btnShot" data-i="b_screenshot"></button>
+    <a class="doclink hide" id="lnkInfo" target="_blank" data-i="d_info"></a>
   </div>
 
   <!-- VERIFICACIÓN PÚBLICA (QR) -->
@@ -247,6 +250,8 @@ const I = {
   err_fields:{ es: "Llena nombre, truck y compañía.", en: "Fill in name, truck and company." },
   already:   { es: "Ya tienes una certificación vigente. Tu código: ", en: "You already have a valid certification. Your code: " },
   vid_missing: { es: "El video aún no está cargado — avísale a dispatch.", en: "The video isn't uploaded yet — tell dispatch." },
+  d_sop:  { es: "📄 Descargar el SOP completo (PDF)", en: "📄 Download the full SOP (PDF)" },
+  d_info: { es: "📄 Hoja del chofer — guárdala en tu cabina (PDF)", en: "📄 Driver Info Sheet — keep it in your cab (PDF)" },
   v_valid:   { es: "✓ VÁLIDO / VALID", en: "✓ VALID / VÁLIDO" },
   v_expired: { es: "✕ VENCIDO / EXPIRED", en: "✕ EXPIRED / VENCIDO" },
   v_revoked: { es: "✕ REVOCADO / REVOKED", en: "✕ REVOKED / REVOCADO" },
@@ -498,6 +503,16 @@ async function runVerify(code){
     else { $("vSt").textContent = t("v_pending"); box.className = "vbig"; }
   } catch (e) { $("vSt").textContent = t("err_net"); }
 }
+
+// ---------- documentos (SOP / info sheet) ----------
+(async () => {
+  try {
+    const r = await fetch(API + "/api/safety/video-status");
+    const j = await r.json();
+    if (j.docs && j.docs.sop) { $("lnkSop").href = API + "/api/safety/doc?name=sop"; $("lnkSop").classList.remove("hide"); }
+    if (j.docs && j.docs.infosheet) { $("lnkInfo").href = API + "/api/safety/doc?name=infosheet"; $("lnkInfo").classList.remove("hide"); }
+  } catch (e) {}
+})();
 
 // ---------- arranque ----------
 paint();
