@@ -49,7 +49,13 @@ try {
     if (fs.existsSync(dep)) { fs.writeFileSync(path.join(dep, 'safety-keys.json'), JSON.stringify({ adminCode: CFG.adminCode, uploadKey: CFG.uploadKey, port: PORT, at: new Date().toISOString() }, null, 2)); break; }
   }
 } catch (e) {}
-const ADMIN_COOKIE = crypto.createHash('sha256').update('sd|' + CFG.adminCode).digest('hex').slice(0, 40);
+const cookieOf = (code) => crypto.createHash('sha256').update('sd|' + code).digest('hex').slice(0, 40);
+let ADMIN_COOKIE = cookieOf(CFG.adminCode);
+function setAdminCode(code) {
+  CFG.adminCode = code;
+  ADMIN_COOKIE = cookieOf(code); // las sesiones viejas dejan de valer al instante
+  try { fs.writeFileSync(CFG_FILE, JSON.stringify(CFG, null, 2)); } catch (e) {}
+}
 
 // ---------- db ----------
 const db = new DatabaseSync(path.join(DATA, 'safety.db'));
@@ -368,6 +374,16 @@ const server = http.createServer(async (req, res) => {
       const f = IMGS[q.name] ? filePath(q.name) : null;
       if (!f || !fs.existsSync(f)) return send(res, 404, { error: 'img not uploaded' });
       return serveFile(res, f, 'image/jpeg', { 'Cache-Control': 'public, max-age=86400' });
+    }
+    // canal de máquinas (uploadKey): cambiar el admin code sin tocar la office
+    if (M === 'POST' && p === '/api/safety/set-admin-code') {
+      if (String(q.key || '') !== CFG.uploadKey) return send(res, 401, { error: 'bad key' });
+      const b = await readJson(req) || {};
+      const c = String(b.code || '').trim().toUpperCase().slice(0, 12);
+      if (c.length < 4) return send(res, 400, { error: 'min 4 characters' });
+      setAdminCode(c);
+      log('admin code changed via machine channel');
+      return send(res, 200, { ok: true });
     }
     // canal de máquinas (uploadKey): PDFs, sellos y videos sin sesión
     if (M === 'PUT' && p === '/api/safety/doc-upload') {

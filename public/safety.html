@@ -342,7 +342,7 @@ const RULES = [
     s: { es: "Reporto soft spots, ladeadas y near misses a dispatch el mismo día: 972-808-7660.", en: "I report soft spots, leans and near misses to dispatch the same day: 972-808-7660." } }
 ];
 
-let lang = LS.get("sd_lang") || ((navigator.language || "es").startsWith("en") ? "en" : "es");
+let lang = LS.get("sd_lang") || "en"; // default INGLES (Juan 2026-11-12); el chofer lo cambia y se le recuerda
 let token = LS.get("sd_token") || "";
 let myCode = LS.get("sd_code") || "";
 let quizData = null;
