@@ -96,7 +96,8 @@ body{font-family:'Poppins',system-ui,sans-serif;background:var(--bg);color:var(-
 
 <script>
 "use strict";
-const API = ""; // app standalone
+const API = "."; // rutas relativas (ver safety.html)
+const DRV = location.origin + location.pathname.replace(/(admin|safety-admin\.html)\/?$/, ""); // raiz del flujo del chofer
 const $ = (id) => document.getElementById(id);
 let ROWS = [], FILTER = "";
 const WHO = (() => { try { return localStorage.getItem("ct_author") || localStorage.getItem("cactus-who") || "admin"; } catch(e){ return "admin"; } })();
@@ -194,7 +195,7 @@ function render(){
       <span class="acts noprint">
         ${r.status === "pending" ? `<button title="APPROVE — certify this driver" style="background:var(--ok);color:#fff;border-color:var(--ok);font-weight:800;" onclick="act(${r.id}, 'approve')">✓</button>` : ""}
         ${r.signed ? `<button title="View signature" onclick="openSig(${r.id}, '${esc(r.name)}')">✍</button>` : ""}
-        <button title="Verify page (QR target)" onclick="window.open('/?code=${esc(r.code)}','_blank')">🔍</button>
+        <button title="Verify page (QR target)" onclick="window.open(DRV+'?code=${esc(r.code)}','_blank')">🔍</button>
         <button title="History" onclick="openEvents(${r.id}, '${esc(r.code)}')">🕘</button>
         <button title="Retrain (resets video + quiz)" onclick="act(${r.id}, 'renew')">↺</button>
         <button title="Revoke" onclick="if(confirm('Revoke ${esc(r.code)}?'))act(${r.id}, 'revoke')">⛔</button>
@@ -256,7 +257,7 @@ function shareLink(){
     <div id="lkOut"></div>
     <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:10px;">
       <span class="muted">Generic link (auto-certify, no CDL):</span>
-      <input id="shUrl" value="${location.origin + "/"}" readonly style="width:100%;padding:9px;border:2px solid var(--line);border-radius:10px;margin-top:6px;font-family:'Poppins';font-size:12.5px;" onclick="this.select()">
+      <input id="shUrl" value="${DRV}" readonly style="width:100%;padding:9px;border:2px solid var(--line);border-radius:10px;margin-top:6px;font-family:'Poppins';font-size:12.5px;" onclick="this.select()">
       <button class="btn" style="width:100%;background:var(--road);" onclick="navigator.clipboard.writeText($('shUrl').value).then(()=>toast('Copied'))">COPY GENERIC LINK</button>
     </div>
     <div id="lkRecent" style="margin-top:12px;"></div>`);
@@ -283,7 +284,7 @@ function tgPaint(){
 async function makeLink(){
   const j = await api("admin/invite", { auto: linkAuto, cdl: linkCdl, name: $("lkName").value, truck: $("lkTruck").value, company: $("lkCo").value, by: WHO });
   if (j.error) { toast("⚠ " + j.error); return; }
-  const url = location.origin + "/?i=" + j.key;
+  const url = DRV + "?i=" + j.key;
   $("lkOut").innerHTML = `<input id="lkUrl" value="${url}" readonly style="width:100%;padding:10px;border:2px solid var(--sand);border-radius:10px;margin:10px 0 6px;font-family:'Poppins';font-size:12.5px;" onclick="this.select()">
     <button class="btn" style="width:100%;" onclick="navigator.clipboard.writeText($('lkUrl').value).then(()=>toast('Link copied — send it to the driver'))">COPY DRIVER LINK</button>
     <div id="lkQr" style="display:flex;justify-content:center;margin-top:10px;"></div>`;
@@ -297,7 +298,7 @@ async function loadInvites(){
     <div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:12px;">
       <b style="color:var(--dirt);">${esc(i.key)}</b>
       <span style="flex:1;" class="muted">${esc(i.name || i.truck || i.company || "blank")} · ${i.auto ? "auto" : "I approve"}${i.cdl ? " · CDL" : ""}${i.used ? " · ✓ used (" + esc(i.cert_status) + ")" : ""}</span>
-      <button style="border:1.5px solid var(--line);background:#fff;border-radius:8px;padding:4px 8px;cursor:pointer;font-size:11px;" onclick="navigator.clipboard.writeText(location.origin + '/?i=' + '${esc(i.key)}').then(()=>toast('Copied'))">copy</button>
+      <button style="border:1.5px solid var(--line);background:#fff;border-radius:8px;padding:4px 8px;cursor:pointer;font-size:11px;" onclick="navigator.clipboard.writeText(DRV + '?i=' + '${esc(i.key)}').then(()=>toast('Copied'))">copy</button>
     </div>`).join("");
 }
 </script>

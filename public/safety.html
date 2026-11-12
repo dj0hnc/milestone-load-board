@@ -235,7 +235,7 @@ footer{max-width:560px;margin:26px auto 0;padding:0 18px 30px;text-align:center;
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
 "use strict";
-const API = ""; // app standalone: API en la raiz del dominio
+const API = "."; // rutas RELATIVAS: sirve igual en / que detras de /safety/ (proxy office)
 // localStorage puede fallar (modo privado) — nunca truena la página
 const LS = { get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }, set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }, del(k){ try{ localStorage.removeItem(k); }catch(e){} } };
 
@@ -519,7 +519,7 @@ async function renderCert(){
   $("cCode").textContent = c.code || myCode;
   $("cValid").textContent = t("valid_until") + ": " + (c.expires_at || "");
   $("cQr").innerHTML = "";
-  const verifyUrl = location.origin + "/?code=" + encodeURIComponent(c.code || myCode);
+  const verifyUrl = location.origin + location.pathname.replace(/[^/]*$/, "") + "?code=" + encodeURIComponent(c.code || myCode);
   try { new QRCode($("cQr"), { text: verifyUrl, width: 140, height: 140, colorDark: "#4A4F55" }); } catch (e) {}
   $("btnShot").onclick = () => alert(lang === "es" ? "iPhone: botón lateral + subir volumen.\nAndroid: encendido + bajar volumen." : "iPhone: side button + volume up.\nAndroid: power + volume down.");
 }

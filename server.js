@@ -180,7 +180,13 @@ try { VERSION = execSync('git rev-parse --short HEAD', { cwd: ROOT }).toString()
 const server = http.createServer(async (req, res) => {
   try {
     const u = new URL(req.url, 'http://x');
-    const p = u.pathname.replace(/\/+$/, '') || '/';
+    // Detrás del proxy de la office la app vive bajo /safety (opción A de Juan):
+    // /safety → /safety/ (para que las rutas relativas de la página resuelvan bien)
+    // y el prefijo se pela aquí — la app es la misma sola o con prefijo.
+    let p0 = u.pathname;
+    if (p0 === '/safety') { res.writeHead(301, { Location: '/safety/' + (u.search || '') }); return res.end(); }
+    if (p0.startsWith('/safety/')) p0 = p0.slice(7);
+    const p = p0.replace(/\/+$/, '') || '/';
     const q = Object.fromEntries(u.searchParams);
     const M = req.method;
 
