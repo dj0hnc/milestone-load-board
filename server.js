@@ -526,7 +526,8 @@ const server = http.createServer(async (req, res) => {
         const rows = all('SELECT * FROM safety_certs ORDER BY id DESC');
         const esc = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
         const head = ['Code', 'Name', 'Truck', 'Company', 'Phone', 'CDL', 'Status', 'Mode', 'Certified', 'Expires', 'Sticker', 'Quiz', 'Tries', 'VideoWatchedSec', 'Source', 'AddedBy', 'Notes', 'Created', 'IP', 'Device'];
-        const lines = rows.map(r => [r.code, r.name, r.truck, r.company, r.phone, r.cdl || '', effStatus(r), r.approve_mode || 'auto', (r.certified_at || '').slice(0, 10), r.expires_at, r.sticker,
+        const showSt = (s) => s === 'certified' ? 'approved' : s; // Juan: "approved" en todo lo visible
+        const lines = rows.map(r => [r.code, r.name, r.truck, r.company, r.phone, r.cdl || '', showSt(effStatus(r)), r.approve_mode || 'auto', (r.certified_at || '').slice(0, 10), r.expires_at, r.sticker,
           r.quiz_score + '/' + r.quiz_total, r.quiz_tries, Math.round(r.video_seconds || 0), r.source, r.added_by, r.notes, (r.created_at || '').slice(0, 10), r.ip || '', deviceOf(r.ua)].map(esc).join(','));
         res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="roadrunner_safe_dumping_roster.csv"' });
         return res.end('﻿' + head.join(',') + '\n' + lines.join('\n'));
