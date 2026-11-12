@@ -292,10 +292,12 @@ function upVid(lang){
 }
 // 🔗 LIGAS DE ENTRENAMIENTO: una por chofer, con las reglas que Juan decida (aprobación
 // automática al pasar o aprobación suya, y pedir CDL o no), opcionalmente pre-llenada.
-let linkAuto = true, linkCdl = false;
+let linkAuto = true, linkCdl = false, linkFleet = false;
 function shareLink(){
   openModal(`<h3 style="margin-bottom:6px;">🔗 New training link</h3>
-    <p class="muted" style="margin-bottom:10px;">Each link carries its own rules. Prefill is optional — the driver can finish typing.</p>
+    <p class="muted" style="margin-bottom:10px;">Each link carries its own rules.</p>
+    <label class="muted">LINK TYPE</label><br>
+    <span class="togg"><button id="tgOne" class="${linkFleet ? "" : "on"}" onclick="linkFleet=false;tgPaint()">Single driver</button><button id="tgFleet" class="${linkFleet ? "on" : ""}" onclick="linkFleet=true;tgPaint()">🚛 Whole fleet</button></span><br>
     <label class="muted">APPROVAL</label><br>
     <span class="togg"><button id="tgAuto" class="${linkAuto ? "on" : ""}" onclick="linkAuto=true;tgPaint()">Auto on pass</button><button id="tgMan" class="${linkAuto ? "" : "on"}" onclick="linkAuto=false;tgPaint()">I approve</button></span><br>
     <label class="muted">ASK FOR CDL</label><br>
@@ -305,6 +307,7 @@ function shareLink(){
       <input id="lkTruck" placeholder="Truck # (optional)" style="padding:10px;border:2px solid var(--line);border-radius:10px;font-family:'Poppins';">
       <input id="lkCo" placeholder="Company (optional)" style="padding:10px;border:2px solid var(--line);border-radius:10px;font-family:'Poppins';">
     </div>
+    <p class="muted" id="fleetHint" style="display:none;margin-top:6px;">🚛 Fleet link: ONE link for all of this fleet's drivers. Each driver enters their own name and truck; the company is locked to the fleet name, and everyone lands grouped under it.</p>
     <button class="btn" style="width:100%;" onclick="makeLink()">CREATE LINK</button>
     <div id="lkOut"></div>
     <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:10px;">
@@ -332,9 +335,16 @@ async function saveStaff(){
 function tgPaint(){
   $("tgAuto").classList.toggle("on", linkAuto); $("tgMan").classList.toggle("on", !linkAuto);
   $("tgNoCdl").classList.toggle("on", !linkCdl); $("tgCdl").classList.toggle("on", linkCdl);
+  $("tgOne").classList.toggle("on", !linkFleet); $("tgFleet").classList.toggle("on", linkFleet);
+  $("lkName").style.display = linkFleet ? "none" : "";
+  $("lkTruck").style.display = linkFleet ? "none" : "";
+  $("lkCo").placeholder = linkFleet ? "Fleet / company name (REQUIRED)" : "Company (optional)";
+  $("lkCo").style.gridColumn = linkFleet ? "1/-1" : "";
+  $("fleetHint").style.display = linkFleet ? "" : "none";
 }
 async function makeLink(){
-  const j = await api("admin/invite", { auto: linkAuto, cdl: linkCdl, name: $("lkName").value, truck: $("lkTruck").value, company: $("lkCo").value, by: WHO });
+  if (linkFleet && $("lkCo").value.trim().length < 2) { toast("⚠ Fleet link needs the fleet name"); return; }
+  const j = await api("admin/invite", { auto: linkAuto, cdl: linkCdl, fleet: linkFleet, name: linkFleet ? "" : $("lkName").value, truck: linkFleet ? "" : $("lkTruck").value, company: $("lkCo").value, by: WHO });
   if (j.error) { toast("⚠ " + j.error); return; }
   const url = DRV + "?i=" + j.key;
   $("lkOut").innerHTML = `<input id="lkUrl" value="${url}" readonly style="width:100%;padding:10px;border:2px solid var(--sand);border-radius:10px;margin:10px 0 6px;font-family:'Poppins';font-size:12.5px;" onclick="this.select()">
@@ -349,7 +359,7 @@ async function loadInvites(){
   $("lkRecent").innerHTML = `<span class="muted">Recent links:</span>` + j.invites.slice(0, 8).map(i => `
     <div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:12px;">
       <b style="color:var(--dirt);">${esc(i.key)}</b>
-      <span style="flex:1;" class="muted">${esc(i.name || i.truck || i.company || "blank")} · ${i.auto ? "auto" : "I approve"}${i.cdl ? " · CDL" : ""}${i.used ? " · ✓ used (" + esc(i.cert_status) + ")" : ""}</span>
+      <span style="flex:1;" class="muted">${i.fleet ? "🚛 FLEET: " : ""}${esc(i.name || i.truck || i.company || "blank")} · ${i.auto ? "auto" : "I approve"}${i.cdl ? " · CDL" : ""}${i.fleet ? " · " + (i.uses || 0) + " driver" + (i.uses === 1 ? "" : "s") : (i.used ? " · ✓ used (" + esc(i.cert_status) + ")" : "")}</span>
       <button style="border:1.5px solid var(--line);background:#fff;border-radius:8px;padding:4px 8px;cursor:pointer;font-size:11px;" onclick="navigator.clipboard.writeText(DRV + '?i=' + '${esc(i.key)}').then(()=>toast('Copied'))">copy</button>
     </div>`).join("");
 }

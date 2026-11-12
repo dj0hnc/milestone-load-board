@@ -668,6 +668,8 @@ async function bootInvite(){
       if (j.prefill.name) $("fName").value = j.prefill.name;
       if (j.prefill.truck) $("fTruck").value = j.prefill.truck;
       if (j.prefill.company) $("fCompany").value = j.prefill.company;
+      // 🚛 link de FLOTILLA: la compañía viene fija del link — el chofer no la puede cambiar
+      if (j.fleet) { const c = $("fCompany"); c.readOnly = true; c.style.background = "#F4F1EA"; c.style.color = "var(--stone)"; }
       if (j.prefill.phone) $("fPhone").value = j.prefill.phone;
       if (j.ask_cdl) $("cdlBlock").classList.remove("hide");
     }

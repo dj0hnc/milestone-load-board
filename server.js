@@ -86,8 +86,9 @@ const metaGet = (k, d) => { const r = get('SELECT value FROM meta WHERE key = ?'
 const metaSet = (k, v) => run('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', k, String(v));
 const nowISO = () => new Date().toISOString();
 if (!metaGet('safety_staff_code', '')) metaSet('safety_staff_code', CFG.staffCode || randCode(6));
-// columna nueva sobre tabla ya creada (migración aditiva)
+// columnas nuevas sobre tablas ya creadas (migración aditiva)
 try { db.exec(`ALTER TABLE safety_certs ADD COLUMN ip TEXT DEFAULT ''`); } catch (e) {}
+try { db.exec(`ALTER TABLE safety_invites ADD COLUMN fleet INTEGER DEFAULT 0`); } catch (e) {} // 🚛 link de FLOTILLA: reusable, compañía fija
 
 // 📍 ¿de dónde se conectó el chofer? Guardamos la IP real (la pasa ngrok en
 // x-forwarded-for) y el dispositivo (user-agent) — TODO queda en nuestra base,
@@ -253,16 +254,18 @@ const server = http.createServer(async (req, res) => {
       if (!rateOk(req, 'inv', 120)) return send(res, 429, { error: 'too many requests' });
       const inv = get('SELECT * FROM safety_invites WHERE key = ?', String(q.i || '').toUpperCase());
       if (!inv) return send(res, 200, { ok: true, found: false });
-      return send(res, 200, { ok: true, found: true, prefill: { name: inv.name, truck: inv.truck, company: inv.company, phone: inv.phone }, ask_cdl: !!inv.ask_cdl, auto: !!inv.auto_approve });
+      return send(res, 200, { ok: true, found: true, prefill: { name: inv.name, truck: inv.truck, company: inv.company, phone: inv.phone }, ask_cdl: !!inv.ask_cdl, auto: !!inv.auto_approve, fleet: !!inv.fleet });
     }
     if (M === 'POST' && p === '/api/safety/register') {
       if (!rateOk(req, 'reg', 40)) return send(res, 429, { error: 'too many requests' });
       const b = await readJson(req) || {};
       const name = String(b.name || '').trim().slice(0, 60);
       const truck = String(b.truck || '').trim().toUpperCase().slice(0, 20);
-      const company = String(b.company || '').trim().slice(0, 60);
-      if (name.length < 3 || !truck || company.length < 2) return send(res, 400, { error: 'name, truck and company are required' });
       const inv = b.invite ? get('SELECT * FROM safety_invites WHERE key = ?', String(b.invite).toUpperCase()) : null;
+      // 🚛 link de flotilla: la compañía la manda EL LINK, no el chofer (así todos quedan
+      // agrupados idénticos bajo su fleet, sin typos)
+      const company = (inv && inv.fleet && inv.company) ? inv.company : String(b.company || '').trim().slice(0, 60);
+      if (name.length < 3 || !truck || company.length < 2) return send(res, 400, { error: 'name, truck and company are required' });
       const cdl = String(b.cdl || '').trim().toUpperCase().slice(0, 25);
       if (inv && inv.ask_cdl && cdl.length < 4) return send(res, 400, { error: 'cdl required' });
       const dup = all('SELECT * FROM safety_certs WHERE UPPER(truck) = ? ORDER BY id DESC LIMIT 5', truck)
@@ -505,21 +508,25 @@ const server = http.createServer(async (req, res) => {
       }
       if (M === 'POST' && p === '/api/safety/admin/invite') {
         const b = await readJson(req) || {};
+        const isFleet = !!b.fleet;
+        const company = String(b.company || '').trim().slice(0, 60);
+        if (isFleet && company.length < 2) return send(res, 400, { error: 'fleet link needs the fleet/company name' });
         let key = '';
         for (let t = 0; t < 50 && !key; t++) { const s = randCode(8); if (!get('SELECT id FROM safety_invites WHERE key = ?', s)) key = s; }
-        run(`INSERT INTO safety_invites (key, name, truck, company, phone, auto_approve, ask_cdl, note, created_by, created_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?)`,
-          key, String(b.name || '').trim().slice(0, 60), String(b.truck || '').trim().toUpperCase().slice(0, 20),
-          String(b.company || '').trim().slice(0, 60), String(b.phone || '').trim().slice(0, 20),
-          b.auto === false ? 0 : 1, b.cdl ? 1 : 0, String(b.note || '').slice(0, 120),
+        run(`INSERT INTO safety_invites (key, name, truck, company, phone, auto_approve, ask_cdl, fleet, note, created_by, created_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+          key, isFleet ? '' : String(b.name || '').trim().slice(0, 60), isFleet ? '' : String(b.truck || '').trim().toUpperCase().slice(0, 20),
+          company, String(b.phone || '').trim().slice(0, 20),
+          b.auto === false ? 0 : 1, b.cdl ? 1 : 0, isFleet ? 1 : 0, String(b.note || '').slice(0, 120),
           String(b.by || 'admin').slice(0, 40), nowISO());
-        return send(res, 200, { ok: true, key });
+        return send(res, 200, { ok: true, key, fleet: isFleet });
       }
       if (M === 'GET' && p === '/api/safety/admin/invites') {
-        const rows = all(`SELECT i.*, c.status AS cert_status, c.name AS cert_name, c.code AS cert_code
+        const rows = all(`SELECT i.*, c.status AS cert_status, c.name AS cert_name, c.code AS cert_code,
+                          (SELECT COUNT(*) FROM safety_certs c2 WHERE c2.invite_key = i.key) AS uses
                           FROM safety_invites i LEFT JOIN safety_certs c ON c.id = i.used_cert_id ORDER BY i.id DESC LIMIT 60`);
         return send(res, 200, { ok: true, invites: rows.map(r => ({ key: r.key, name: r.name, truck: r.truck, company: r.company,
-          auto: !!r.auto_approve, cdl: !!r.ask_cdl, note: r.note, by: r.created_by, created_at: r.created_at,
+          auto: !!r.auto_approve, cdl: !!r.ask_cdl, fleet: !!r.fleet, uses: r.uses || 0, note: r.note, by: r.created_by, created_at: r.created_at,
           used: !!r.used_cert_id, cert_status: r.cert_status || '', cert_name: r.cert_name || '', cert_code: r.cert_code || '' })) });
       }
       if (M === 'GET' && p === '/api/safety/admin/export.csv') {
