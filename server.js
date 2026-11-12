@@ -535,6 +535,20 @@ const server = http.createServer(async (req, res) => {
       if (M === 'GET' && p === '/api/safety/admin/events') {
         return send(res, 200, { ok: true, events: all('SELECT ts, kind, detail FROM safety_events WHERE cert_id = ? ORDER BY id DESC LIMIT 50', Number(q.id) || 0) });
       }
+      // ▶ DEMO: sesión de prueba con el video ya "visto" — para ver qué sigue después
+      // del video sin verlo completo. Borra el demo anterior para no acumular filas.
+      if (M === 'POST' && p === '/api/safety/admin/demo') {
+        for (const d of all(`SELECT id FROM safety_certs WHERE source = 'demo'`)) {
+          run('DELETE FROM safety_events WHERE cert_id = ?', d.id);
+          run('DELETE FROM safety_certs WHERE id = ?', d.id);
+        }
+        const token = crypto.randomBytes(16).toString('hex');
+        const r = run(`INSERT INTO safety_certs (code, token, name, truck, company, lang, status, video_seconds, video_dur, source, added_by, created_at, updated_at)
+             VALUES (?,?,?,?,?,'en','video_done',481,481,'demo','admin demo',?,?)`,
+          newCode(), token, 'DEMO PREVIEW', 'DEMO-01', 'Milestone Demo', nowISO(), nowISO());
+        ev(r.lastInsertRowid, 'register', 'demo session (video pre-watched)');
+        return send(res, 200, { ok: true, token });
+      }
       if (M === 'GET' && p === '/api/safety/admin/staff-code') return send(res, 200, { ok: true, code: metaGet('safety_staff_code', '') });
       if (M === 'POST' && p === '/api/safety/admin/staff-code') {
         const b = await readJson(req) || {};

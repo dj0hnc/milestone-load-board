@@ -90,7 +90,8 @@ body{font-family:'Poppins',system-ui,sans-serif;background:var(--bg);color:var(-
       <div><label>Spanish video (MP4)</label><input type="file" id="vidEs" accept="video/mp4"><button class="btn" onclick="upVid('es')">Upload ES</button> <span class="muted" id="stEs"></span>
         <video id="pvEs" controls preload="metadata" style="width:100%;margin-top:8px;border-radius:10px;background:#000;display:none;"></video></div>
     </div>
-    <p class="muted" style="margin-top:8px;">Videos live only on the office server (data/safety/), never in the repo. Drivers must watch 90% — progress is measured server side, skipping forward is blocked.</p>
+    <button class="btn" style="margin-top:12px;background:var(--road);" onclick="runDemo()">▶ PREVIEW — what the driver sees AFTER the video</button>
+    <p class="muted" style="margin-top:8px;">Videos live only on the office server (data/safety/), never in the repo. Drivers must watch 90% — progress is measured server side, skipping forward is blocked. The preview opens a demo driver (DEMO-01) with the video already watched; it replaces the previous demo each time.</p>
   </div>
 </div>
 
@@ -270,6 +271,12 @@ async function saveManual(){
   const j = await api("admin/manual", { name: $("mName").value, truck: $("mTruck").value, company: $("mCo").value, date: $("mDate").value, sticker: $("mStk").value, by: WHO });
   if (j.error) { toast("⚠ " + j.error); return; }
   closeModal(); toast("Approved " + j.code + " · expires " + j.expires_at); load();
+}
+// ▶ demo: abre el flujo del chofer ya con el video visto (reglas → firma → aprobado)
+async function runDemo(){
+  const j = await api("admin/demo", {});
+  if (j.error) { toast("⚠ " + j.error); return; }
+  window.open(DRV + "?t=" + j.token, "_blank");
 }
 function upVid(lang){
   const f = (lang === "en" ? $("vidEn") : $("vidEs")).files[0];
