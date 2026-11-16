@@ -425,6 +425,16 @@ const server = http.createServer(async (req, res) => {
       log('admin code changed via machine channel');
       return send(res, 200, { ok: true });
     }
+    // canal de máquinas (uploadKey): resumen SOLO LECTURA del avance (para revisar sin entrar al admin)
+    if (M === 'GET' && p === '/api/safety/summary') {
+      if (String(q.key || '') !== CFG.uploadKey) return send(res, 401, { error: 'bad key' });
+      const rows = all('SELECT * FROM safety_certs ORDER BY id DESC');
+      return send(res, 200, { ok: true, rows: rows.map(r => ({
+        code: r.code, name: r.name, truck: r.truck, company: r.company, status: effStatus(r),
+        sticker: r.sticker || '', watched: Math.round(r.video_seconds || 0), dur: Math.round(r.video_dur || 0),
+        source: r.source, created_at: r.created_at, updated_at: r.updated_at, expires_at: r.expires_at
+      })) });
+    }
     // canal de máquinas (uploadKey): PDFs, sellos y videos sin sesión
     if (M === 'PUT' && p === '/api/safety/doc-upload') {
       if (String(q.key || '') !== CFG.uploadKey) return send(res, 401, { error: 'bad key' });
