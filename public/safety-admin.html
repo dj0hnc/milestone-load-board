@@ -27,10 +27,21 @@ body{font-family:'Poppins',system-ui,sans-serif;background:var(--bg);color:var(-
 .tools button{border:2px solid var(--line);background:var(--card);color:var(--road);border-radius:11px;padding:10px 14px;font-family:'Poppins';font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;}
 .tools button.gold{background:var(--sand);border-color:var(--sand);color:#fff;}
 .tbl{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow-x:auto;}
-.row{display:grid;grid-template-columns:96px 1.4fr 92px 1.3fr 110px 96px 118px 70px 96px 170px;gap:8px;align-items:center;padding:9px 14px;border-top:1px solid var(--line);font-size:13px;min-width:1150px;}
+/* roster: 5 columnas con dos líneas cada una — aire, lectura rápida */
+.row{display:grid;grid-template-columns:minmax(210px,1.5fr) minmax(170px,1.2fr) minmax(170px,1fr) 118px 132px;gap:18px;align-items:center;padding:15px 20px;border-top:1px solid var(--line);font-size:13.5px;min-width:900px;transition:background .12s;}
 .row:first-child{border-top:none;}
-.row.hd{font-weight:700;font-size:11px;letter-spacing:.6px;color:var(--stone);text-transform:uppercase;}
-.row b.code{font-weight:800;color:var(--dirt);letter-spacing:.5px;}
+.row:not(.hd):hover{background:#FBFAF6;}
+.row.hd{font-weight:700;font-size:10.5px;letter-spacing:.9px;color:var(--stone);text-transform:uppercase;padding:11px 20px;background:#FAF8F3;border-radius:14px 14px 0 0;}
+.c1{font-weight:700;font-size:14px;color:var(--ink);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.c2{font-size:12px;color:var(--stone);margin-top:3px;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.c2 a{color:var(--stone);}
+.code{font-weight:800;color:var(--dirt);letter-spacing:.6px;font-size:11.5px;}
+.truck{font-weight:800;font-size:15px;color:var(--road);}
+.menu{position:fixed;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(40,42,46,.18);padding:6px;z-index:90;min-width:220px;}
+.menu button{display:flex;gap:10px;align-items:center;width:100%;border:none;background:none;padding:9px 11px;border-radius:8px;font-family:'Poppins';font-size:13px;color:var(--ink);cursor:pointer;text-align:left;}
+.menu button:hover{background:#F4F1EA;}
+.menu button.danger{color:var(--bad);}
+.menu hr{border:none;border-top:1px solid var(--line);margin:5px 4px;}
 .chip{display:inline-block;border-radius:14px;padding:3px 10px;font-size:11px;font-weight:800;letter-spacing:.4px;}
 .c-certified{background:var(--ok-bg);color:var(--ok);} .c-expired,.c-revoked{background:var(--bad-bg);color:var(--bad);}
 .c-expiring{background:var(--warn-bg);color:var(--warn);}
@@ -39,9 +50,12 @@ body{font-family:'Poppins',system-ui,sans-serif;background:var(--bg);color:var(-
 .togg{display:inline-flex;border:2px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:8px;}
 .togg button{border:none;background:#fff;color:var(--stone);padding:8px 12px;font-family:'Poppins';font-weight:700;font-size:12px;cursor:pointer;}
 .togg button.on{background:var(--sand);color:#fff;}
-.row .acts{display:flex;gap:5px;justify-content:flex-end;}
-.row .acts button{border:1.5px solid var(--line);background:#fff;border-radius:8px;min-width:28px;height:28px;cursor:pointer;font-size:12px;}
-.stk-in{width:84px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:'Poppins';font-size:12.5px;}
+.row .acts{display:flex;gap:6px;justify-content:flex-end;}
+.row .acts button{border:1.5px solid var(--line);background:#fff;border-radius:9px;min-width:34px;height:34px;cursor:pointer;font-size:14px;color:var(--road);}
+.row .acts button:hover{border-color:var(--sand);}
+.row .acts button.ok{background:var(--ok);border-color:var(--ok);color:#fff;font-weight:800;}
+.stk-in{width:100%;padding:8px 10px;border:1.5px solid var(--line);border-radius:9px;font-family:'Poppins';font-size:13px;}
+.stk-in:focus{outline:none;border-color:var(--sand);}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:14px;}
 .panel h3{font-size:15px;font-weight:700;color:var(--road);margin-bottom:10px;}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;}
@@ -55,7 +69,7 @@ body{font-family:'Poppins',system-ui,sans-serif;background:var(--bg);color:var(-
 .modal{background:#fff;border-radius:16px;max-width:460px;width:100%;padding:20px;max-height:85vh;overflow:auto;}
 @media print {
   .hdr,.tools,.hero,.panel,.acts,.noprint{display:none !important;}
-  .tbl{border:none;} .row{min-width:0;grid-template-columns:90px 1.3fr 80px 1.2fr 100px 90px 100px 60px 80px;font-size:11px;}
+  .tbl{border:none;} .row{min-width:0;grid-template-columns:1.5fr 1.2fr 1fr 90px;font-size:11px;padding:8px 6px;} .menu{display:none !important;}
   body{background:#fff;}
 }
 </style>
@@ -191,28 +205,75 @@ function render(){
     if (r.status === "certified" && r.days_left != null && r.days_left <= 30) { cls = "c-expiring"; lbl = "EXPIRES " + r.days_left + "D"; }
     return `<span class="chip ${cls}">${lbl}</span>`;
   };
-  $("tbl").innerHTML = `<div class="row hd"><span>Code</span><span>Driver</span><span>Truck</span><span>Company</span><span>Status</span><span>Approved</span><span>Expires</span><span>Quiz</span><span>Sticker</span><span></span></div>` +
+  const dates = (r) => r.status === "certified" || r.status === "expired"
+    ? `${esc((r.certified_at || "").slice(0, 10))} → ${esc(r.expires_at)}${r.days_left != null ? " · " + r.days_left + "d" : ""}`
+    : r.status === "started" ? "watching the video" : r.status === "video_done" ? "video done, not signed" : r.status === "pending" ? "signed — waiting for you" : "";
+  $("tbl").innerHTML = `<div class="row hd"><span>Driver</span><span>Truck · Company</span><span>Status</span><span>Sticker</span><span></span></div>` +
     (rows.length ? rows.map(r => `<div class="row">
-      <b class="code">${esc(r.code)}</b>
-      <span><b>${esc(r.name)}</b>${r.mode === "manual" ? ' <span class="muted" title="Juan approves this one">🔒</span>' : ""}${r.cdl ? `<br><span class="muted">CDL ${esc(r.cdl)}</span>` : ""}${r.phone ? `<br><a class="muted" href="tel:${esc(r.phone)}">${esc(r.phone)}</a>` : ""}${r.ip ? `<br><span class="muted" title="connection when registering">📶 ${esc(r.device)} · ${esc(r.ip)}</span>` : ""}</span>
-      <b>${esc(r.truck)}</b>
-      <span>${esc(r.company)}${r.source === "manual" ? ' <span class="muted">(manual)</span>' : ""}</span>
-      <span>${chip(r)}</span>
-      <span>${esc((r.certified_at || "").slice(0, 10)) || "—"}</span>
-      <span>${esc(r.expires_at) || "—"}${r.days_left != null ? ` <span class="muted">(${r.days_left}d)</span>` : ""}</span>
-      <span>${r.quiz !== "0/0" ? esc(r.quiz) : "—"}</span>
-      <span><input class="stk-in" value="${esc(r.sticker)}" placeholder="#" onchange="setSticker(${r.id}, this.value)"></span>
-      <span class="acts noprint">
-        ${r.status === "pending" ? `<button title="APPROVE this driver" style="background:var(--ok);color:#fff;border-color:var(--ok);font-weight:800;" onclick="act(${r.id}, 'approve')">✓</button>` : ""}
-        ${r.signed ? `<button title="View signature" onclick="openSig(${r.id}, '${esc(r.name)}')">✍</button>` : ""}
-        <button title="Verify page (QR target)" onclick="window.open(DRV+'?code=${esc(r.code)}','_blank')">🔍</button>
-        <button title="Certificate QR — view / download to send to the driver" onclick="openQr('${esc(r.code)}', '${esc(r.name)}', '${esc(r.truck)}', '${esc(r.expires_at)}')">🔳</button>
-        <button title="History" onclick="openEvents(${r.id}, '${esc(r.code)}')">🕘</button>
-        <button title="Retrain (resets video + quiz)" onclick="act(${r.id}, 'renew')">↺</button>
-        <button title="Revoke" onclick="if(confirm('Revoke ${esc(r.code)}?'))act(${r.id}, 'revoke')">⛔</button>
-        <button title="DELETE the row — the driver can register again from zero" onclick="if(confirm('DELETE ${esc(r.code)} (${esc(r.name)}) completely? This cannot be undone.'))act(${r.id}, 'delete')">🗑</button>
-      </span>
+      <div>
+        <div class="c1">${esc(r.name)}${r.mode === "manual" ? ' <span title="you approve this one">🔒</span>' : ""}</div>
+        <div class="c2"><span class="code">${esc(r.code)}</span>${r.phone ? ` · <a href="tel:${esc(r.phone)}">${esc(r.phone)}</a>` : ""}${r.cdl ? ` · CDL ${esc(r.cdl)}` : ""}</div>
+      </div>
+      <div>
+        <div class="c1"><span class="truck">${esc(r.truck)}</span></div>
+        <div class="c2" title="${esc(r.company)}">${esc(r.company)}${r.source === "manual" ? " · manual" : ""}</div>
+      </div>
+      <div>
+        <div>${chip(r)}</div>
+        <div class="c2">${dates(r)}</div>
+      </div>
+      <div><input class="stk-in" value="${esc(r.sticker)}" placeholder="Sticker #" onchange="setSticker(${r.id}, this.value)"></div>
+      <div class="acts noprint">
+        ${r.status === "pending" ? `<button class="ok" title="APPROVE this driver" onclick="act(${r.id}, 'approve')">✓</button>` : ""}
+        <button title="Edit — fix name, truck, company, phone or CDL" onclick="openEdit(${r.id})">✎</button>
+        <button title="Approval QR — view / download to send to the driver" onclick="openQr('${esc(r.code)}', '${esc(r.name)}', '${esc(r.truck)}', '${esc(r.expires_at)}')">🔳</button>
+        <button title="More" onclick="openMenu(event, ${r.id})">⋯</button>
+      </div>
     </div>`).join("") : `<div class="row"><span class="muted" style="grid-column:1/-1;">No drivers yet. Share the driver link to get started.</span></div>`);
+}
+// ⋯ menú con lo que se usa menos (firma, verificar, historial, retrain, revoke, borrar)
+function closeMenu(){ const m = document.getElementById("rowMenu"); if (m) m.remove(); }
+function openMenu(ev, id){
+  ev.stopPropagation(); closeMenu();
+  const r = ROWS.find(x => x.id === id); if (!r) return;
+  const m = document.createElement("div"); m.id = "rowMenu"; m.className = "menu";
+  m.innerHTML = `
+    ${r.signed ? `<button onclick="closeMenu();openSig(${r.id}, '${esc(r.name)}')">✍ View signature</button>` : ""}
+    <button onclick="closeMenu();window.open(DRV+'?code=${esc(r.code)}','_blank')">🔍 Open verify page</button>
+    <button onclick="closeMenu();openEvents(${r.id}, '${esc(r.code)}')">🕘 History</button>
+    ${r.ip ? `<button disabled style="cursor:default;color:var(--stone);font-size:12px;">📶 ${esc(r.device)} · ${esc(r.ip)}</button>` : ""}
+    <hr>
+    <button onclick="closeMenu();act(${r.id}, 'renew')">↺ Retrain (reset video)</button>
+    <button class="danger" onclick="closeMenu();if(confirm('Revoke ${esc(r.code)}?'))act(${r.id}, 'revoke')">⛔ Revoke</button>
+    <button class="danger" onclick="closeMenu();if(confirm('DELETE ${esc(r.code)} (${esc(r.name)}) completely? This cannot be undone.'))act(${r.id}, 'delete')">🗑 Delete — can register again</button>`;
+  document.body.appendChild(m);
+  const b = ev.currentTarget.getBoundingClientRect();
+  const left = Math.min(b.right - m.offsetWidth, window.innerWidth - m.offsetWidth - 10);
+  const top = (b.bottom + m.offsetHeight + 8 > window.innerHeight) ? b.top - m.offsetHeight - 6 : b.bottom + 6;
+  m.style.left = Math.max(10, left) + "px"; m.style.top = Math.max(10, top) + "px";
+}
+document.addEventListener("click", (e) => { if (!e.target.closest || !e.target.closest("#rowMenu")) closeMenu(); });
+window.addEventListener("scroll", closeMenu, true);
+// ✎ corregir lo que el chofer tecleó mal
+function openEdit(id){
+  const r = ROWS.find(x => x.id === id); if (!r) return;
+  const f = (k, lbl, v) => `<label class="muted" style="display:block;margin:10px 0 4px;font-weight:700;letter-spacing:.4px;font-size:11px;">${lbl}</label>
+    <input id="ed_${k}" value="${esc(v || "")}" style="width:100%;padding:10px 12px;border:2px solid var(--line);border-radius:10px;font-family:'Poppins';font-size:14px;">`;
+  openModal(`<h3 style="margin-bottom:2px;">✎ Edit driver</h3>
+    <p class="muted">${esc(r.code)} · every change is saved to the history</p>
+    ${f("name", "FULL NAME", r.name)}${f("truck", "TRUCK #", r.truck)}${f("company", "COMPANY ON TRUCK", r.company)}
+    ${f("phone", "PHONE", r.phone)}${f("cdl", "CDL", r.cdl)}${f("notes", "NOTES", r.notes)}
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button class="btn" style="flex:1;border:none;background:var(--sand);color:#fff;border-radius:10px;padding:12px;font-family:'Poppins';font-weight:700;cursor:pointer;" onclick="saveEdit(${r.id})">SAVE</button>
+      <button class="btn" style="flex:1;border:none;background:var(--road);color:#fff;border-radius:10px;padding:12px;font-family:'Poppins';font-weight:700;cursor:pointer;" onclick="closeModal()">Cancel</button>
+    </div>`);
+}
+async function saveEdit(id){
+  const body = { id, by: WHO };
+  for (const k of ["name", "truck", "company", "phone", "cdl", "notes"]) body[k] = $("ed_" + k).value;
+  const j = await api("admin/update", body);
+  if (j.error) { toast("⚠ " + j.error); return; }
+  closeModal(); toast("Saved ✓"); load();
 }
 async function setSticker(id, v){ await api("admin/update", { id, sticker: v.trim(), by: WHO }); toast("Sticker saved"); load(); }
 async function act(id, action){ await api("admin/update", { id, action, by: WHO }); toast(action === "renew" ? "Reset for retraining" : action === "approve" ? "Approved ✓" : action === "delete" ? "Deleted — they can register again" : "Revoked"); load(); }

@@ -484,8 +484,19 @@ const server = http.createServer(async (req, res) => {
         if (!row) return send(res, 404, { error: 'not found' });
         const by = String(b.by || 'admin').slice(0, 40);
         if ('sticker' in b) { run('UPDATE safety_certs SET sticker = ?, updated_at = ? WHERE id = ?', String(b.sticker || '').slice(0, 20), nowISO(), row.id); ev(row.id, 'sticker', b.sticker + ' by ' + by); }
-        if ('notes' in b) run('UPDATE safety_certs SET notes = ?, updated_at = ? WHERE id = ?', String(b.notes || '').slice(0, 200), nowISO(), row.id);
-        if ('phone' in b) run('UPDATE safety_certs SET phone = ?, updated_at = ? WHERE id = ?', String(b.phone || '').slice(0, 20), nowISO(), row.id);
+        // ✎ corregir datos que el chofer tecleó mal (cada cambio queda en el historial)
+        const EDIT = { name: [60, false], truck: [20, true], company: [60, false], phone: [20, false], cdl: [25, true], notes: [200, false] };
+        const changes = [];
+        for (const [k, [max, upper]] of Object.entries(EDIT)) {
+          if (!(k in b)) continue;
+          let v = String(b[k] == null ? '' : b[k]).trim().slice(0, max);
+          if (upper) v = v.toUpperCase();
+          if ((k === 'name' && v.length < 3) || (k === 'truck' && !v) || (k === 'company' && v.length < 2)) return send(res, 400, { error: k + ' is required' });
+          if (v === String(row[k] || '')) continue;
+          run(`UPDATE safety_certs SET ${k} = ?, updated_at = ? WHERE id = ?`, v, nowISO(), row.id);
+          changes.push(k + ': "' + (row[k] || '') + '" → "' + v + '"');
+        }
+        if (changes.length) ev(row.id, 'edited', changes.join(' · ') + ' — by ' + by);
         if (b.action === 'approve') {
           const w = certWindow();
           run(`UPDATE safety_certs SET status = 'certified', certified_at = ?, expires_at = ?, updated_at = ? WHERE id = ?`, w.at, w.exp, nowISO(), row.id);
