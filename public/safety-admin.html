@@ -109,7 +109,7 @@ body{font-family:'Poppins',system-ui,sans-serif;background:var(--bg);color:var(-
   </div>
 </div>
 
-<div class="modalbg" id="modalBg" onclick="if(event.target===this)closeModal()"><div class="modal" id="modalBody"></div></div>
+<div class="modalbg" id="modalBg" onmousedown="window.__bgDown=(event.target===this)" onclick="if(event.target===this&&window.__bgDown)closeModal();window.__bgDown=false"><div class="modal" id="modalBody"></div></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -258,7 +258,7 @@ window.addEventListener("scroll", closeMenu, true);
 function openEdit(id){
   const r = ROWS.find(x => x.id === id); if (!r) return;
   const f = (k, lbl, v) => `<label class="muted" style="display:block;margin:10px 0 4px;font-weight:700;letter-spacing:.4px;font-size:11px;">${lbl}</label>
-    <input id="ed_${k}" value="${esc(v || "")}" style="width:100%;padding:10px 12px;border:2px solid var(--line);border-radius:10px;font-family:'Poppins';font-size:14px;">`;
+    <input id="ed_${k}" autocomplete="off" value="${esc(v || "")}" style="width:100%;padding:10px 12px;border:2px solid var(--line);border-radius:10px;font-family:'Poppins';font-size:14px;">`;
   openModal(`<h3 style="margin-bottom:2px;">✎ Edit driver</h3>
     <p class="muted">${esc(r.code)} · every change is saved to the history</p>
     ${f("name", "FULL NAME", r.name)}${f("truck", "TRUCK #", r.truck)}${f("company", "COMPANY ON TRUCK", r.company)}
