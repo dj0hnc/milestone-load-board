@@ -67,8 +67,61 @@ body{font-family:'Poppins',system-ui,sans-serif;background:var(--bg);color:var(-
 .modalbg{position:fixed;inset:0;background:rgba(40,42,46,.55);display:none;align-items:center;justify-content:center;z-index:80;padding:16px;}
 .modalbg.show{display:flex;}
 .modal{background:#fff;border-radius:16px;max-width:460px;width:100%;padding:20px;max-height:85vh;overflow:auto;}
+/* 📊 two views: Roster (day-to-day admin) | Report (the Tony report, live + filters) */
+.vtabs{display:flex;gap:6px;margin-bottom:14px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:5px;width:max-content;max-width:100%;}
+.vtabs button{border:none;background:none;border-radius:9px;padding:9px 18px;font-family:'Poppins';font-weight:700;font-size:13px;color:var(--stone);cursor:pointer;}
+.vtabs button.on{background:var(--road);color:#fff;}
+.rp-f{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:14px;}
+.rp-f label{display:block;font-size:10px;font-weight:700;letter-spacing:.6px;color:var(--stone);margin-bottom:3px;}
+.rp-f select,.rp-f input{border:2px solid var(--line);border-radius:9px;padding:7px 9px;font-family:'Poppins';font-size:12.5px;background:#fff;color:var(--ink);}
+.rp-f input[type=text]{width:190px;}
+.rp-f .btns{margin-left:auto;display:flex;gap:6px;}
+.rp-f .btns button{border:none;border-radius:9px;padding:9px 13px;font-family:'Poppins';font-weight:700;font-size:12px;cursor:pointer;background:var(--road);color:#fff;}
+.rp-f .btns button.lt{background:#EEECE7;color:var(--ink);}
+.rp-f .btns button.gd{background:var(--sand);}
+.rp{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;}
+.rp-hero{background:var(--road);color:#fff;border-radius:14px;padding:16px 20px;display:flex;align-items:center;gap:16px;position:relative;overflow:hidden;flex-wrap:wrap;}
+.rp-hero:after{content:"";position:absolute;left:0;right:0;bottom:0;height:5px;background:var(--sand);}
+.rp-logos{background:#fff;border-radius:10px;padding:7px 11px;display:flex;align-items:center;gap:11px;}
+.rp-logos img{height:44px;} .rp-logos img.ms{height:30px;} .rp-logos i{width:1px;height:36px;background:var(--line);}
+.rp-ht{flex:1;min-width:200px;} .rp-ht .k{color:var(--sand);font-weight:700;letter-spacing:2px;font-size:10px;}
+.rp-ht h2{font-size:20px;font-weight:800;line-height:1.15;margin:2px 0;} .rp-ht p{color:#D5D7DA;font-size:11px;}
+.rp-asof{text-align:right;font-size:10px;color:#D5D7DA;} .rp-asof b{display:block;color:#fff;font-size:15px;}
+.rp-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0 0;}
+.rp-kpi{border:1px solid var(--line);border-radius:12px;padding:12px 14px;}
+.rp-kpi .n{font-size:28px;font-weight:800;line-height:1;} .rp-kpi .l{font-weight:700;font-size:10px;letter-spacing:.6px;color:var(--stone);margin-top:5px;text-transform:uppercase;} .rp-kpi .s{font-size:10.5px;color:var(--stone);margin-top:2px;}
+.rp-kpi.main{background:var(--road);border-color:var(--road);color:#fff;} .rp-kpi.main .l,.rp-kpi.main .s{color:#D5D7DA;} .rp-kpi.gold .n{color:var(--sand);}
+.rp-cov{margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;}
+.rp-cov .top{display:flex;justify-content:space-between;font-weight:700;font-size:12px;margin-bottom:7px;}
+.rp-bar{height:12px;border-radius:6px;background:#EEECE7;overflow:hidden;display:flex;} .rp-bar i{display:block;height:100%;}
+.rp-leg{display:flex;gap:16px;margin-top:6px;font-size:10.5px;color:var(--stone);flex-wrap:wrap;}
+.rp-leg span:before{content:"";display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px;background:var(--c);}
+.rp h3{font-size:14px;font-weight:800;margin:18px 0 8px;display:flex;align-items:center;gap:8px;}
+.rp h3:before{content:"";width:4px;height:16px;background:var(--sand);border-radius:2px;}
+.rp-cmp{width:100%;border-collapse:collapse;font-size:12.5px;}
+.rp-cmp th{text-align:left;font-size:10px;letter-spacing:.6px;color:var(--stone);font-weight:700;padding:0 8px 6px;border-bottom:2px solid var(--road);}
+.rp-cmp td{padding:7px 8px;border-bottom:1px solid var(--line);} .rp-cmp tr.cl{cursor:pointer;} .rp-cmp tr.cl:hover td{background:#FAF8F3;}
+.rp-cmp .n{text-align:right;font-weight:700;width:70px;}
+.rp-mini{height:10px;border-radius:5px;background:#EEECE7;overflow:hidden;display:flex;}
+.rp-note{margin-top:10px;font-size:11px;color:var(--stone);line-height:1.5;}
+.rp-grp{margin-top:12px;break-inside:avoid-page;}
+.rp-gh{display:flex;justify-content:space-between;align-items:baseline;background:#F3ECDC;border-radius:8px;padding:7px 11px;margin-bottom:2px;}
+.rp-gh b{font-size:13px;} .rp-gh span{font-size:11px;color:var(--stone);font-weight:600;}
+.rp-ros{width:100%;border-collapse:collapse;font-size:12.5px;}
+.rp-ros th{text-align:left;font-size:9.5px;letter-spacing:.6px;color:var(--stone);font-weight:700;padding:6px 9px 4px;}
+.rp-ros td{padding:6px 9px;border-bottom:1px solid var(--line);} .rp-ros tr{break-inside:avoid;} .rp-ros td.nm{font-weight:600;}
+.pl{display:inline-block;border-radius:20px;padding:1px 10px;font-size:10.5px;font-weight:700;white-space:nowrap;}
+.pl-vid{background:var(--ok-bg);color:var(--ok);} .pl-adm{background:#ECEEF1;color:var(--road);} .pl-stk{background:var(--sand);color:#fff;letter-spacing:.5px;}
+.pl-pend{background:#FBEDE2;color:#B5652B;} .pl-trn{background:#ECEEF1;color:var(--stone);} .pl-exp{background:var(--bad-bg);color:var(--bad);} .pl-soon{background:var(--warn-bg);color:var(--warn);}
+.rp-foot{margin-top:16px;padding-top:8px;border-top:1px solid var(--line);font-size:10px;color:var(--stone);display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;}
+@media (max-width:760px){ .rp-kpis{grid-template-columns:repeat(2,1fr);} .rp-ros th:nth-child(4),.rp-ros td:nth-child(4){display:none;} }
+body.vrep #vRoster, body:not(.vrep) #vReport{display:none;}
 @media print {
-  .hdr,.tools,.hero,.panel,.acts,.noprint{display:none !important;}
+  @page{size:Letter;margin:.45in .5in .55in;}
+  body.vrep .wrap{padding:0;max-width:none;} body.vrep .rp{border:none;padding:0;} body.vrep .rp-f, body.vrep .vtabs{display:none !important;}
+  body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .rp-kpis{grid-template-columns:repeat(4,1fr) !important;} .rp-pb{break-before:page;}
+  .hdr,.tools,.hero,.panel,.acts,.noprint,.vtabs{display:none !important;}
   .tbl{border:none;} .row{min-width:0;grid-template-columns:1.5fr 1.2fr 1fr 90px;font-size:11px;padding:8px 6px;} .menu{display:none !important;}
   body{background:#fff;}
 }
@@ -88,6 +141,23 @@ body{font-family:'Poppins',system-ui,sans-serif;background:var(--bg);color:var(-
   </div>
 </div>
 <div class="wrap">
+  <div class="vtabs"><button id="tabRos" class="on" onclick="setView('roster')">👥 Roster</button><button id="tabRep" onclick="setView('report')">📊 Report</button></div>
+  <div id="vReport">
+    <div class="rp-f">
+      <div><label>SEARCH</label><input type="text" id="rq" placeholder="Name, truck, sticker…" oninput="renderReport()"></div>
+      <div><label>COMPANY</label><select id="rCo" onchange="renderReport()"></select></div>
+      <div><label>STATUS</label><select id="rSt" onchange="renderReport()">
+        <option value="approved">Approved (active)</option><option value="expiring">Expiring ≤ 30 days</option><option value="expired">Expired</option>
+        <option value="training">Still in training</option><option value="all">All drivers</option></select></div>
+      <div><label>STICKER</label><select id="rSk" onchange="renderReport()"><option value="">All</option><option value="yes">With sticker</option><option value="no">Sticker pending</option></select></div>
+      <div><label>TRAINING</label><select id="rTr" onchange="renderReport()"><option value="">All</option><option value="video">Watched the video</option><option value="admin">Approved by admin</option></select></div>
+      <div><label>APPROVED FROM</label><input type="date" id="rFrom" onchange="renderReport()"></div>
+      <div><label>TO</label><input type="date" id="rTo" onchange="renderReport()"></div>
+      <div class="btns"><button class="lt" onclick="resetReport()">Reset</button><button class="gd" onclick="repCsv()">⬇ Excel</button><button onclick="window.print()">🖨 Print / PDF</button></div>
+    </div>
+    <div class="rp" id="rp"></div>
+  </div>
+  <div id="vRoster">
   <div class="hero" id="hero"></div>
   <div class="tools">
     <input type="text" id="q" placeholder="Search name / truck / company / code…" oninput="render()">
@@ -106,6 +176,7 @@ body{font-family:'Poppins',system-ui,sans-serif;background:var(--bg);color:var(-
     </div>
     <button class="btn" style="margin-top:12px;background:var(--road);" onclick="runDemo()">▶ PREVIEW — what the driver sees AFTER the video</button>
     <p class="muted" style="margin-top:8px;">Videos live only on the office server (data/safety/), never in the repo. Drivers must watch 90% — progress is measured server side, skipping forward is blocked. The preview opens a demo driver (DEMO-01) with the video already watched; it replaces the previous demo each time.</p>
+  </div>
   </div>
 </div>
 
@@ -168,7 +239,115 @@ async function load(){
       else pv.style.display = "none";
     }
   }
-  render();
+  render(); renderReport();
+}
+// ===================== 📊 REPORT VIEW (same look as the Tony PDF, live + filters) =====================
+function setView(v){
+  document.body.classList.toggle("vrep", v === "report");
+  $("tabRos").classList.toggle("on", v !== "report"); $("tabRep").classList.toggle("on", v === "report");
+  try { localStorage.setItem("sd_view", v); } catch (e) {}
+  if (v === "report") renderReport();
+}
+// group company names the way drivers typed them ("G&R", "G and R enterprise", "G&R Enterprises,LLC" → one)
+const coKey = (c) => String(c || "").toLowerCase().replace(/[’`]/g, "'").replace(/'s\b/g, "").replace(/\band\b/g, "&").replace(/[^a-z0-9&]/g, "");
+// tidy casing: "rockin n trucking and dirt works llc" → "Rockin N Trucking And Dirt Works LLC"; keeps short all-caps tokens (STH, TX, G&R)
+const tCase = (s) => String(s || "").trim().split(/\s+/).map((w, i) =>
+  (i && /^(and|of|the)$/i.test(w)) ? w.toLowerCase() : /^llc[.,]?$/i.test(w) ? "LLC" : /^inc\.?$/i.test(w) ? "Inc." : /^[A-Z0-9&]{2,3}[.,]?$/.test(w) ? w
+  : w.toLowerCase().replace(/(^|[\-'&(])([a-z])/g, (m, a, b) => a + b.toUpperCase())).join(" ");
+function coMap(rows){
+  const keys = {}; rows.forEach(r => { const k = coKey(r.company); (keys[k] = keys[k] || []).push(r.company.trim()); });
+  const ks = Object.keys(keys).filter(k => k).sort((a, b) => a.length - b.length);
+  const root = {}; // shortest key that is a prefix of this one (min 3 chars) = same company
+  ks.forEach(k => { root[k] = ks.find(p => p.length >= 3 && k.startsWith(p) && root[p] === p) || k; });
+  const names = {}; // display name = most used spelling in the group (tie → longest)
+  Object.keys(root).forEach(k => { const r = root[k]; (names[r] = names[r] || []).push(...keys[k]); });
+  const disp = {}; Object.entries(names).forEach(([r, arr]) => {
+    const cnt = {}; arr.forEach(n => cnt[n] = (cnt[n] || 0) + 1);
+    disp[r] = tCase(Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a] || b.length - a.length)[0]);
+  });
+  return (c) => { const k = coKey(c); return disp[root[k]] || tCase(String(c || "—").trim()); };
+}
+const ctDate = (iso) => iso ? new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/Chicago" }) : "";
+const fD = (d, y) => d ? new Date(d + "T12:00:00").toLocaleDateString("en-US", y ? { month: "short", day: "numeric", year: "numeric" } : { month: "short", day: "numeric" }) : "—";
+let REP = [];
+function repRows(){
+  const CO = coMap(ROWS.filter(r => r.status !== "revoked"));
+  const all = ROWS.filter(r => r.status !== "revoked").map(r => ({ ...r, co: CO(r.company), nm: tCase(r.name), online: r.source !== "manual",
+    pct: r.dur ? Math.min(100, Math.round(r.watched / r.dur * 100)) : 0, appr: ctDate(r.certified_at),
+    training: ["started", "video_done", "passed", "pending"].includes(r.status) }));
+  // someone who restarted and got approved shows once
+  const okKey = new Set(all.filter(r => r.status === "certified" || r.status === "expired").map(r => (r.name + "|" + r.truck).toLowerCase()));
+  return all.filter(r => !(r.training && okKey.has((r.name + "|" + r.truck).toLowerCase())));
+}
+function resetReport(){ ["rq", "rFrom", "rTo"].forEach(i => $(i).value = ""); $("rCo").value = ""; $("rSt").value = "approved"; $("rSk").value = ""; $("rTr").value = ""; renderReport(); }
+function renderReport(){
+  if (!$("rp")) return;
+  const all = repRows();
+  const cos = [...new Set(all.map(r => r.co))].sort();
+  const curCo = $("rCo").value;
+  $("rCo").innerHTML = `<option value="">All companies (${cos.length})</option>` + cos.map(c => `<option${c === curCo ? " selected" : ""}>${esc(c)}</option>`).join("");
+  const st = $("rSt").value, sk = $("rSk").value, tr = $("rTr").value, q = $("rq").value.trim().toLowerCase(), from = $("rFrom").value, to = $("rTo").value;
+  let rows = all.filter(r =>
+    st === "all" ? true : st === "approved" ? r.status === "certified" : st === "expiring" ? (r.status === "certified" && r.days_left != null && r.days_left <= 30)
+    : st === "expired" ? r.status === "expired" : r.training);
+  if (curCo) rows = rows.filter(r => r.co === curCo);
+  if (sk) rows = rows.filter(r => sk === "yes" ? !!r.sticker : !r.sticker);
+  if (tr) rows = rows.filter(r => tr === "video" ? r.online : !r.online);
+  if (from) rows = rows.filter(r => r.appr && r.appr >= from);
+  if (to) rows = rows.filter(r => r.appr && r.appr <= to);
+  if (q) rows = rows.filter(r => [r.name, r.truck, r.sticker, r.code, r.co].some(v => String(v || "").toLowerCase().includes(q)));
+  REP = rows;
+  const ok = rows.filter(r => r.status === "certified" || r.status === "expired");
+  const N = rows.length, nOk = ok.length, nVid = ok.filter(r => r.online).length, nStk = ok.filter(r => r.sticker).length, nTrn = rows.filter(r => r.training).length;
+  const g = {}; rows.forEach(r => (g[r.co] = g[r.co] || []).push(r));
+  const gl = Object.entries(g).sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+  const maxC = gl.length ? gl[0][1].length : 1, pS = nOk ? nStk / nOk * 100 : 0;
+  const stLbl = { approved: "Approved drivers", expiring: "Approvals expiring in 30 days", expired: "Expired approvals", training: "Drivers still in training", all: "All drivers" }[st];
+  const fl = [curCo, sk === "yes" ? "with sticker" : sk === "no" ? "sticker pending" : "", tr === "video" ? "watched the video" : tr === "admin" ? "approved by admin" : "",
+    from || to ? "approved " + (from ? fD(from, 1) : "…") + " – " + (to ? fD(to, 1) : "today") : "", q ? `“${q}”` : ""].filter(Boolean).join(" · ");
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" });
+  const training = (r) => r.training ? `<span class="pl pl-trn">${r.status === "pending" ? "Signed · waiting approval" : r.status === "started" ? "Watching video · " + r.pct + "%" : "Video done · not signed"}</span>`
+    : r.online ? `<span class="pl pl-vid">✓ Video watched · ${r.pct}%</span>` : `<span class="pl pl-adm">Approved by admin</span>`;
+  const valid = (r) => !r.expires_at ? "—" : r.status === "expired" ? `<span class="pl pl-exp">Expired ${fD(r.expires_at, 1)}</span>`
+    : (r.days_left != null && r.days_left <= 30) ? `<span class="pl pl-soon">${fD(r.expires_at, 1)} · ${r.days_left}d</span>` : fD(r.expires_at, 1);
+  $("rp").innerHTML = `
+  <div class="rp-hero">
+    <div class="rp-logos"><img src="api/safety/img?name=rrlogo" alt=""><i></i><img class="ms" src="api/safety/img?name=mslogo" alt=""></div>
+    <div class="rp-ht"><div class="k">PROJECT ROADRUNNER · CHILDRESS, TX</div><h2>Safe Dumping Training<br>Driver Status Report</h2><p>${esc(stLbl)}${fl ? " · " + esc(fl) : ""}</p></div>
+    <div class="rp-asof">AS OF<b>${fD(today, 1)}</b></div>
+  </div>
+  <div class="rp-kpis">
+    <div class="rp-kpi main"><div class="n">${st === "training" ? nTrn : nOk}</div><div class="l">${st === "training" ? "In training" : "Drivers approved"}</div><div class="s">from ${gl.length} compan${gl.length === 1 ? "y" : "ies"}</div></div>
+    <div class="rp-kpi"><div class="n">${nVid}</div><div class="l">Watched the video</div><div class="s">online training, ≥90% watched</div></div>
+    <div class="rp-kpi"><div class="n">${nOk - nVid}</div><div class="l">Approved by admin</div><div class="s">entered by Milestone safety</div></div>
+    <div class="rp-kpi gold"><div class="n">${nStk}</div><div class="l">Sticker issued</div><div class="s">${nOk - nStk} approved, sticker pending</div></div>
+  </div>
+  ${nOk ? `<div class="rp-cov"><div class="top"><span>Sticker coverage of approved drivers</span><span>${Math.round(pS)}%</span></div>
+    <div class="rp-bar"><i style="width:${pS}%;background:var(--sand)"></i><i style="flex:1;background:#D9D6CF"></i></div>
+    <div class="rp-leg"><span style="--c:var(--sand)">Sticker issued (${nStk})</span><span style="--c:#D9D6CF">Approved — sticker pending (${nOk - nStk})</span></div></div>` : ""}
+  ${N ? `<h3>By company</h3>
+  <table class="rp-cmp"><tr><th>COMPANY</th><th style="width:42%">DRIVERS · STICKERS</th><th class="n">DRIVERS</th><th class="n">STICKER</th><th class="n">PENDING</th></tr>
+  ${gl.map(([c, a]) => { const s = a.filter(r => r.sticker).length; return `<tr class="cl" title="Filter to ${esc(c)}" onclick="$('rCo').value=${esc(JSON.stringify(c))};renderReport()"><td><b>${esc(c)}</b></td>
+    <td><div class="rp-mini" style="width:${Math.max(6, a.length / maxC * 100)}%"><i style="width:${s / a.length * 100}%;background:var(--sand)"></i><i style="flex:1;background:var(--road);opacity:.8"></i></div></td>
+    <td class="n">${a.length}</td><td class="n" style="color:var(--sand)">${s || "—"}</td><td class="n" style="color:${a.length - s ? "#B5652B" : "var(--stone)"}">${a.length - s || "—"}</td></tr>`; }).join("")}</table>
+  <div class="rp-note">Company names are grouped as the drivers typed them. Approval is valid 180 days from the approval date. Click a company to filter.</div>
+  <div class="rp-pb"></div>
+  <h3>Driver roster</h3>
+  ${gl.map(([c, a]) => { a.sort((x, y) => (y.sticker ? 1 : 0) - (x.sticker ? 1 : 0) || x.nm.localeCompare(y.nm)); const s = a.filter(r => r.sticker).length;
+    return `<div class="rp-grp"><div class="rp-gh"><b>${esc(c)}</b><span>${a.length} driver${a.length === 1 ? "" : "s"} · ${s} with sticker</span></div>
+    <table class="rp-ros"><tr><th style="width:26%">DRIVER</th><th style="width:10%">TRUCK #</th><th style="width:23%">TRAINING</th><th style="width:11%">APPROVED</th><th style="width:16%">VALID UNTIL</th><th>STICKER</th></tr>
+    ${a.map(r => `<tr><td class="nm">${esc(r.nm)}</td><td>${esc(String(r.truck).toUpperCase())}</td><td>${training(r)}</td><td>${r.appr ? fD(r.appr) : "—"}</td><td>${valid(r)}</td>
+      <td>${r.sticker ? `<span class="pl pl-stk">#${esc(r.sticker)}</span>` : r.training ? "—" : `<span class="pl pl-pend">Pending</span>`}</td></tr>`).join("")}</table></div>`; }).join("")}`
+  : `<div class="rp-note" style="text-align:center;padding:30px 0;font-size:13px;">No drivers match these filters.</div>`}
+  <div class="rp-foot"><span>Milestone Supply · Safe Dumping Training Platform</span><span>Approval valid 180 days · No sticker, no dumping</span></div>`;
+}
+function repCsv(){
+  const h = ["Company", "Driver", "Truck #", "Training", "Video watched %", "Status", "Approved", "Valid until", "Sticker #", "Code"];
+  const L = [h].concat(REP.map(r => [r.co, r.nm, r.truck, r.training ? "In training" : r.online ? "Video" : "Approved by admin", r.online ? r.pct : "",
+    r.status === "certified" ? "approved" : r.status.replace("_", " "), r.appr, r.expires_at, r.sticker, r.code]));
+  const csv = "﻿" + L.map(a => a.map(v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"').join(",")).join("\r\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = "Roadrunner_Driver_Report_" + new Date().toISOString().slice(0, 10) + ".csv"; a.click();
 }
 function heroStats(){
   const cert = ROWS.filter(r => r.status === "certified");
@@ -431,6 +610,6 @@ async function loadInvites(){
 }
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script>load();</script>
+<script>try { if (localStorage.getItem("sd_view") === "report") setView("report"); } catch (e) {} load();</script>
 </body>
 </html>
