@@ -432,7 +432,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: true, rows: rows.map(r => ({
         code: r.code, name: r.name, truck: r.truck, company: r.company, status: effStatus(r),
         sticker: r.sticker || '', watched: Math.round(r.video_seconds || 0), dur: Math.round(r.video_dur || 0),
-        source: r.source, created_at: r.created_at, updated_at: r.updated_at, expires_at: r.expires_at
+        source: r.source, created_at: r.created_at, updated_at: r.updated_at, certified_at: r.certified_at, expires_at: r.expires_at
       })) });
     }
     // canal de máquinas (uploadKey): PDFs, sellos y videos sin sesión
